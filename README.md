@@ -88,7 +88,7 @@ You can use the default file available [here](cassiopeia_settings.json) with fol
 
 ```
 
-Just might change the *default_region*, however it is anyway specified as mandatory argument passed to the tool.
+You might change the *default_region*, however it is anyway specified as mandatory argument passed to the tool.
 
 ### SMTP settings
 
