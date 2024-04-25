@@ -62,9 +62,9 @@ Edit the *[lol_monitor.py](lol_monitor.py)* file and change any desired configur
 
 ### RIOT API key
 
-You can get the development RIOT API key valid for 24 hours here: https://developer.riotgames.com
+You can get the development RIOT API key valid for 24 hours here: [https://developer.riotgames.com](https://developer.riotgames.com)
 
-However in order to make full use of the tool you need to apply for persistent personal or production RIOT API key here: https://developer.riotgames.com/app-type
+However in order to make full use of the tool you need to apply for persistent personal or production RIOT API key here: [https://developer.riotgames.com/app-type](https://developer.riotgames.com/app-type)
 
 It takes few days to get the approval.
 
