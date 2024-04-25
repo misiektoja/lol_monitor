@@ -68,9 +68,11 @@ However in order to make full use of the tool you need to apply for persistent p
 
 It takes few days to get the approval.
 
+Change the **RIOT_API_KEY** variable to respective value.
+
 ### Cassiopeia settings
 
-The tool requires Cassiopeia settings file location to be specified in CASSIOPEIA_SETTINGS_JSON_FILE variable.
+The tool requires Cassiopeia settings file location to be specified in **CASSIOPEIA_SETTINGS_JSON_FILE** variable.
 
 You can use the default file available [here](cassiopeia_settings.json) with following contents:
 
