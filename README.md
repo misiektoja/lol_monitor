@@ -2,6 +2,8 @@
 
 lol_monitor is a Python script which allows for real-time monitoring of LoL (League of Legends) players activity. 
 
+**NOTE: Due to recent changes in RIOT API (disabling Spectator-V4 & summoner names APIs due to migration to Riot IDs) the tool won't work until Cassiopeia lib is updated.**
+
 ## Features
 
 - Real-time monitoring of LoL users gaming activity (including detection when user starts/finishes the match)
@@ -26,7 +28,7 @@ I'm not a dev, project done as a hobby. Code is ugly and as-is, but it works (at
 
 The script requires Python 3.x.
 
-It uses [cassiopeia](https://github.com/meraki-analytics/cassiopeia) library, also requests, pytz, python-dateutil and urllib3.
+It uses [cassiopeia](https://github.com/meraki-analytics/cassiopeia) library, also requests, pytz and python-dateutil.
 
 It has been tested succesfully on Linux (Raspberry Pi Bullseye & Bookworm based on Debian) and Mac OS (Ventura & Sonoma). 
 
@@ -37,7 +39,7 @@ Should work on any other Linux OS and Windows with Python.
 Install the required Python packages:
 
 ```sh
-python3 -m pip install requests pytz python-dateutil urllib3 cassiopeia
+python3 -m pip install requests pytz python-dateutil cassiopeia
 ```
 
 Or from requirements.txt:
@@ -46,7 +48,7 @@ Or from requirements.txt:
 pip3 install -r requirements.txt
 ```
 
-Copy the *lol_monitor.py* file to the desired location. 
+Copy the *[lol_monitor.py](lol_monitor.py)* file to the desired location. 
 
 You might want to add executable rights if on Linux or MacOS:
 
@@ -56,7 +58,7 @@ chmod a+x lol_monitor.py
 
 ## Configuration
 
-Edit the *lol_monitor.py* file and change any desired configuration variables in the marked **CONFIGURATION SECTION** (all parameters have detailed description in the comments).
+Edit the *[lol_monitor.py](lol_monitor.py)* file and change any desired configuration variables in the marked **CONFIGURATION SECTION** (all parameters have detailed description in the comments).
 
 ### RIOT API key
 

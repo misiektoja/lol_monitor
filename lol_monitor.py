@@ -12,7 +12,6 @@ cassiopeia
 pytz
 python-dateutil
 requests
-urllib3
 """
 
 VERSION=1.0
