@@ -2,12 +2,12 @@
 
 lol_monitor is a Python script which allows for real-time monitoring of LoL (League of Legends) players activity. 
 
-**NOTE: Due to recent changes in RIOT API (disabling Spectator-V4 & summoner names APIs due to migration to Riot IDs) the tool won't work until Cassiopeia lib is updated.**
+**NOTE: This is new version of the tool rewritten from Cassiopeia to pulsefire library. More details [here](RELEASE_NOTES.md)**
 
 ## Features
 
 - Real-time monitoring of LoL users gaming activity (including detection when user starts/finishes the match)
-- Most important statistics for finished matches (victory/defeat, kills/deaths/assists, champion, level, blue & red team players)
+- Most important statistics for finished matches (victory/defeat, kills/deaths/assists, champion, level, team members)
 - Email notifications for different events (player starts/finishes the match, match summary, errors)
 - Saving all gaming activity with timestamps to the CSV file
 - Possibility to control the running copy of the script via signals
@@ -28,7 +28,7 @@ I'm not a dev, project done as a hobby. Code is ugly and as-is, but it works (at
 
 The script requires Python 3.x.
 
-It uses [cassiopeia](https://github.com/meraki-analytics/cassiopeia) library, also requests, pytz and python-dateutil.
+It uses [pulsefire](https://github.com/iann838/pulsefire) library, also requests and python-dateutil.
 
 It has been tested succesfully on Linux (Raspberry Pi Bullseye & Bookworm based on Debian) and Mac OS (Ventura & Sonoma). 
 
@@ -39,7 +39,7 @@ Should work on any other Linux OS and Windows with Python.
 Install the required Python packages:
 
 ```sh
-python3 -m pip install requests pytz python-dateutil cassiopeia
+python3 -m pip install requests python-dateutil pulsefire
 ```
 
 Or from requirements.txt:
@@ -68,31 +68,7 @@ However in order to make full use of the tool you need to apply for persistent p
 
 It takes few days to get the approval.
 
-Change the **RIOT_API_KEY** variable to respective value.
-
-### Cassiopeia settings
-
-The tool requires Cassiopeia settings file location to be specified in **CASSIOPEIA_SETTINGS_JSON_FILE** variable.
-
-You can use the default file available [here](cassiopeia_settings.json) with following contents:
-
-```json
-{
-    "global": {
-        "version_from_match": "latest",
-        "default_region": "EUNE"
-    },
-    "logging": {
-    "print_calls": false,
-    "print_riot_api_key": false,
-    "default": "WARNING",
-    "core": "WARNING"
-    }
-}
-
-```
-
-You might change the *default_region*, however it is anyway specified as mandatory argument passed to the tool.
+Change the **RIOT_API_KEY** variable to respective value (or use **-r** parameter).
 
 ### SMTP settings
 
@@ -120,11 +96,15 @@ python3 ./lol_monitor.py -h
 
 ### Monitoring mode
 
-To monitor specific user activity, just type its LoL username & region as parameters (**misiektoja** and **EUNE** in the example below):
+To monitor specific user activity, just type player's LoL RIOT ID & region as parameters (**misiektoja#EUNE** and **eun1** in the example below):
 
 ```sh
-./lol_monitor.py misiektoja EUNE
+./lol_monitor.py "misiektoja#EUNE" eun1
 ```
+
+LoL RIOT ID consists of RIOT ID game name (*misiektoja* in the example above) and tag line (*#EUNE*). 
+
+For the region you need to use short form of it. You can find a list in [lol_monitor.py](lol_monitor.py) file, look at the **regions_short_to_long** dictionary.
 
 The tool will run infinitely and monitor the player until the script is interrupted (Ctrl+C) or killed the other way.
 
@@ -132,16 +112,38 @@ You can monitor multiple LoL players by spawning multiple copies of the script.
 
 It is suggested to use sth like **tmux** or **screen** to have the script running after you log out from the server.
 
-The tool automatically saves its output to *lol_monitor_username.log* file (can be changed in the settings or disabled with -d).
+The tool automatically saves its output to *lol_monitor_riotidname.log* file (can be changed in the settings or disabled with -d).
+
+### Listing mode
+
+There is also other mode of the tool which prints and/or saves the recent matches for the user (**-l** parameter). You can also add **-n** to define how many recent matches you want to display/save, by default it shows 2 last matches:
+
+```sh
+./lol_monitor.py "misiektoja#EUNE" eun1 -l -n 25
+```
+
+You can also define the range of matches to display/save by specyfing the minimal match to display (**-m** parameter). So for example to display recent matches in the range of 20-50:
+
+```sh
+./lol_monitor.py "misiektoja#EUNE" eun1 -l -m 20 -n 50
+```
+
+If you specify **-b** parameter (with CSV file name) together with **-l** parameter, it will not only display the recent matches, but also save it to the specified CSV file. For example to display and save recent matches in the range of 5-10 for the user:
+
+```sh
+./lol_monitor.py "misiektoja#EUNE" eun1 -l -m 5 -n 10 -b lol_games_misiektoja.csv
+```
+
+You can use the **-l** functionality regardless if the monitoring is used or not (it does not interfere). 
 
 ## How to use other features
 
 ### Email notifications
 
-If you want to get email notifications once the user starts/finishes the match use -s parameter:
+If you want to get email notifications once the user starts/finishes the match use **-s** parameter:
 
 ```sh
-./lol_monitor.py misiektoja EUNE -s
+./lol_monitor.py "misiektoja#EUNE" eun1 -s
 ```
 
 Make sure you defined your SMTP settings earlier (see [SMTP settings](#smtp-settings)).
@@ -154,18 +156,18 @@ Example email:
 
 ### Saving gaming activity to the CSV file
 
-If you want to save the gaming activity of the LoL user, use -b parameter with the name of the file (it will be automatically created if it does not exist):
+If you want to save the gaming activity of the LoL user, use **-b** parameter with the name of the file (it will be automatically created if it does not exist):
 
 ```sh
-./lol_monitor.py misiektoja EUNE -b lol_games_misiektoja.csv
+./lol_monitor.py "misiektoja#EUNE" eun1 -b lol_games_misiektoja.csv
 ```
 
 ### Check intervals
 
-If you want to change the check interval when the user is in game to 60 seconds (-k) and when is NOT in game to 2 mins - 120 seconds (-c):
+If you want to change the check interval when the user is in game to 60 seconds (**-k**) and when is NOT in game to 2 mins - 120 seconds (**-c**):
 
 ```sh
-./lol_monitor.py misiektoja EUNE -k 60 -c 120
+./lol_monitor.py "misiektoja#EUNE" eun1 -k 60 -c 120
 ```
 
 ### Controlling the script via signals
@@ -191,9 +193,9 @@ pkill -f -USR1 "python3 ./lol_monitor.py misiektoja"
 
 ### Other
 
-Check other supported parameters using -h.
+Check other supported parameters using **-h**.
 
-You can of course combine all the parameters mentioned earlier together (in monitoring mode, listing mode only supports -l).
+You can of course combine all the parameters mentioned earlier together (in monitoring mode, listing mode only supports **-l**, **-n**, **-m** and **-b**).
 
 ## Colouring log output with GRC
 

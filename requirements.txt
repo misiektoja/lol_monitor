@@ -1,4 +1,3 @@
-cassiopeia
+pulsefire
 python_dateutil
-pytz
 Requests
