@@ -7,7 +7,15 @@ lol_monitor is a Python script which allows for real-time monitoring of LoL (Lea
 ## Features
 
 - Real-time monitoring of LoL users gaming activity (including detection when user starts/finishes the match)
-- Most important statistics for finished matches (victory/defeat, kills/deaths/assists, champion, level, team members)
+- Most important statistics for finished matches:
+   - game mode
+   - victory/defeat 
+   - kills/deaths/assists
+   - champion name
+   - achieved level
+   - role
+   - lane
+   - team members
 - Email notifications for different events (player starts/finishes the match, match summary, errors)
 - Saving all gaming activity with timestamps to the CSV file
 - Possibility to control the running copy of the script via signals
@@ -195,7 +203,7 @@ pkill -f -USR1 "python3 ./lol_monitor.py misiektoja"
 
 Check other supported parameters using **-h**.
 
-You can of course combine all the parameters mentioned earlier together (in monitoring mode, listing mode only supports **-l**, **-n**, **-m** and **-b**).
+You combine all the parameters mentioned earlier in monitoring mode (listing mode only supports **-l**, **-n**, **-m** and **-b**).
 
 ## Colouring log output with GRC
 

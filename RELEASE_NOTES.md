@@ -2,6 +2,29 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 1.2 (07 May 2024)
+
+**Features and Improvements**:
+
+- Info about player's role & lane added to the match summary
+- Info about game mode, player's role & lane added to notification emails
+- Mapping of games modes have been added
+- Feature to handle cases where active in-game status hangs, so we try to get historical matches in such case (by default after 1 hour)
+- Updated mapping of regions
+- Changed logic of checking for new matches
+- Email sending function send_email() has been rewritten to detect invalid SMTP settings
+- Strings have been converted to f-strings for better code visibility
+- Info about CSV file name in the start screen
+- Error message is displayed in the beginning if the region is not in regions_short_to_long dict or if the PUUID cannot be fetched
+- print_current_match() function has been rewritten to include more info in the notification emails
+- Accessing dict items via .get() to avoid errors when key is not available
+- In case of getting an exception in main loop we will send the error email notification only once (until the issue is resolved)
+
+**Bugfixes**:
+
+- Match teams structure does not always contain correct team ids (for example for Arena game types), so we switched the method in print_match_history() function to get it from match participants structure instead (the same way as in print_current_match())
+- Fix for refetching the last match in case there was an error reported by RIOT API (in such case timestamps are assigned with value of 0 and it triggered the new duplicated historical match event)
+
 # Changes in 1.1 (29 Apr 2024)
 
 **Features and Improvements**:
