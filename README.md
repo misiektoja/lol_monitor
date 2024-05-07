@@ -159,7 +159,7 @@ Make sure you defined your SMTP settings earlier (see [SMTP settings](#smtp-sett
 Example email:
 
 <p align="center">
-   <img src="./assets/lol_monitor_email_notifications.png" alt="lol_monitor_email_notifications" width="60%"/>
+   <img src="./assets/lol_monitor_email_notifications.png" alt="lol_monitor_email_notifications" width="80%"/>
 </p>
 
 ### Saving gaming activity to the CSV file
