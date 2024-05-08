@@ -2,8 +2,6 @@
 
 lol_monitor is a Python script which allows for real-time monitoring of LoL (League of Legends) players activity. 
 
-**NOTE: This is new version of the tool rewritten from Cassiopeia to pulsefire library. More details [here](RELEASE_NOTES.md)**
-
 ## Features
 
 - Real-time monitoring of LoL users gaming activity (including detection when user starts/finishes the match)
@@ -118,7 +116,27 @@ If you have not changed **RIOT_API_KEY** variable in the *[lol_monitor.py](lol_m
 
 LoL RIOT ID consists of RIOT ID game name (*misiektoja* in the example above) and tag line (*#EUNE*). 
 
-For the region you need to use short form of it. You can find a list in [lol_monitor.py](lol_monitor.py) file, look at the **regions_short_to_long** dictionary.
+For the region you need to use short form of it. You can find a list below:
+
+| Region short form | Description |
+| ----------- | ----------- |
+| eun1 | Europe Nordic & East (EUNE) |
+| euw1 | Europe West (EUW) |
+| na1 | North America (NA) |
+| na2 | North America (NA) |
+| br1 | Brazil (BR) |
+| la1 | Latin America North (LAN) |
+| la2 | Latin America South (LAS) |
+| jp1 | Japan |
+| kr | Korea |
+| tr1 | Turkey (TR1) |
+| ru | Russia |
+| ph2 | The Philippines |
+| sg2 | Singapore, Malaysia, & Indonesia |
+| tw2 | Taiwan, Hong Kong, and Macao |
+| th2 | Thailand |
+| vn2 | Vietnam |
+| oc1 | Oceania |
 
 The tool will run infinitely and monitor the player until the script is interrupted (Ctrl+C) or killed the other way.
 
