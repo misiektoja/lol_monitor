@@ -21,7 +21,7 @@ VERSION=1.2
 
 # Get the development RIOT API key valid for 24 hours here: https://developer.riotgames.com
 # Or apply for persistent personal or production RIOT API key here: https://developer.riotgames.com/app-type
-# Put your RIOT API key below or use -r parameter
+# Put your RIOT API key below (or use -r parameter)
 RIOT_API_KEY = "your_RIOT_API_key"
 
 # SMTP settings for sending email notifications, you can leave it as it is below and no notifications will be sent
@@ -860,7 +860,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser("lol_monitor")
     parser.add_argument("riotid", nargs="?", help="User's LoL Riot ID", type=str)
     parser.add_argument("region", nargs="?", help="User's LoL region (e.g. eun1, na1, br1 etc.)", type=str)
-    parser.add_argument("-r", "--riot_api_key", help="Specify RIOT API key to override the value defined within the script (RIOT_API_KEY)", type=str)
+    parser.add_argument("-r", "--riot_api_key", help="RIOT API key to override the value defined within the script (RIOT_API_KEY)", type=str)
     parser.add_argument("-s","--status_notification", help="Send email notification once user changes game playing status", action='store_true')
     parser.add_argument("-e","--error_notification", help="Disable sending email notifications in case of errors like invalid API key", action='store_false')
     parser.add_argument("-c", "--check_interval", help="Time between monitoring checks if user is not in game, in seconds", type=int)
