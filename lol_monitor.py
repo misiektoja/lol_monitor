@@ -24,7 +24,7 @@ VERSION=1.2
 # Put your RIOT API key below or use -r parameter
 RIOT_API_KEY = "your_RIOT_API_key"
 
-# SMTP settings for sending email notifications
+# SMTP settings for sending email notifications, you can leave it as it is below and no notifications will be sent
 SMTP_HOST = "your_smtp_server_ssl"
 SMTP_PORT = 587
 SMTP_USER = "your_smtp_user"
@@ -68,11 +68,6 @@ LOL_ACTIVE_CHECK_SIGNAL_VALUE=30 # 30 seconds
 # CONFIGURATION SECTION END
 # -------------------------
 
-TOOL_ALIVE_COUNTER=TOOL_ALIVE_INTERVAL/LOL_CHECK_INTERVAL
-
-stdout_bck = None
-csvfieldnames = ['Match Start', 'Match Stop', 'Duration', 'Victory', 'Kills', 'Deaths', 'Assists', 'Champion', 'Team 1', 'Team 2']
-
 regions_short_to_long = {
             "eun1": "europe",   # Europe Nordic & East (EUNE)
             "euw1": "europe",   # Europe West (EUW)
@@ -106,6 +101,11 @@ game_modes_mapping = {
             "NEXUSBLITZ": "Nexus Blitz",
             "ULTBOOK": "Ultimate Spellbook"
 }
+
+TOOL_ALIVE_COUNTER=TOOL_ALIVE_INTERVAL/LOL_CHECK_INTERVAL
+
+stdout_bck = None
+csvfieldnames = ['Match Start', 'Match Stop', 'Duration', 'Victory', 'Kills', 'Deaths', 'Assists', 'Champion', 'Team 1', 'Team 2']
 
 status_notification=False
 
@@ -860,15 +860,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser("lol_monitor")
     parser.add_argument("riotid", nargs="?", help="User's LoL Riot ID", type=str)
     parser.add_argument("region", nargs="?", help="User's LoL region (e.g. eun1, na1, br1 etc.)", type=str)
+    parser.add_argument("-r", "--riot_api_key", help="Specify RIOT API key to override the value defined within the script (RIOT_API_KEY)", type=str)
+    parser.add_argument("-s","--status_notification", help="Send email notification once user changes game playing status", action='store_true')
+    parser.add_argument("-e","--error_notification", help="Disable sending email notifications in case of errors like invalid API key", action='store_false')
+    parser.add_argument("-c", "--check_interval", help="Time between monitoring checks if user is not in game, in seconds", type=int)
+    parser.add_argument("-k", "--active_check_interval", help="Time between monitoring checks if user is in game, in seconds", type=int)
+    parser.add_argument("-b", "--csv_file", help="Write all game playing status changes to CSV file", type=str, metavar="CSV_FILENAME")    
     parser.add_argument("-l","--list_recent_matches", help="List recent matches for the user", action='store_true')
     parser.add_argument("-n", "--number_of_recent_matches", help="Number of recent matches to display/save if used with -l and/or -b", type=int)
     parser.add_argument("-m", "--min_of_recent_matches", help="Minimal match to display/save if used with -l and -n, it will limit range of matches from min_of_recent_matches (e.g. 300) to number_of_recent_matches (e.g. 500)", type=int)    
-    parser.add_argument("-b", "--csv_file", help="Write all game playing status changes to CSV file", type=str, metavar="CSV_FILENAME")
-    parser.add_argument("-s","--status_notification", help="Send email notification once user changes game playing status", action='store_true')
-    parser.add_argument("-e","--error_notification", help="Disable sending email notifications in case of errors like invalid API key", action='store_false')
-    parser.add_argument("-r", "--riot_api_key", help="Specify RIOT API key to override the value defined within the script (RIOT_API_KEY)", type=str)    
-    parser.add_argument("-c", "--check_interval", help="Time between monitoring checks if user is not in game, in seconds", type=int)
-    parser.add_argument("-k", "--active_check_interval", help="Time between monitoring checks if user is in game, in seconds", type=int)
     parser.add_argument("-d", "--disable_logging", help="Disable logging to file 'lol_monitor_user.log' file", action='store_true')
     args = parser.parse_args()
 

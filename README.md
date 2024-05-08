@@ -78,7 +78,7 @@ Change the **RIOT_API_KEY** variable to respective value (or use **-r** paramete
 
 ### SMTP settings
 
-If you want to use email notifications functionality you need to change the SMTP settings (host, port, user, password, sender, recipient).
+If you want to use email notifications functionality you need to change the SMTP settings (host, port, user, password, sender, recipient). If you leave the default settings then no notifications will be sent.
 
 ### Other settings
 
@@ -116,7 +116,7 @@ If you have not changed **RIOT_API_KEY** variable in the *[lol_monitor.py](lol_m
 
 LoL RIOT ID consists of RIOT ID game name (*misiektoja* in the example above) and tag line (*#EUNE*). 
 
-For the region you need to use short form of it. You can find a list below:
+For the region you need to use the short form of it. You can find a list below:
 
 | Region short form | Description |
 | ----------- | ----------- |
