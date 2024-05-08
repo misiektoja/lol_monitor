@@ -209,7 +209,7 @@ pkill -f -USR1 "python3 ./lol_monitor.py misiektoja"
 
 Check other supported parameters using **-h**.
 
-You combine all the parameters mentioned earlier in monitoring mode (listing mode only supports **-l**, **-n**, **-m** and **-b**).
+You can combine all the parameters mentioned earlier in monitoring mode (listing mode only supports **-l**, **-n**, **-m** and **-b**).
 
 ## Colouring log output with GRC
 

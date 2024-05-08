@@ -20,8 +20,24 @@ VERSION=1.2
 # ---------------------------
 
 # Get the development RIOT API key valid for 24 hours here: https://developer.riotgames.com
-# Apply for persistent personal or production RIOT API key here: https://developer.riotgames.com/app-type
+# Or apply for persistent personal or production RIOT API key here: https://developer.riotgames.com/app-type
+# Put your RIOT API key below or use -r parameter
 RIOT_API_KEY = "your_RIOT_API_key"
+
+# SMTP settings for sending email notifications
+SMTP_HOST = "your_smtp_server_ssl"
+SMTP_PORT = 587
+SMTP_USER = "your_smtp_user"
+SMTP_PASSWORD = "your_smtp_password"
+SMTP_SSL = True
+SENDER_EMAIL = "your_sender_email"
+#SMTP_HOST = "your_smtp_server_plaintext"
+#SMTP_PORT = 25
+#SMTP_USER = "your_smtp_user"
+#SMTP_PASSWORD = "your_smtp_password"
+#SMTP_SSL = False
+#SENDER_EMAIL = "your_sender_email"
+RECEIVER_EMAIL = "your_receiver_email"
 
 # How often do we perform checks for player activity when user is NOT in game; in seconds
 LOL_CHECK_INTERVAL=150 # 2,5 min
@@ -41,21 +57,6 @@ CHECK_INTERNET_URL='http://www.google.com/'
 
 # Default value for initial checking of internet connectivity; in seconds
 CHECK_INTERNET_TIMEOUT=5
-
-# SMTP settings for sending email notifications
-SMTP_HOST = "your_smtp_server_ssl"
-SMTP_PORT = 587
-SMTP_USER = "your_smtp_user"
-SMTP_PASSWORD = "your_smtp_password"
-SMTP_SSL = True
-SENDER_EMAIL = "your_sender_email"
-#SMTP_HOST = "your_smtp_server_plaintext"
-#SMTP_PORT = 25
-#SMTP_USER = "your_smtp_user"
-#SMTP_PASSWORD = "your_smtp_password"
-#SMTP_SSL = False
-#SENDER_EMAIL = "your_sender_email"
-RECEIVER_EMAIL = "your_receiver_email"
 
 # The name of the .log file; the tool by default will output its messages to lol_monitor_riotidname.log file
 lol_logfile="lol_monitor"
