@@ -110,6 +110,12 @@ To monitor specific user activity, just type player's LoL RIOT ID & region as pa
 ./lol_monitor.py "misiektoja#EUNE" eun1
 ```
 
+If you have not changed **RIOT_API_KEY** variable in the *[lol_monitor.py](lol_monitor.py)* file, you can use **-r** parameter:
+
+```sh
+./lol_monitor.py "misiektoja#EUNE" eun1 -r "your_RIOT_API_key"
+```
+
 LoL RIOT ID consists of RIOT ID game name (*misiektoja* in the example above) and tag line (*#EUNE*). 
 
 For the region you need to use short form of it. You can find a list in [lol_monitor.py](lol_monitor.py) file, look at the **regions_short_to_long** dictionary.
