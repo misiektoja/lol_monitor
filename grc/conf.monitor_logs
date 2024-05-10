@@ -292,6 +292,9 @@ colours=unchanged, green, unchanged
 regexp=^\*\*\* User played \d+ songs, skipped (\d+) songs.*$
 colours=unchanged, green, unchanged
 -
+regexp=^\*\*\* User paused music (\d+) times.*$
+colours=unchanged, green, unchanged
+-
 regexp=(?i)(Error |Error:|Warning|Failure|connect error|HTTP redirect| disappeared|Redirected to login|Forbidden)
 colours=red
 count=more

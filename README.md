@@ -211,7 +211,7 @@ List of supported signals:
 
 | Signal | Description |
 | ----------- | ----------- |
-| USR1 | Toggle email notifications when user starts/finishes the match |
+| USR1 | Toggle email notifications when user starts/finishes the match (-s) |
 | TRAP | Increase the check timer for player activity when user is in game (by 30 seconds) |
 | ABRT | Decrease check timer for player activity when user is in game (by 30 seconds) |
 
