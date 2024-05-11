@@ -19,7 +19,7 @@ lol_monitor is a Python script which allows for real-time monitoring of LoL (Lea
 - Possibility to control the running copy of the script via signals
 
 <p align="center">
-   <img src="./assets/lol_monitor.png" alt="lol_monitor_screenshot" width="60%"/>
+   <img src="./assets/lol_monitor.png" alt="lol_monitor_screenshot" width="70%"/>
 </p>
 
 ## Change Log
