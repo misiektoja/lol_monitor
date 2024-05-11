@@ -144,7 +144,7 @@ You can monitor multiple LoL players by spawning multiple copies of the script.
 
 It is suggested to use sth like **tmux** or **screen** to have the script running after you log out from the server.
 
-The tool automatically saves its output to *lol_monitor_riotidname.log* file (can be changed in the settings or disabled with -d).
+The tool automatically saves its output to *lol_monitor_riotidname.log* file (can be changed in the settings or disabled with **-d** parameter).
 
 ### Listing mode
 
@@ -196,14 +196,13 @@ If you want to save the gaming activity of the LoL user, use **-b** parameter wi
 
 ### Check intervals
 
-If you want to change the check interval when the user is in game to 60 seconds (**-k**) and when is NOT in game to 2 mins - 120 seconds (**-c**):
+If you want to change the check interval when the user is in game to 60 seconds use **-k** parameter and when the user is NOT in game to 2 mins (120 seconds) use **-c** parameter:
 
 ```sh
 ./lol_monitor.py "misiektoja#EUNE" eun1 -k 60 -c 120
 ```
 
 ### Controlling the script via signals
-
 
 The tool has several signal handlers implemented which allow to change behaviour of the tool without a need to restart it with new parameters.
 
