@@ -19,9 +19,9 @@ VERSION=1.3
 # CONFIGURATION SECTION START
 # ---------------------------
 
-# Get the development RIOT API key valid for 24 hours here: https://developer.riotgames.com
-# Or apply for persistent personal or production RIOT API key here: https://developer.riotgames.com/app-type
-# Put your RIOT API key below (or use -r parameter)
+# Get the development Riot API key valid for 24 hours here: https://developer.riotgames.com
+# Or apply for persistent personal or production Riot API key here: https://developer.riotgames.com/app-type
+# Put your Riot API key below (or use -r parameter)
 RIOT_API_KEY="your_riot_api_key"
 
 # SMTP settings for sending email notifications, you can leave it as it is below and no notifications will be sent
@@ -46,7 +46,7 @@ LOL_CHECK_INTERVAL=150 # 2,5 min
 LOL_ACTIVE_CHECK_INTERVAL=45 # 45 seconds
 
 # If user is in game for longer than time defined below, we start checking for new historical matches
-# It is to address sporadic issues with hanging in-game status reported by RIOT API
+# It is to address sporadic issues with hanging in-game status reported by Riot API
 LOL_HANGED_INGAME_INTERVAL=3600 # 1 hour
 
 # How often do we perform alive check by printing "alive check" message in the output; in seconds
@@ -413,8 +413,12 @@ def add_new_team_member(list_of_teams, teamid, member):
 # Function returning Riot game name & tag line for specified Riot ID
 def get_user_riot_name_tag(riotid: str):
 
-    riotid_name=riotid.split('#', 1)[0]
-    riotid_tag=riotid.split('#', 1)[1]
+    try:
+        riotid_name=riotid.split('#', 1)[0]
+        riotid_tag=riotid.split('#', 1)[1]
+    except IndexError:
+        print("Error while extracting name and tagline from Riot ID ! It needs to be in name#tag format.")
+        return "", ""
 
     return riotid_name, riotid_tag
 
@@ -736,15 +740,15 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name, cs
     puuid=await get_user_puuid(riotid, region)
 
     if not puuid:
-        print("* Error - cannot get PUUID, the RIOT ID or region might be wrong !")
+        print("* Error - cannot get PUUID, the Riot ID or region might be wrong !")
         sys.exit(2)
 
     riotid_name, riotid_tag=get_user_riot_name_tag(riotid)
 
     summoner_id, summoner_accountid, summoner_level=await get_summoner_details(puuid, region)
 
-    print(f"RIOT ID (name#tag):\t{riotid}")
-    print(f"RIOT PUUID:\t\t{puuid}")
+    print(f"Riot ID (name#tag):\t{riotid}")
+    print(f"Riot PUUID:\t\t{puuid}")
     #print(f"Summoner ID:\t\t{summoner_id}")
     #print(f"Summoner account ID:\t{summoner_accountid}")
     print(f"Summoner level:\t\t{summoner_level}")
@@ -864,7 +868,7 @@ if __name__ == "__main__":
     parser=argparse.ArgumentParser("lol_monitor")
     parser.add_argument("RIOT_ID", nargs="?", help="User's LoL Riot ID", type=str)
     parser.add_argument("REGION", nargs="?", help="User's LoL region (e.g. eun1, na1, br1 etc.)", type=str)
-    parser.add_argument("-r", "--riot_api_key", help="RIOT API key to override the value defined within the script (RIOT_API_KEY)", type=str)
+    parser.add_argument("-r", "--riot_api_key", help="Riot API key to override the value defined within the script (RIOT_API_KEY)", type=str)
     parser.add_argument("-s","--status_notification", help="Send email notification once user changes game playing status", action='store_true')
     parser.add_argument("-e","--error_notification", help="Disable sending email notifications in case of errors like invalid API key", action='store_false')
     parser.add_argument("-c", "--check_interval", help="Time between monitoring checks if user is NOT in game, in seconds", type=int)
@@ -891,7 +895,7 @@ if __name__ == "__main__":
     if args.riot_api_key:
         RIOT_API_KEY=args.riot_api_key
 
-    if not RIOT_API_KEY or RIOT_API_KEY=="your_RIOT_API_key":
+    if not RIOT_API_KEY or RIOT_API_KEY=="your_riot_api_key":
         print("* Error: RIOT_API_KEY (-r / --riot_api_key) value is empty or incorrect\n")
         sys.exit(1)
 
@@ -955,6 +959,10 @@ if __name__ == "__main__":
         sys.exit(0)
 
     riotid_name, riotid_tag=get_user_riot_name_tag(args.RIOT_ID)
+
+    if not riotid_name or not riotid_tag:
+        sys.exit(1)
+
     if not args.disable_logging:
         lol_logfile=f"{lol_logfile}_{riotid_name}.log"
         sys.stdout=Logger(lol_logfile)
