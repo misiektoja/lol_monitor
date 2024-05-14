@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.2
+v1.3
 
 Script implementing real-time monitoring of LoL (League of Legends) players activity:
 https://github.com/misiektoja/lol_monitor/
@@ -13,7 +13,7 @@ python-dateutil
 requests
 """
 
-VERSION=1.2
+VERSION=1.3
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -22,22 +22,22 @@ VERSION=1.2
 # Get the development RIOT API key valid for 24 hours here: https://developer.riotgames.com
 # Or apply for persistent personal or production RIOT API key here: https://developer.riotgames.com/app-type
 # Put your RIOT API key below (or use -r parameter)
-RIOT_API_KEY = "your_RIOT_API_key"
+RIOT_API_KEY="your_riot_api_key"
 
 # SMTP settings for sending email notifications, you can leave it as it is below and no notifications will be sent
-SMTP_HOST = "your_smtp_server_ssl"
-SMTP_PORT = 587
-SMTP_USER = "your_smtp_user"
-SMTP_PASSWORD = "your_smtp_password"
-SMTP_SSL = True
-SENDER_EMAIL = "your_sender_email"
-#SMTP_HOST = "your_smtp_server_plaintext"
-#SMTP_PORT = 25
-#SMTP_USER = "your_smtp_user"
-#SMTP_PASSWORD = "your_smtp_password"
-#SMTP_SSL = False
-#SENDER_EMAIL = "your_sender_email"
-RECEIVER_EMAIL = "your_receiver_email"
+SMTP_HOST="your_smtp_server_ssl"
+SMTP_PORT=587
+SMTP_USER="your_smtp_user"
+SMTP_PASSWORD="your_smtp_password"
+SMTP_SSL=True
+SENDER_EMAIL="your_sender_email"
+#SMTP_HOST="your_smtp_server_plaintext"
+#SMTP_PORT=25
+#SMTP_USER="your_smtp_user"
+#SMTP_PASSWORD="your_smtp_password"
+#SMTP_SSL=False
+#SENDER_EMAIL="your_sender_email"
+RECEIVER_EMAIL="your_receiver_email"
 
 # How often do we perform checks for player activity when user is NOT in game; in seconds
 LOL_CHECK_INTERVAL=150 # 2,5 min
@@ -124,6 +124,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import argparse
 import csv
+import platform
 import re
 import ipaddress
 import asyncio
@@ -133,7 +134,7 @@ from pulsefire.clients import RiotAPIClient
 class Logger(object):
     def __init__(self, filename):
         self.terminal = sys.stdout
-        self.logfile = open(filename, "a", buffering=1)
+        self.logfile = open(filename, "a", buffering=1, encoding="utf-8")
 
     def write(self, message):
         self.terminal.write(message)
@@ -316,7 +317,7 @@ def send_email(subject,body,body_html,use_ssl):
 # Function to write CSV entry
 def write_csv_entry(csv_file_name, start_date_ts, stop_date_ts, duration_ts, victory, kills, deaths, assists, champion, team1, team2):
     try:
-        csv_file=open(csv_file_name, 'a', newline='', buffering=1)
+        csv_file=open(csv_file_name, 'a', newline='', buffering=1, encoding="utf-8")
         csvwriter = csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
         csvwriter.writerow({'Match Start': start_date_ts, 'Match Stop': stop_date_ts, 'Duration': duration_ts, 'Victory': victory, 'Kills': kills, 'Deaths': deaths, 'Assists': assists, 'Champion': champion, 'Team 1': team1, 'Team 2': team2 })
         csv_file.close()
@@ -701,7 +702,7 @@ async def print_save_recent_matches(riotid: str, region: str, matches_min: int, 
 
     try:
         if csv_file_name:
-            csv_file=open(csv_file_name, 'a', newline='', buffering=1)
+            csv_file=open(csv_file_name, 'a', newline='', buffering=1, encoding="utf-8")
             csvwriter = csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
             if not csv_exists:
                 csvwriter.writeheader()
@@ -724,7 +725,7 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name, cs
 
     try:
         if csv_file_name:
-            csv_file=open(csv_file_name, 'a', newline='', buffering=1)
+            csv_file=open(csv_file_name, 'a', newline='', buffering=1, encoding="utf-8")
             csvwriter = csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
             if not csv_exists:
                 csvwriter.writeheader()
@@ -851,15 +852,18 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, signal_handler)
 
     try:
-        os.system('clear')
+        if platform.system() == 'Windows':
+            os.system('cls')
+        else:
+            os.system('clear')
     except:
         print("* Cannot clear the screen contents")
 
     print(f"League of Legends Monitoring Tool v{VERSION}\n")
 
     parser = argparse.ArgumentParser("lol_monitor")
-    parser.add_argument("riotid", nargs="?", help="User's LoL Riot ID", type=str)
-    parser.add_argument("region", nargs="?", help="User's LoL region (e.g. eun1, na1, br1 etc.)", type=str)
+    parser.add_argument("RIOT_ID", nargs="?", help="User's LoL Riot ID", type=str)
+    parser.add_argument("REGION", nargs="?", help="User's LoL region (e.g. eun1, na1, br1 etc.)", type=str)
     parser.add_argument("-r", "--riot_api_key", help="RIOT API key to override the value defined within the script (RIOT_API_KEY)", type=str)
     parser.add_argument("-s","--status_notification", help="Send email notification once user changes game playing status", action='store_true')
     parser.add_argument("-e","--error_notification", help="Disable sending email notifications in case of errors like invalid API key", action='store_false')
@@ -872,25 +876,24 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--disable_logging", help="Disable logging to file 'lol_monitor_user.log' file", action='store_true')
     args = parser.parse_args()
 
+    if len(sys.argv)==1:
+        parser.print_help(sys.stderr)
+        sys.exit(1)  
+
+    if not args.RIOT_ID or not args.REGION:
+        print("* Error: RIOT_ID and REGION arguments are required !")
+        sys.exit(1)
+
+    if not regions_short_to_long.get(args.REGION):
+        print("* Error: REGION might be wrong as it is not present in 'regions_short_to_long' dict in .py file")
+        sys.exit(1)
+
     if args.riot_api_key:
         RIOT_API_KEY=args.riot_api_key
 
     if not RIOT_API_KEY or RIOT_API_KEY=="your_RIOT_API_key":
-        print("* RIOT_API_KEY (-r / --riot_api_key) value is empty or incorrect\n")
+        print("* Error: RIOT_API_KEY (-r / --riot_api_key) value is empty or incorrect\n")
         sys.exit(1)
-
-    if not args.riotid or not args.region:
-        print("* 'riotid' and 'region' arguments are required")
-        sys.exit(1)
-
-    if not regions_short_to_long.get(args.region):
-        print("* 'region' might be wrong as it is not present in 'regions_short_to_long' dict in .py file")
-        sys.exit(1)
-
-    sys.stdout.write("* Checking internet connectivity ... ")
-    sys.stdout.flush()
-    check_internet()
-    print("")
 
     if args.check_interval:
         LOL_CHECK_INTERVAL=args.check_interval
@@ -899,11 +902,16 @@ if __name__ == "__main__":
     if args.active_check_interval:
         LOL_ACTIVE_CHECK_INTERVAL=args.active_check_interval
 
+    sys.stdout.write("* Checking internet connectivity ... ")
+    sys.stdout.flush()
+    check_internet()
+    print("")
+
     if args.csv_file:
         csv_enabled=True
         csv_exists=os.path.isfile(args.csv_file)
         try:
-            csv_file=open(args.csv_file, 'a', newline='', buffering=1)
+            csv_file=open(args.csv_file, 'a', newline='', buffering=1, encoding="utf-8")
         except Exception as e:
             print(f"\n* Error, CSV file cannot be opened for writing - {e}")
             sys.exit(1)
@@ -934,19 +942,19 @@ if __name__ == "__main__":
             list_operation="* Listing"
 
         if matches_min!=matches_num:
-            print(f"{list_operation} recent matches from {matches_num} to {matches_min} for {args.riotid}:\n")
+            print(f"{list_operation} recent matches from {matches_num} to {matches_min} for {args.RIOT_ID}:\n")
         else:
-            print(f"{list_operation} recent match for {args.riotid}:\n")
+            print(f"{list_operation} recent match for {args.RIOT_ID}:\n")
 
         try:
-            asyncio.run(print_save_recent_matches(args.riotid, args.region, matches_min, matches_num, args.csv_file,csv_exists))
+            asyncio.run(print_save_recent_matches(args.RIOT_ID, args.REGION, matches_min, matches_num, args.csv_file,csv_exists))
         except Exception as e:                     
             if 'Forbidden' in str(e) or 'Unknown patch name' in str(e):
                 print("* API key might not be valid anymore or new patch deployed!")
             print(f"* Error - {e}")
         sys.exit(0)
 
-    riotid_name, riotid_tag=get_user_riot_name_tag(args.riotid)
+    riotid_name, riotid_tag=get_user_riot_name_tag(args.RIOT_ID)
     if not args.disable_logging:
         lol_logfile = f"{lol_logfile}_{riotid_name}.log"
         sys.stdout = Logger(lol_logfile)
@@ -959,17 +967,19 @@ if __name__ == "__main__":
     if csv_enabled:
         print(f"* CSV logging enabled:\t\t{csv_enabled} ({args.csv_file})\n")
     else:
-            print(f"* CSV logging enabled:\t\t{csv_enabled}\n")
+        print(f"* CSV logging enabled:\t\t{csv_enabled}\n")
 
-    signal.signal(signal.SIGUSR1, toggle_status_changes_notifications_signal_handler)
-    signal.signal(signal.SIGTRAP, increase_active_check_signal_handler)
-    signal.signal(signal.SIGABRT, decrease_active_check_signal_handler)
+    # We define signal handlers only for Linux & MacOS since Windows has limited number of signals supported
+    if platform.system() != 'Windows':
+        signal.signal(signal.SIGUSR1, toggle_status_changes_notifications_signal_handler)
+        signal.signal(signal.SIGTRAP, increase_active_check_signal_handler)
+        signal.signal(signal.SIGABRT, decrease_active_check_signal_handler)
 
-    out = f"Monitoring user {args.riotid}"
+    out = f"Monitoring user {args.RIOT_ID}"
     print(out)
     print("-" * len(out))
 
-    asyncio.run(lol_monitor_user(args.riotid,args.region,args.error_notification,args.csv_file,csv_exists))
+    asyncio.run(lol_monitor_user(args.RIOT_ID,args.REGION,args.error_notification,args.csv_file,csv_exists))
 
     sys.stdout = stdout_bck
     sys.exit(0)
