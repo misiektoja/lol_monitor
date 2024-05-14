@@ -39,10 +39,10 @@ SENDER_EMAIL="your_sender_email"
 #SENDER_EMAIL="your_sender_email"
 RECEIVER_EMAIL="your_receiver_email"
 
-# How often do we perform checks for player activity when user is NOT in game; in seconds
+# How often do we perform checks for player activity when user is NOT in game, you can also use -c parameter; in seconds
 LOL_CHECK_INTERVAL=150 # 2,5 min
 
-# How often do we perform checks for player activity when user is in game; in seconds
+# How often do we perform checks for player activity when user is in game, you can also use -k parameter; in seconds
 LOL_ACTIVE_CHECK_INTERVAL=45 # 45 seconds
 
 # If user is in game for longer than time defined below, we start checking for new historical matches
@@ -68,7 +68,7 @@ LOL_ACTIVE_CHECK_SIGNAL_VALUE=30 # 30 seconds
 # CONFIGURATION SECTION END
 # -------------------------
 
-regions_short_to_long = {
+region_to_continent={
             "eun1": "europe",   # Europe Nordic & East (EUNE)
             "euw1": "europe",   # Europe West (EUW)
             "na1": "americas",  # North America (NA)
@@ -78,17 +78,17 @@ regions_short_to_long = {
             "la2": "americas",  # Latin America South (LAS)
             "jp1": "asia",      # Japan
             "kr": "asia",       # Korea
-            "tr1": "asia",      # Turkey (TR1)
-            "ru": "asia",       # Russia
-            "ph2": "asia",      # The Philippines
-            "sg2": "asia",      # Singapore, Malaysia, & Indonesia
-            "tw2": "asia",      # Taiwan, Hong Kong, and Macao
-            "th2": "asia",      # Thailand
-            "vn2": "asia",      # Vietnam
+            "tr1": "europe",      # Turkey (TR1)
+            "ru": "europe",       # Russia
+            "ph2": "sea",      # The Philippines
+            "sg2": "sea",      # Singapore, Malaysia, & Indonesia
+            "tw2": "sea",      # Taiwan, Hong Kong, and Macao
+            "th2": "sea",      # Thailand
+            "vn2": "sea",      # Vietnam
             "oc1": "sea"        # Oceania
 }
 
-game_modes_mapping = {
+game_modes_mapping={
             "CLASSIC": "Summoner's Rift",
             "CHERRY": "Arena",
             "TUTORIAL": "Tutorial",
@@ -104,8 +104,8 @@ game_modes_mapping = {
 
 TOOL_ALIVE_COUNTER=TOOL_ALIVE_INTERVAL/LOL_CHECK_INTERVAL
 
-stdout_bck = None
-csvfieldnames = ['Match Start', 'Match Stop', 'Duration', 'Victory', 'Kills', 'Deaths', 'Assists', 'Champion', 'Team 1', 'Team 2']
+stdout_bck=None
+csvfieldnames=['Match Start', 'Match Stop', 'Duration', 'Victory', 'Kills', 'Deaths', 'Assists', 'Champion', 'Team 1', 'Team 2']
 
 status_notification=False
 
@@ -133,8 +133,8 @@ from pulsefire.clients import RiotAPIClient
 # Logger class to output messages to stdout and log file
 class Logger(object):
     def __init__(self, filename):
-        self.terminal = sys.stdout
-        self.logfile = open(filename, "a", buffering=1, encoding="utf-8")
+        self.terminal=sys.stdout
+        self.logfile=open(filename, "a", buffering=1, encoding="utf-8")
 
     def write(self, message):
         self.terminal.write(message)
@@ -147,7 +147,7 @@ class Logger(object):
 
 # Signal handler when user presses Ctrl+C
 def signal_handler(sig, frame):
-    sys.stdout = stdout_bck
+    sys.stdout=stdout_bck
     print('\n* You pressed Ctrl+C, tool is terminated.')
     sys.exit(0)
 
@@ -165,7 +165,7 @@ def check_internet():
 
 # Function to convert absolute value of seconds to human readable format
 def display_time(seconds, granularity=2):
-    intervals = (
+    intervals=(
         ('years', 31556952), # approximation
         ('months', 2629746), # approximation
         ('weeks', 604800),  # 60 * 60 * 24 * 7
@@ -174,15 +174,15 @@ def display_time(seconds, granularity=2):
         ('minutes', 60),
         ('seconds', 1),
     )
-    result = []
+    result=[]
 
     if seconds > 0:
         for name, count in intervals:
-            value = seconds // count
+            value=seconds // count
             if value:
                 seconds -= value * count
                 if value == 1:
-                    name = name.rstrip('s')
+                    name=name.rstrip('s')
                 result.append(f"{value} {name}")
         return ', '.join(result[:granularity])
     else:
@@ -190,7 +190,7 @@ def display_time(seconds, granularity=2):
 
 # Function to calculate time span between two timestamps in seconds
 def calculate_timespan(timestamp1, timestamp2, show_weeks=True, show_hours=True, show_minutes=True, show_seconds=False, granularity=3):
-    result = []
+    result=[]
     intervals=['years', 'months', 'weeks', 'days', 'hours', 'minutes', 'seconds']
     ts1=timestamp1
     ts2=timestamp2
@@ -215,7 +215,7 @@ def calculate_timespan(timestamp1, timestamp2, show_weeks=True, show_hours=True,
         ts_diff=ts1-ts2
     else:
         ts_diff=ts2-ts1
-        dt1, dt2 = dt2, dt1
+        dt1, dt2=dt2, dt1
 
     if ts_diff>0:
         date_diff=relativedelta.relativedelta(dt1, dt2)
@@ -242,7 +242,7 @@ def calculate_timespan(timestamp1, timestamp2, show_weeks=True, show_hours=True,
             if interval>0:
                 name=intervals[index]
                 if interval==1:
-                    name = name.rstrip('s')
+                    name=name.rstrip('s')
                 result.append(f"{interval} {name}")
         return ', '.join(result[:granularity])
     else:
@@ -250,18 +250,18 @@ def calculate_timespan(timestamp1, timestamp2, show_weeks=True, show_hours=True,
 
 # Function to send email notification
 def send_email(subject,body,body_html,use_ssl):
-    fqdn_re = re.compile(r'(?=^.{4,253}$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}\.?$)')
-    email_re = re.compile(r'[^@]+@[^@]+\.[^@]+')
+    fqdn_re=re.compile(r'(?=^.{4,253}$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}\.?$)')
+    email_re=re.compile(r'[^@]+@[^@]+\.[^@]+')
 
     try:
-        is_ip = ipaddress.ip_address(str(SMTP_HOST))
+        is_ip=ipaddress.ip_address(str(SMTP_HOST))
     except ValueError:
         if not fqdn_re.search(str(SMTP_HOST)):
             print("Error sending email - SMTP settings are incorrect (invalid IP address/FQDN in SMTP_HOST)")
             return 1
 
     try:
-        port = int(SMTP_PORT)
+        port=int(SMTP_PORT)
         if not (1 <= port <= 65535):
             raise ValueError
     except ValueError:
@@ -286,25 +286,25 @@ def send_email(subject,body,body_html,use_ssl):
 
     try:     
         if use_ssl:
-            ssl_context = ssl.create_default_context()
-            smtpObj = smtplib.SMTP(SMTP_HOST,SMTP_PORT)
+            ssl_context=ssl.create_default_context()
+            smtpObj=smtplib.SMTP(SMTP_HOST,SMTP_PORT)
             smtpObj.starttls(context=ssl_context)
         else:
-            smtpObj = smtplib.SMTP(SMTP_HOST,SMTP_PORT)
+            smtpObj=smtplib.SMTP(SMTP_HOST,SMTP_PORT)
         smtpObj.login(SMTP_USER,SMTP_PASSWORD)
-        email_msg = MIMEMultipart('alternative')
-        email_msg["From"] = SENDER_EMAIL
-        email_msg["To"] = RECEIVER_EMAIL
-        email_msg["Subject"] =  Header(subject, 'utf-8')
+        email_msg=MIMEMultipart('alternative')
+        email_msg["From"]=SENDER_EMAIL
+        email_msg["To"]=RECEIVER_EMAIL
+        email_msg["Subject"]=Header(subject, 'utf-8')
 
         if body:
-            part1 = MIMEText(body, 'plain')
-            part1 = MIMEText(body.encode('utf-8'), 'plain', _charset='utf-8')
+            part1=MIMEText(body, 'plain')
+            part1=MIMEText(body.encode('utf-8'), 'plain', _charset='utf-8')
             email_msg.attach(part1)
 
         if body_html:       
-            part2 = MIMEText(body_html, 'html')
-            part2 = MIMEText(body_html.encode('utf-8'), 'html', _charset='utf-8')
+            part2=MIMEText(body_html, 'html')
+            part2=MIMEText(body_html.encode('utf-8'), 'html', _charset='utf-8')
             email_msg.attach(part2)
 
         smtpObj.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, email_msg.as_string())
@@ -318,7 +318,7 @@ def send_email(subject,body,body_html,use_ssl):
 def write_csv_entry(csv_file_name, start_date_ts, stop_date_ts, duration_ts, victory, kills, deaths, assists, champion, team1, team2):
     try:
         csv_file=open(csv_file_name, 'a', newline='', buffering=1, encoding="utf-8")
-        csvwriter = csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
+        csvwriter=csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
         csvwriter.writerow({'Match Start': start_date_ts, 'Match Stop': stop_date_ts, 'Duration': duration_ts, 'Victory': victory, 'Kills': kills, 'Deaths': deaths, 'Assists': assists, 'Champion': champion, 'Team 1': team1, 'Team 2': team2 })
         csv_file.close()
     except Exception as e:
@@ -426,7 +426,7 @@ async def get_user_puuid(riotid: str, region: str):
     async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client: 
             
             try:
-                account = await client.get_account_v1_by_riot_id(region=regions_short_to_long[region], game_name=riotid_name, tag_line=riotid_tag)
+                account=await client.get_account_v1_by_riot_id(region=region_to_continent.get(region), game_name=riotid_name, tag_line=riotid_tag)
                 puuid=account["puuid"]
             except Exception as e:
                 print(f"Error while converting Riot ID to PUUID - {e}")
@@ -443,7 +443,7 @@ async def get_summoner_details(puuid: str, region: str):
     async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client: 
             
             try:
-                summoner = await client.get_lol_summoner_v4_by_puuid(region=region, puuid=puuid)
+                summoner=await client.get_lol_summoner_v4_by_puuid(region=region, puuid=puuid)
 
                 summoner_id=str(summoner["id"])
                 summoner_accountid=str(summoner["accountId"])
@@ -457,15 +457,15 @@ async def get_summoner_details(puuid: str, region: str):
 # Functioning returning start & stop timestamps and duration of last played match
 async def get_last_match_start_ts(puuid: str, region: str):
     
-    match_start_ts = 0
+    match_start_ts=0
 
     async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
 
         try:
 
-            matches_history = await client.get_lol_match_v5_match_ids_by_puuid(region=regions_short_to_long[region], puuid=puuid, queries={"start": 0, "count": 1})
+            matches_history=await client.get_lol_match_v5_match_ids_by_puuid(region=region_to_continent.get(region), puuid=puuid, queries={"start": 0, "count": 1})
 
-            match = await client.get_lol_match_v5_match(region=regions_short_to_long[region], id=matches_history[0])
+            match=await client.get_lol_match_v5_match(region=region_to_continent.get(region), id=matches_history[0])
 
             match_start_ts=int((match["info"]["gameStartTimestamp"])/1000)
 
@@ -480,7 +480,7 @@ async def is_user_in_match(puuid: str, region: str):
     async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client: 
 
         try:
-            current_match = await client.get_lol_spectator_v5_active_game_by_summoner(region=region, puuid=puuid)
+            current_match=await client.get_lol_spectator_v5_active_game_by_summoner(region=region, puuid=puuid)
             if current_match:
                 return True
         except Exception as e:
@@ -493,9 +493,9 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
     async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client: 
 
         try:
-            current_match = await client.get_lol_spectator_v5_active_game_by_summoner(region=region, puuid=puuid)
+            current_match=await client.get_lol_spectator_v5_active_game_by_summoner(region=region, puuid=puuid)
         except Exception as e:
-            current_match = False
+            current_match=False
 
         if current_match:
 
@@ -577,19 +577,19 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
 # Functioning printing history of matches with relevant details
 async def print_match_history(puuid: str, riotid_name: str, region: str, matches_min: int, matches_num: int, status_notification_flag, csv_file_name):
     
-    match_start_ts = 0
-    match_stop_ts = 0
-    match_duration = 0
+    match_start_ts=0
+    match_stop_ts=0
+    match_duration=0
 
     async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
 
-        matches_history = await client.get_lol_match_v5_match_ids_by_puuid(region=regions_short_to_long[region], puuid=puuid, queries={"start": 0, "count": matches_num})
+        matches_history=await client.get_lol_match_v5_match_ids_by_puuid(region=region_to_continent.get(region), puuid=puuid, queries={"start": 0, "count": matches_num})
 
         if matches_history:
 
             for i in reversed(range(matches_min-1, matches_num)):
 
-                match = await client.get_lol_match_v5_match(region=regions_short_to_long[region], id=matches_history[i])
+                match=await client.get_lol_match_v5_match(region=region_to_continent.get(region), id=matches_history[i])
 
                 match_id=match["metadata"].get("matchId",0)
                 match_creation_ts=int((match["info"].get("gameCreation",0))/1000)
@@ -703,7 +703,7 @@ async def print_save_recent_matches(riotid: str, region: str, matches_min: int, 
     try:
         if csv_file_name:
             csv_file=open(csv_file_name, 'a', newline='', buffering=1, encoding="utf-8")
-            csvwriter = csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
+            csvwriter=csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
             if not csv_exists:
                 csvwriter.writeheader()
             csv_file.close()
@@ -718,15 +718,15 @@ async def print_save_recent_matches(riotid: str, region: str, matches_min: int, 
 # Main function monitoring gaming activity of the specified LoL user
 async def lol_monitor_user(riotid, region, error_notification, csv_file_name, csv_exists):
 
-    alive_counter = 0
-    last_match_start_ts = 0
-    last_match_stop_ts = 0
-    csvwriter = None   
+    alive_counter=0
+    last_match_start_ts=0
+    last_match_stop_ts=0
+    csvwriter=None   
 
     try:
         if csv_file_name:
             csv_file=open(csv_file_name, 'a', newline='', buffering=1, encoding="utf-8")
-            csvwriter = csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
+            csvwriter=csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
             if not csv_exists:
                 csvwriter.writeheader()
             csv_file.close()
@@ -808,7 +808,7 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name, cs
                 time.sleep(LOL_CHECK_INTERVAL)
 
             if not ingame or (ingame and current_match_start_ts and (int(time.time())-current_match_start_ts)>LOL_HANGED_INGAME_INTERVAL):
-                last_match_start_ts_new = await get_last_match_start_ts(puuid, region)
+                last_match_start_ts_new=await get_last_match_start_ts(puuid, region)
 
                 if last_match_start_ts_new and last_match_start_ts_new != last_match_start_ts_old:
 
@@ -829,7 +829,7 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name, cs
 
             if alive_counter >= TOOL_ALIVE_COUNTER:
                 print_cur_ts("Alive check, timestamp: ")
-                alive_counter = 0
+                alive_counter=0
         except Exception as e:
             print(f"Retrying in {display_time(LOL_CHECK_INTERVAL)}, error - {e}")
             if 'Forbidden' in str(e) or 'Unknown patch name' in str(e):
@@ -846,7 +846,7 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name, cs
 
 if __name__ == "__main__":
 
-    stdout_bck = sys.stdout
+    stdout_bck=sys.stdout
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -861,20 +861,20 @@ if __name__ == "__main__":
 
     print(f"League of Legends Monitoring Tool v{VERSION}\n")
 
-    parser = argparse.ArgumentParser("lol_monitor")
+    parser=argparse.ArgumentParser("lol_monitor")
     parser.add_argument("RIOT_ID", nargs="?", help="User's LoL Riot ID", type=str)
     parser.add_argument("REGION", nargs="?", help="User's LoL region (e.g. eun1, na1, br1 etc.)", type=str)
     parser.add_argument("-r", "--riot_api_key", help="RIOT API key to override the value defined within the script (RIOT_API_KEY)", type=str)
     parser.add_argument("-s","--status_notification", help="Send email notification once user changes game playing status", action='store_true')
     parser.add_argument("-e","--error_notification", help="Disable sending email notifications in case of errors like invalid API key", action='store_false')
-    parser.add_argument("-c", "--check_interval", help="Time between monitoring checks if user is not in game, in seconds", type=int)
+    parser.add_argument("-c", "--check_interval", help="Time between monitoring checks if user is NOT in game, in seconds", type=int)
     parser.add_argument("-k", "--active_check_interval", help="Time between monitoring checks if user is in game, in seconds", type=int)
     parser.add_argument("-b", "--csv_file", help="Write all game playing status changes to CSV file", type=str, metavar="CSV_FILENAME")    
     parser.add_argument("-l","--list_recent_matches", help="List recent matches for the user", action='store_true')
     parser.add_argument("-n", "--number_of_recent_matches", help="Number of recent matches to display/save if used with -l and/or -b", type=int)
     parser.add_argument("-m", "--min_of_recent_matches", help="Minimal match to display/save if used with -l and -n, it will limit range of matches from min_of_recent_matches (e.g. 300) to number_of_recent_matches (e.g. 500)", type=int)    
     parser.add_argument("-d", "--disable_logging", help="Disable logging to file 'lol_monitor_user.log' file", action='store_true')
-    args = parser.parse_args()
+    args=parser.parse_args()
 
     if len(sys.argv)==1:
         parser.print_help(sys.stderr)
@@ -884,8 +884,8 @@ if __name__ == "__main__":
         print("* Error: RIOT_ID and REGION arguments are required !")
         sys.exit(1)
 
-    if not regions_short_to_long.get(args.REGION):
-        print("* Error: REGION might be wrong as it is not present in 'regions_short_to_long' dict in .py file")
+    if not region_to_continent.get(args.REGION):
+        print("* Error: REGION might be wrong as it is not present in 'region_to_continent' dict in .py file")
         sys.exit(1)
 
     if args.riot_api_key:
@@ -956,8 +956,8 @@ if __name__ == "__main__":
 
     riotid_name, riotid_tag=get_user_riot_name_tag(args.RIOT_ID)
     if not args.disable_logging:
-        lol_logfile = f"{lol_logfile}_{riotid_name}.log"
-        sys.stdout = Logger(lol_logfile)
+        lol_logfile=f"{lol_logfile}_{riotid_name}.log"
+        sys.stdout=Logger(lol_logfile)
 
     status_notification=args.status_notification
 
@@ -975,11 +975,11 @@ if __name__ == "__main__":
         signal.signal(signal.SIGTRAP, increase_active_check_signal_handler)
         signal.signal(signal.SIGABRT, decrease_active_check_signal_handler)
 
-    out = f"Monitoring user {args.RIOT_ID}"
+    out=f"Monitoring user {args.RIOT_ID}"
     print(out)
     print("-" * len(out))
 
     asyncio.run(lol_monitor_user(args.RIOT_ID,args.REGION,args.error_notification,args.csv_file,csv_exists))
 
-    sys.stdout = stdout_bck
+    sys.stdout=stdout_bck
     sys.exit(0)
