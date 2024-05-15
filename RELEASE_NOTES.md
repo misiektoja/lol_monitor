@@ -2,6 +2,18 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 1.3 (15 May 2024)
+
+**Features and Improvements**:
+
+- Improvements for running the code in Python under Windows
+- Updated mapping of regions & continents (region_to_continent dict)
+- Better checking for wrong command line arguments
+
+**Bugfixes**:
+
+- Exception and error handling for Riot IDs in wrong format
+
 # Changes in 1.2 (07 May 2024)
 
 **Features and Improvements**:
