@@ -4,7 +4,7 @@ lol_monitor is a Python script which allows for real-time monitoring of LoL (Lea
 
 ## Features
 
-- Real-time monitoring of LoL users gaming activity (including detection when user starts/finishes the match)
+- Real-time tracking of LoL users gaming activity (including detection when user starts/finishes the match)
 - Most important statistics for finished matches:
    - game mode
    - victory/defeat 
@@ -32,13 +32,16 @@ I'm not a dev, project done as a hobby. Code is ugly and as-is, but it works (at
 
 ## Requirements
 
-The script requires Python 3.x.
+The script requires Python 3.12 or higher.
 
 It uses [pulsefire](https://github.com/iann838/pulsefire) library, also requests and python-dateutil.
 
-It has been tested succesfully on Linux (Raspberry Pi Bullseye & Bookworm based on Debian) and Mac OS (Ventura & Sonoma). 
+It has been tested succesfully on:
+- macOS (Ventura & Sonoma)
+- Linux (Raspberry Pi Bullseye & Bookworm based on Debian, Ubuntu 24)
+- Windows (10 & 11)
 
-Should work on any other Linux OS and Windows with Python.
+It should work on other versions of macOS, Linux, Unix and Windows as well.
 
 ## Installation
 
@@ -56,7 +59,7 @@ pip3 install -r requirements.txt
 
 Copy the *[lol_monitor.py](lol_monitor.py)* file to the desired location. 
 
-You might want to add executable rights if on Linux or MacOS:
+You might want to add executable rights if on Linux/Unix/macOS:
 
 ```sh
 chmod a+x lol_monitor.py
@@ -66,15 +69,15 @@ chmod a+x lol_monitor.py
 
 Edit the *[lol_monitor.py](lol_monitor.py)* file and change any desired configuration variables in the marked **CONFIGURATION SECTION** (all parameters have detailed description in the comments).
 
-### RIOT API key
+### Riot API key
 
-You can get the development RIOT API key valid for 24 hours here: [https://developer.riotgames.com](https://developer.riotgames.com)
+You can get the development Riot API key valid for 24 hours here: [https://developer.riotgames.com](https://developer.riotgames.com)
 
-However in order to make full use of the tool you need to apply for persistent personal or production RIOT API key here: [https://developer.riotgames.com/app-type](https://developer.riotgames.com/app-type)
+However it is recommended to apply for persistent personal or production Riot API key here: [https://developer.riotgames.com/app-type](https://developer.riotgames.com/app-type)
 
 It takes few days to get the approval.
 
-Change the **RIOT_API_KEY** variable to respective value (or use **-r** parameter).
+Change the **RIOT_API_KEY** variable to the respective value (or use **-r** parameter).
 
 ### SMTP settings
 
@@ -102,7 +105,7 @@ python3 ./lol_monitor.py -h
 
 ### Monitoring mode
 
-To monitor specific user activity, just type player's LoL RIOT ID & region as parameters (**misiektoja#EUNE** and **eun1** in the example below):
+To monitor specific user activity, just type player's LoL Riot ID & region as parameters (**misiektoja#EUNE** and **eun1** in the example below):
 
 ```sh
 ./lol_monitor.py "misiektoja#EUNE" eun1
@@ -111,10 +114,10 @@ To monitor specific user activity, just type player's LoL RIOT ID & region as pa
 If you have not changed **RIOT_API_KEY** variable in the *[lol_monitor.py](lol_monitor.py)* file, you can use **-r** parameter:
 
 ```sh
-./lol_monitor.py "misiektoja#EUNE" eun1 -r "your_RIOT_API_key"
+./lol_monitor.py "misiektoja#EUNE" eun1 -r "your_riot_api_key"
 ```
 
-LoL RIOT ID consists of RIOT ID game name (*misiektoja* in the example above) and tag line (*#EUNE*). 
+LoL Riot ID consists of Riot ID game name (*misiektoja* in the example above) and tag line (*#EUNE*). 
 
 For the region you need to use the short form of it. You can find a list below:
 
@@ -144,7 +147,7 @@ You can monitor multiple LoL players by spawning multiple copies of the script.
 
 It is suggested to use sth like **tmux** or **screen** to have the script running after you log out from the server.
 
-The tool automatically saves its output to *lol_monitor_riotidname.log* file (can be changed in the settings or disabled with **-d** parameter).
+The tool automatically saves its output to *lol_monitor_{riotid_name}.log* file (can be changed in the settings or disabled with **-d** parameter).
 
 ### Listing mode
 
@@ -202,7 +205,7 @@ If you want to change the check interval when the user is in game to 60 seconds 
 ./lol_monitor.py "misiektoja#EUNE" eun1 -k 60 -c 120
 ```
 
-### Controlling the script via signals
+### Controlling the script via signals (only macOS/Linux/Unix)
 
 The tool has several signal handlers implemented which allow to change behaviour of the tool without a need to restart it with new parameters.
 
@@ -221,6 +224,8 @@ I personally use **pkill** tool, so for example to toggle email notifications wh
 ```sh
 pkill -f -USR1 "python3 ./lol_monitor.py misiektoja"
 ```
+
+As Windows supports limited number of signals, this functionality is available only on Linux/Unix/macOS.
 
 ### Other
 
