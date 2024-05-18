@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.3
+v1.4
 
 Script implementing real-time monitoring of LoL (League of Legends) players activity:
 https://github.com/misiektoja/lol_monitor/
@@ -13,7 +13,7 @@ python-dateutil
 requests
 """
 
-VERSION=1.3
+VERSION=1.4
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -59,7 +59,7 @@ CHECK_INTERNET_URL='http://www.google.com/'
 CHECK_INTERNET_TIMEOUT=5
 
 # The name of the .log file; the tool by default will output its messages to lol_monitor_riotidname.log file
-lol_logfile="lol_monitor"
+LOL_LOGFILE="lol_monitor"
 
 # Value used by signal handlers increasing/decreasing the check for player activity when user is in game (LOL_ACTIVE_CHECK_INTERVAL); in seconds
 LOL_ACTIVE_CHECK_SIGNAL_VALUE=30 # 30 seconds
@@ -265,8 +265,8 @@ def send_email(subject,body,body_html,use_ssl):
         if not (1 <= port <= 65535):
             raise ValueError
     except ValueError:
-            print("Error sending email - SMTP settings are incorrect (invalid port number in SMTP_PORT)")
-            return 1
+        print("Error sending email - SMTP settings are incorrect (invalid port number in SMTP_PORT)")
+        return 1
 
     if not email_re.search(str(SENDER_EMAIL)) or not email_re.search(str(RECEIVER_EMAIL)):
         print("Error sending email - SMTP settings are incorrect (invalid email in SENDER_EMAIL or RECEIVER_EMAIL)")
@@ -917,7 +917,7 @@ if __name__ == "__main__":
         try:
             csv_file=open(args.csv_file, 'a', newline='', buffering=1, encoding="utf-8")
         except Exception as e:
-            print(f"\n* Error, CSV file cannot be opened for writing - {e}")
+            print(f"* Error, CSV file cannot be opened for writing - {e}")
             sys.exit(1)
         csv_file.close()
     else:
@@ -964,8 +964,8 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if not args.disable_logging:
-        lol_logfile=f"{lol_logfile}_{riotid_name}.log"
-        sys.stdout=Logger(lol_logfile)
+        LOL_LOGFILE=f"{LOL_LOGFILE}_{riotid_name}.log"
+        sys.stdout=Logger(LOL_LOGFILE)
 
     status_notification=args.status_notification
 
