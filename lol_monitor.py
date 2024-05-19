@@ -498,6 +498,7 @@ async def get_last_match_start_ts(puuid: str, region: str):
 
         except Exception as e:
             print(f"Error while getting last match details - {e}")
+            print_cur_ts("Timestamp:\t\t")
 
     return match_start_ts
 
