@@ -597,10 +597,10 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
                 print(f"Sending email notification to {RECEIVER_EMAIL}")
                 send_email(m_subject, m_body, "", SMTP_SSL)
 
-            return match_start_ts, match_duration
+            return match_start_ts
         else:
             print("User is not in game currently")
-            return 0, 0
+            return 0
 
 
 # Functioning printing history of matches with relevant details
@@ -724,7 +724,7 @@ async def print_match_history(puuid: str, riotid_name: str, region: str, matches
                 if matches_num > 1:
                     print("-----------------------------------------------------------------------------------")
 
-    return match_start_ts, match_stop_ts, match_duration
+    return match_start_ts, match_stop_ts
 
 
 # Function printing last n matches for the user
@@ -783,7 +783,7 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name, cs
 
     print("User last played match:\n")
     try:
-        last_match_start_ts, last_match_stop_ts, last_match_duration = await print_match_history(puuid, riotid_name, region, 1, 1, False, None)
+        last_match_start_ts, last_match_stop_ts = await print_match_history(puuid, riotid_name, region, 1, 1, False, None)
     except Exception as e:
         if 'Forbidden' in str(e) or 'Unknown patch name' in str(e):
             print("* API key might not be valid anymore or new patch deployed!")
@@ -814,7 +814,7 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name, cs
             if ingame != ingameold:
                 if ingame:
 
-                    current_match_start_ts, current_match_duration_ts = await print_current_match(puuid, riotid_name, region, last_match_start_ts, last_match_stop_ts, status_notification)
+                    current_match_start_ts = await print_current_match(puuid, riotid_name, region, last_match_start_ts, last_match_stop_ts, status_notification)
 
                 else:
 
@@ -844,12 +844,11 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name, cs
                 if last_match_start_ts_new and last_match_start_ts_new != last_match_start_ts_old:
 
                     print("User last played match:\n")
-                    last_match_start_ts_new, last_match_stop_ts_new, last_match_duration_new = await print_match_history(puuid, riotid_name, region, 1, 1, status_notification, csv_file_name)
+                    last_match_start_ts_new, last_match_stop_ts_new = await print_match_history(puuid, riotid_name, region, 1, 1, status_notification, csv_file_name)
 
                     if last_match_start_ts_new and last_match_stop_ts_new:
                         last_match_start_ts = last_match_start_ts_new
                         last_match_stop_ts = last_match_stop_ts_new
-                        last_match_duration = last_match_duration_new
                         last_match_start_ts_old = last_match_start_ts
                     else:
                         print("Error while getting last match details!")
