@@ -47,7 +47,7 @@ LOL_ACTIVE_CHECK_INTERVAL = 45  # 45 seconds
 
 # If user is in game for longer than time defined below, we start checking for new historical matches
 # It is to address sporadic issues with hanging in-game status reported by Riot API
-LOL_HANGED_INGAME_INTERVAL = 3600  # 1 hour
+LOL_HANGED_INGAME_INTERVAL = 1800  # 30 mins
 
 # How often do we perform alive check by printing "alive check" message in the output; in seconds
 TOOL_ALIVE_INTERVAL = 21600  # 6 hours
@@ -810,14 +810,15 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name, cs
             print_cur_ts("Timestamp:\t\t")
 
         try:
-            # User is playing new match
-            if ingame != ingameold:
-                if ingame:
 
+            if ingame != ingameold:
+
+                # User is playing new match
+                if ingame:
                     current_match_start_ts = await print_current_match(puuid, riotid_name, region, last_match_start_ts, last_match_stop_ts, status_notification)
 
+                # User stopped playing the match
                 else:
-
                     print(f"*** LoL user {riotid_name} stopped playing !")
                     m_subject = f"LoL user {riotid_name} stopped playing"
                     m_body = f"LoL user {riotid_name} stopped playing{get_cur_ts("\n\nTimestamp: ")}"
