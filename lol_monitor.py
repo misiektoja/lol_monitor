@@ -532,7 +532,7 @@ async def get_last_match_start_ts(puuid: str, region: str):
             match_start_ts = int((match["info"]["gameStartTimestamp"]) / 1000)
 
         except Exception as e:
-            print(f"Error while getting last match details - {e}")
+            print(f"Error while getting last match start timestamp - {e}")
             print_cur_ts("Timestamp:\t\t")
 
     return match_start_ts
@@ -839,11 +839,7 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name, cs
 
     while True:
 
-        try:
-            ingame = await is_user_in_match(puuid, region)
-        except Exception as e:
-            print(f"Error while checking if user is in match - {e}")
-            print_cur_ts("Timestamp:\t\t")
+        ingame = await is_user_in_match(puuid, region)
 
         try:
 
@@ -898,7 +894,7 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name, cs
                 print_cur_ts("Alive check, timestamp: ")
                 alive_counter = 0
         except Exception as e:
-            print(f"Retrying in {display_time(LOL_CHECK_INTERVAL)}, error - {e}")
+            print(f"Error, retrying in {display_time(LOL_CHECK_INTERVAL)} - {e}")
             if 'Forbidden' in str(e) or 'Unknown patch name' in str(e):
                 print("* API key might not be valid anymore or new patch deployed!")
                 if error_notification and not email_sent:
@@ -980,7 +976,7 @@ if __name__ == "__main__":
         try:
             csv_file = open(args.csv_file, 'a', newline='', buffering=1, encoding="utf-8")
         except Exception as e:
-            print(f"* Error, CSV file cannot be opened for writing - {e}")
+            print(f"* Error: CSV file cannot be opened for writing - {e}")
             sys.exit(1)
         csv_file.close()
     else:
@@ -1034,7 +1030,10 @@ if __name__ == "__main__":
 
     print(f"* LoL timers:\t\t\t[check interval: {display_time(LOL_CHECK_INTERVAL)}] [active check interval: {display_time(LOL_ACTIVE_CHECK_INTERVAL)}]")
     print(f"* Email notifications:\t\t[status changes = {status_notification}] [errors = {args.error_notification}]")
-    print(f"* Output logging disabled:\t{args.disable_logging}")
+    if not args.disable_logging:
+        print(f"* Output logging enabled:\t{not args.disable_logging} ({LOL_LOGFILE})")
+    else:
+        print(f"* Output logging enabled:\t{not args.disable_logging}")
     if csv_enabled:
         print(f"* CSV logging enabled:\t\t{csv_enabled} ({args.csv_file})\n")
     else:
