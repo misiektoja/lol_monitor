@@ -145,9 +145,9 @@ The tool will run infinitely and monitor the player until the script is interrup
 
 You can monitor multiple LoL players by spawning multiple copies of the script. 
 
-It is suggested to use sth like **tmux** or **screen** to have the script running after you log out from the server.
+It is suggested to use sth like **tmux** or **screen** to have the script running after you log out from the server (unless you are running it on your desktop).
 
-The tool automatically saves its output to *lol_monitor_{riotid_name}.log* file (can be changed in the settings or disabled with **-d** parameter).
+The tool automatically saves its output to *lol_monitor_{riotid_name}.log* file (can be changed in the settings via **LOL_LOGFILE** variable or disabled completely with **-d** parameter).
 
 ### Listing mode
 

@@ -2,6 +2,16 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 1.4 (24 May 2024)
+
+**Features and Improvements**:
+
+- Information about log file name visible in the start screen
+- Rewritten get_date_from_ts(), get_short_date_from_ts(), get_hour_min_from_ts() and get_range_of_dates_from_tss() functions to automatically detect if time object is timestamp or datetime
+- Code cleanup - duration returned by print_match_history() and print_current_match() was never used in the code, so it has been removed (left-over from the Cassiopeia based code)
+- Due to recent erratic behaviour of Spectator-V5 API, LOL_HANGED_INGAME_INTERVAL value has been decreased to 30 mins
+- pep8 style convention corrections
+
 # Changes in 1.3 (15 May 2024)
 
 **Features and Improvements**:
