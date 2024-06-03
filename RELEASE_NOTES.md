@@ -9,7 +9,7 @@ This is a high-level summary of the most important changes.
 - Information about log file name visible in the start screen
 - Rewritten get_date_from_ts(), get_short_date_from_ts(), get_hour_min_from_ts() and get_range_of_dates_from_tss() functions to automatically detect if time object is timestamp or datetime
 - Code cleanup - duration returned by print_match_history() and print_current_match() was never used in the code, so it has been removed (left-over from the Cassiopeia based code)
-- Due to recent erratic behaviour of Spectator-V5 API, LOL_HANGED_INGAME_INTERVAL value has been decreased to 30 mins
+- Due to recent erratic behavior of Spectator-V5 API, LOL_HANGED_INGAME_INTERVAL value has been decreased to 30 mins
 - pep8 style convention corrections
 
 # Changes in 1.3 (15 May 2024)
@@ -20,7 +20,7 @@ This is a high-level summary of the most important changes.
 - Updated mapping of regions & continents (region_to_continent dict)
 - Better checking for wrong command line arguments
 
-**Bugfixes**:
+**Bug fixes**:
 
 - Exception and error handling for Riot IDs in wrong format
 
@@ -42,10 +42,10 @@ This is a high-level summary of the most important changes.
 - Accessing dict items via .get() to avoid errors when key is not available
 - In case of getting an exception in main loop we will send the error email notification only once (until the issue is resolved)
 
-**Bugfixes**:
+**Bug fixes**:
 
 - Match teams structure does not always contain correct team ids (for example for Arena game types), so we switched the method in print_match_history() function to get it from match participants structure instead (the same way as in print_current_match())
-- Fix for refetching the last match in case there was an error reported by RIOT API (in such case timestamps are assigned with value of 0 and it triggered the new duplicated historical match event)
+- Fix for re-fetching the last match in case there was an error reported by RIOT API (in such case timestamps are assigned with value of 0 and it triggered the new duplicated historical match event)
 
 # Changes in 1.1 (29 Apr 2024)
 
@@ -54,7 +54,7 @@ This is a high-level summary of the most important changes.
 - Tool has been rewritten to switch to pulsefire library as Cassiopeia still does not support recent RIOT API changes (lack for Spectator-V5 & RIOT IDs support -> calls are still based on Summoner names)
 - New feature to handle situations when Spectator API is not available (outage); the tool will now notice it and report when new matches show up
 - If listing mode is used (-l) together with saving to CSV file (-b), the tool will not only list recent matches, but also save it to the CSV file
-- New parametr (--min_of_recent_matches / -m) which can be used in listing mode (-l) together with --number_of_recent_matches / -n to narrow down the range of matches to print / save
+- New parameter (--min_of_recent_matches / -m) which can be used in listing mode (-l) together with --number_of_recent_matches / -n to narrow down the range of matches to print / save
 
 # Changes in 1.0 (23 Apr 2024)
 
@@ -62,6 +62,6 @@ This is a high-level summary of the most important changes.
 
 - Support for showing the time passed from the last match (when the new one starts)
 
-**Bugfixes**:
+**Bug fixes**:
 
 - Fix for "object has already been loaded" issue after recent RIOT API updates
