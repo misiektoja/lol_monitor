@@ -1,6 +1,6 @@
 # lol_monitor
 
-lol_monitor is a Python script which allows for real-time monitoring of LoL (League of Legends) players activity. 
+lol_monitor is a Python tool which allows for real-time monitoring of LoL (League of Legends) players activities. 
 
 ## Features
 
@@ -15,7 +15,7 @@ lol_monitor is a Python script which allows for real-time monitoring of LoL (Lea
    - lane
    - team members
 - Email notifications for different events (player starts/finishes the match, match summary, errors)
-- Saving all gaming activity with timestamps to the CSV file
+- Saving all gaming activities with timestamps to the CSV file
 - Possibility to control the running copy of the script via signals
 
 <p align="center">
@@ -32,13 +32,16 @@ I'm not a dev, project done as a hobby. Code is ugly and as-is, but it works (at
 
 ## Requirements
 
-The script requires Python 3.12 or higher.
+The tool requires Python 3.12 or higher.
 
 It uses [pulsefire](https://github.com/iann838/pulsefire) library, also requests and python-dateutil.
 
 It has been tested successfully on:
 - macOS (Ventura & Sonoma)
-- Linux (Raspberry Pi Bullseye & Bookworm based on Debian, Ubuntu 24)
+- Linux:
+   - Raspberry Pi Bullseye & Bookworm
+   - Ubuntu 24
+   - Kali Linux 2024
 - Windows (10 & 11)
 
 It should work on other versions of macOS, Linux, Unix and Windows as well.
@@ -81,7 +84,13 @@ Change the **RIOT_API_KEY** variable to the respective value (or use **-r** para
 
 ### SMTP settings
 
-If you want to use email notifications functionality you need to change the SMTP settings (host, port, user, password, sender, recipient). If you leave the default settings then no notifications will be sent.
+If you want to use email notifications functionality you need to change the SMTP settings (host, port, user, password, sender, recipient) in the *[lol_monitor.py](lol_monitor.py)* file. If you leave the default settings then no notifications will be sent.
+
+You can verify if your SMTP settings are correct by using **-z** parameter (the tool will try to send a test email notification):
+
+```sh
+./lol_monitor.py -z
+```
 
 ### Other settings
 
