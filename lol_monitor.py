@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.4
+v1.5
 
-Script implementing real-time monitoring of LoL (League of Legends) players activity:
+Tool implementing real-time tracking of LoL (League of Legends) players activity:
 https://github.com/misiektoja/lol_monitor/
 
 Python pip3 requirements:
@@ -13,7 +13,7 @@ python-dateutil
 requests
 """
 
-VERSION = 1.4
+VERSION = 1.5
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -108,6 +108,9 @@ stdout_bck = None
 csvfieldnames = ['Match Start', 'Match Stop', 'Duration', 'Victory', 'Kills', 'Deaths', 'Assists', 'Champion', 'Team 1', 'Team 2']
 
 status_notification = False
+
+# to solve the issue: 'SyntaxError: f-string expression part cannot include a backslash'
+nl_ch = "\n"
 
 
 import sys
@@ -336,7 +339,7 @@ def write_csv_entry(csv_file_name, start_date_ts, stop_date_ts, duration_ts, vic
 
 # Function to return the timestamp in human readable format; eg. Sun, 21 Apr 2024, 15:08:45
 def get_cur_ts(ts_str=""):
-    return (f"{ts_str}{calendar.day_abbr[(datetime.fromtimestamp(int(time.time()))).weekday()]}, {datetime.fromtimestamp(int(time.time())).strftime("%d %b %Y, %H:%M:%S")}")
+    return (f'{ts_str}{calendar.day_abbr[(datetime.fromtimestamp(int(time.time()))).weekday()]}, {datetime.fromtimestamp(int(time.time())).strftime("%d %b %Y, %H:%M:%S")}')
 
 
 # Function to print the current timestamp in human readable format; eg. Sun, 21 Apr 2024, 15:08:45
@@ -354,7 +357,7 @@ def get_date_from_ts(ts):
     else:
         return ""
 
-    return (f"{calendar.day_abbr[(datetime.fromtimestamp(ts_new)).weekday()]} {datetime.fromtimestamp(ts_new).strftime("%d %b %Y, %H:%M:%S")}")
+    return (f'{calendar.day_abbr[(datetime.fromtimestamp(ts_new)).weekday()]} {datetime.fromtimestamp(ts_new).strftime("%d %b %Y, %H:%M:%S")}')
 
 
 # Function to return the timestamp/datetime object in human readable format (short version); eg. Sun 21 Apr 15:08
@@ -366,7 +369,7 @@ def get_short_date_from_ts(ts):
     else:
         return ""
 
-    return (f"{calendar.day_abbr[(datetime.fromtimestamp(ts_new)).weekday()]} {datetime.fromtimestamp(ts_new).strftime("%d %b %H:%M")}")
+    return (f'{calendar.day_abbr[(datetime.fromtimestamp(ts_new)).weekday()]} {datetime.fromtimestamp(ts_new).strftime("%d %b %H:%M")}')
 
 
 # Function to return the timestamp/datetime object in human readable format (only hour, minutes and optionally seconds): eg. 15:08:12
@@ -627,7 +630,7 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
                     print(member_str)
 
             m_subject = f"LoL user {riotid_name} is in game now (after {calculate_timespan(match_start_ts, int(last_match_stop_ts), show_seconds=False)} - {get_short_date_from_ts(last_match_stop_ts)})"
-            m_body = f"LoL user {riotid_name} is in game now (after {calculate_timespan(match_start_ts, int(last_match_stop_ts))})\n\nUser played last time: {get_range_of_dates_from_tss(last_match_start_ts, last_match_stop_ts)}\n\nMatch ID: {match_id}\nGame mode: {gamemode}\n\nMatch start date: {get_date_from_ts(match_start_ts)}\nMatch duration: {current_match_duration}\n\nChampion ID: {u_champion_id}\nTeams: {current_teams_number}\n{current_teams_str}{get_cur_ts("\nTimestamp: ")}"
+            m_body = f"LoL user {riotid_name} is in game now (after {calculate_timespan(match_start_ts, int(last_match_stop_ts))})\n\nUser played last time: {get_range_of_dates_from_tss(last_match_start_ts, last_match_stop_ts)}\n\nMatch ID: {match_id}\nGame mode: {gamemode}\n\nMatch start date: {get_date_from_ts(match_start_ts)}\nMatch duration: {current_match_duration}\n\nChampion ID: {u_champion_id}\nTeams: {current_teams_number}\n{current_teams_str}{get_cur_ts(nl_ch + 'Timestamp: ')}"
 
             if status_notification_flag:
                 print(f"Sending email notification to {RECEIVER_EMAIL}")
@@ -753,7 +756,7 @@ async def print_match_history(puuid: str, riotid_name: str, region: str, matches
 
                 if status_notification_flag and i == 0:
                     m_subject = f"LoL user {riotid_name} match summary ({get_range_of_dates_from_tss(match_start_ts, match_stop_ts, short=True)}, {display_time(int(match_duration), granularity=1)}, {u_victory})"
-                    m_body = f"LoL user {riotid_name} last match summary\n\nMatch ID: {match_id}\nGame mode: {gamemode}\n\nMatch start-end date: {get_range_of_dates_from_tss(match_start_ts, match_stop_ts)}\nMatch creation: {get_date_from_ts(match_creation_ts)}\nMatch duration: {display_time(int(match_duration))}\n\nVictory: {u_victory}\nKills/deaths/assists: {u_kills}/{u_deaths}/{u_assists}\n\nChampion: {u_champion}\nLevel: {u_level}{u_role_str}{u_lane_str}\nTeams: {u_teams_number}\n{teams_str}{get_cur_ts("\nTimestamp: ")}"
+                    m_body = f"LoL user {riotid_name} last match summary\n\nMatch ID: {match_id}\nGame mode: {gamemode}\n\nMatch start-end date: {get_range_of_dates_from_tss(match_start_ts, match_stop_ts)}\nMatch creation: {get_date_from_ts(match_creation_ts)}\nMatch duration: {display_time(int(match_duration))}\n\nVictory: {u_victory}\nKills/deaths/assists: {u_kills}/{u_deaths}/{u_assists}\n\nChampion: {u_champion}\nLevel: {u_level}{u_role_str}{u_lane_str}\nTeams: {u_teams_number}\n{teams_str}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                     print(f"Sending email notification to {RECEIVER_EMAIL}")
                     send_email(m_subject, m_body, "", SMTP_SSL)
 
@@ -853,7 +856,7 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name, cs
                 else:
                     print(f"*** LoL user {riotid_name} stopped playing !")
                     m_subject = f"LoL user {riotid_name} stopped playing"
-                    m_body = f"LoL user {riotid_name} stopped playing{get_cur_ts("\n\nTimestamp: ")}"
+                    m_body = f"LoL user {riotid_name} stopped playing{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
 
                     game_finished_ts = int(time.time())
 
@@ -899,7 +902,7 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name, cs
                 print("* API key might not be valid anymore or new patch deployed!")
                 if error_notification and not email_sent:
                     m_subject = f"lol_monitor: API key error! (user: {username})"
-                    m_body = f"API key might not be valid anymore or new patch deployed: {e}{get_cur_ts("\n\nTimestamp: ")}"
+                    m_body = f"API key might not be valid anymore or new patch deployed: {e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                     print(f"Sending email notification to {RECEIVER_EMAIL}")
                     send_email(m_subject, m_body, "", SMTP_SSL)
                     email_sent = True
