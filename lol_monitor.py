@@ -114,6 +114,11 @@ nl_ch = "\n"
 
 
 import sys
+
+if sys.version_info < (3, 12):
+    print("* Error: Python version 3.12 or higher required !")
+    sys.exit(1)
+
 import time
 import string
 import os
