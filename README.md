@@ -1,21 +1,21 @@
 # lol_monitor
 
-lol_monitor is a Python tool which allows for real-time monitoring of LoL (League of Legends) players activities. 
+lol_monitor is a tool that allows for real-time monitoring of LoL (League of Legends) players' activities. 
 
 ## Features
 
-- Real-time tracking of LoL users gaming activity (including detection when user starts/finishes the match)
+- Real-time tracking of LoL users' gaming activity (including detection when a user starts or finishes a match)
 - Most important statistics for finished matches:
-   - game mode
-   - victory/defeat 
-   - kills/deaths/assists
-   - champion name
-   - achieved level
-   - role
-   - lane
-   - team members
-- Email notifications for different events (player starts/finishes the match, match summary, errors)
-- Saving all gaming activities with timestamps to the CSV file
+  - game mode
+  - victory or defeat
+  - kills, deaths, assists
+  - champion name
+  - achieved level
+  - role
+  - lane
+  - team members
+- Email notifications for different events (player starts or finishes a match, match summary, errors)
+- Saving all gaming activities with timestamps to a CSV file
 - Possibility to control the running copy of the script via signals
 
 <p align="center">
@@ -26,10 +26,6 @@ lol_monitor is a Python tool which allows for real-time monitoring of LoL (Leagu
 
 Release notes can be found [here](RELEASE_NOTES.md)
 
-## Disclaimer
-
-I'm not a dev, project done as a hobby. Code is ugly and as-is, but it works (at least for me) ;-)
-
 ## Requirements
 
 The tool requires Python 3.12 or higher.
@@ -37,11 +33,12 @@ The tool requires Python 3.12 or higher.
 It uses [pulsefire](https://github.com/iann838/pulsefire) library, also requests and python-dateutil.
 
 It has been tested successfully on:
-- macOS (Ventura & Sonoma)
+- macOS (Ventura, Sonoma & Sequoia)
 - Linux:
-   - Raspberry Pi Bullseye & Bookworm
+   - Raspberry Pi OS (Bullseye & Bookworm)
    - Ubuntu 24
-   - Kali Linux 2024
+   - Rocky Linux (8.x, 9.x)
+   - Kali Linux (2024, 2025)
 - Windows (10 & 11)
 
 It should work on other versions of macOS, Linux, Unix and Windows as well.
@@ -80,7 +77,7 @@ However it is recommended to apply for persistent personal or production Riot AP
 
 It takes few days to get the approval.
 
-Change the **RIOT_API_KEY** variable to the respective value (or use **-r** parameter).
+Change the `RIOT_API_KEY` variable to the respective value (or use **-r** parameter).
 
 ### SMTP settings
 
@@ -114,19 +111,19 @@ python3 ./lol_monitor.py -h
 
 ### Monitoring mode
 
-To monitor specific user activity, just type player's LoL Riot ID & region as parameters (**misiektoja#EUNE** and **eun1** in the example below):
+To monitor specific user activity, just type player's LoL Riot ID & region as parameters (**lol_user_id#EUNE** and **eun1** in the example below):
 
 ```sh
-./lol_monitor.py "misiektoja#EUNE" eun1
+./lol_monitor.py "lol_user_id#EUNE" eun1
 ```
 
-If you have not changed **RIOT_API_KEY** variable in the *[lol_monitor.py](lol_monitor.py)* file, you can use **-r** parameter:
+If you have not changed`RIOT_API_KEY` variable in the *[lol_monitor.py](lol_monitor.py)* file, you can use **-r** parameter:
 
 ```sh
-./lol_monitor.py "misiektoja#EUNE" eun1 -r "your_riot_api_key"
+./lol_monitor.py "lol_user_id#EUNE" eun1 -r "your_riot_api_key"
 ```
 
-LoL Riot ID consists of Riot ID game name (*misiektoja* in the example above) and tag line (*#EUNE*). 
+LoL Riot ID consists of Riot ID game name (*lol_user_id* in the example above) and tag line (*#EUNE*). 
 
 For the region you need to use the short form of it. You can find a list below:
 
@@ -150,32 +147,32 @@ For the region you need to use the short form of it. You can find a list below:
 | vn2 | Vietnam |
 | oc1 | Oceania |
 
-The tool will run infinitely and monitor the player until the script is interrupted (Ctrl+C) or killed the other way.
+The tool will run indefinitely and monitor the player until the script is interrupted (Ctrl+C) or terminated in another way.
 
-You can monitor multiple LoL players by spawning multiple copies of the script. 
+You can monitor multiple LoL players by running multiple instances of the script.
 
-It is suggested to use sth like **tmux** or **screen** to have the script running after you log out from the server (unless you are running it on your desktop).
+It is recommended to use something like **tmux** or **screen** to keep the script running after you log out from the server (unless you are running it on your desktop).
 
-The tool automatically saves its output to *lol_monitor_{riotid_name}.log* file (can be changed in the settings via **LOL_LOGFILE** variable or disabled completely with **-d** parameter).
+The tool automatically saves its output to *lol_monitor_{riotid_name}.log* file (can be changed in the settings via `LOL_LOGFILE` variable or disabled completely with **-d** parameter).
 
 ### Listing mode
 
-There is also other mode of the tool which prints and/or saves the recent matches for the user (**-l** parameter). You can also add **-n** to define how many recent matches you want to display/save, by default it shows 2 last matches:
+There is also another mode of the tool which prints and/or saves the recent matches for the user (**-l** parameter). You can also add **-n** to define how many recent matches you want to display/save; by default, it shows the last 2 matches:
 
 ```sh
-./lol_monitor.py "misiektoja#EUNE" eun1 -l -n 25
+./lol_monitor.py "lol_user_id#EUNE" eun1 -l -n 25
 ```
 
-You can also define the range of matches to display/save by specifying the minimal match to display (**-m** parameter). So for example to display recent matches in the range of 20-50:
+You can also define the range of matches to display/save by specifying the minimal match to display (**-m** parameter). So for example, to display recent matches in the range of 20-50:
 
 ```sh
-./lol_monitor.py "misiektoja#EUNE" eun1 -l -m 20 -n 50
+./lol_monitor.py "lol_user_id#EUNE" eun1 -l -m 20 -n 50
 ```
 
-If you specify **-b** parameter (with CSV file name) together with **-l** parameter, it will not only display the recent matches, but also save it to the specified CSV file. For example to display and save recent matches in the range of 5-10 for the user:
+If you specify the **-b** parameter (with a CSV file name) together with the **-l** parameter, it will not only display the recent matches, but also save them to the specified CSV file. For example, to display and save recent matches in the range of 5-10 for the user:
 
 ```sh
-./lol_monitor.py "misiektoja#EUNE" eun1 -l -m 5 -n 10 -b lol_games_misiektoja.csv
+./lol_monitor.py "lol_user_id#EUNE" eun1 -l -m 5 -n 10 -b lol_games_lol_user_id.csv
 ```
 
 You can use the **-l** functionality regardless if the monitoring is used or not (it does not interfere). 
@@ -184,10 +181,10 @@ You can use the **-l** functionality regardless if the monitoring is used or not
 
 ### Email notifications
 
-If you want to get email notifications once the user starts/finishes the match use **-s** parameter:
+If you want to receive email notifications when the user starts or finishes the match, use the **-s** parameter.
 
 ```sh
-./lol_monitor.py "misiektoja#EUNE" eun1 -s
+./lol_monitor.py "lol_user_id#EUNE" eun1 -s
 ```
 
 Make sure you defined your SMTP settings earlier (see [SMTP settings](#smtp-settings)).
@@ -203,15 +200,15 @@ Example email:
 If you want to save the gaming activity of the LoL user, use **-b** parameter with the name of the file (it will be automatically created if it does not exist):
 
 ```sh
-./lol_monitor.py "misiektoja#EUNE" eun1 -b lol_games_misiektoja.csv
+./lol_monitor.py "lol_user_id#EUNE" eun1 -b lol_games_lol_user_id.csv
 ```
 
 ### Check intervals
 
-If you want to change the check interval when the user is in game to 60 seconds use **-k** parameter and when the user is NOT in game to 2 mins (120 seconds) use **-c** parameter:
+If you want to change the check interval when the user is in game to 60 seconds, use **-k** parameter and when the user is NOT in game to 2 mins (120 seconds), use **-c** parameter:
 
 ```sh
-./lol_monitor.py "misiektoja#EUNE" eun1 -k 60 -c 120
+./lol_monitor.py "lol_user_id#EUNE" eun1 -k 60 -c 120
 ```
 
 ### Controlling the script via signals (only macOS/Linux/Unix)
@@ -228,10 +225,10 @@ List of supported signals:
 
 So if you want to change functionality of the running tool, just send the proper signal to the desired copy of the script.
 
-I personally use **pkill** tool, so for example to toggle email notifications when user starts/finishes playing the game, for the tool instance monitoring the *misiektoja* user:
+I personally use **pkill** tool, so for example to toggle email notifications when user starts/finishes playing the game, for the tool instance monitoring the *lol_user_id* user:
 
 ```sh
-pkill -f -USR1 "python3 ./lol_monitor.py misiektoja"
+pkill -f -USR1 "python3 ./lol_monitor.py lol_user_id"
 ```
 
 As Windows supports limited number of signals, this functionality is available only on Linux/Unix/macOS.
