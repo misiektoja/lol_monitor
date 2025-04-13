@@ -1,3 +1,4 @@
 pulsefire
 python_dateutil
 Requests
+python-dotenv
