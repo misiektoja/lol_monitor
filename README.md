@@ -1,6 +1,6 @@
 # lol_monitor
 
-lol_monitor is a tool that allows for real-time monitoring of LoL (League of Legends) players' activities. 
+lol_monitor is a tool for real-time monitoring of LoL (League of Legends) players' activities. 
 
 ## Features
 
@@ -22,169 +22,256 @@ lol_monitor is a tool that allows for real-time monitoring of LoL (League of Leg
    <img src="./assets/lol_monitor.png" alt="lol_monitor_screenshot" width="70%"/>
 </p>
 
-## Change Log
+## Table of Contents
 
-Release notes can be found [here](RELEASE_NOTES.md)
+1. [Requirements](#requirements)
+2. [Installation](#installation)
+   * [Install from PyPI](#install-from-pypi)
+   * [Manual Installation](#manual-installation)
+3. [Quick Start](#quick-start)
+4. [Configuration](#configuration)
+   * [Configuration File](#configuration-file)
+   * [Riot API Key](#riot-api-key)
+   * [SMTP Settings](#smtp-settings)
+   * [Storing Secrets](#storing-secrets)
+5. [Usage](#usage)
+   * [Monitoring Mode](#monitoring-mode)
+   * [Listing Mode](#listing-mode)
+   * [Email Notifications](#email-notifications)
+   * [CSV Export](#csv-export)
+   * [Check Intervals](#check-intervals)
+   * [Signal Controls (macOS/Linux/Unix)](#signal-controls-macoslinuxunix)
+   * [Coloring Log Output with GRC](#coloring-log-output-with-grc)
+6. [Change Log](#change-log)
+7. [License](#license)
 
 ## Requirements
 
-The tool requires Python 3.12 or higher.
+* Python 3.12 or higher
+* Libraries: [pulsefire](https://github.com/iann838/pulsefire), `requests`, `python-dateutil`, `python-dotenv`
 
-It uses [pulsefire](https://github.com/iann838/pulsefire) library, also requests and python-dateutil.
+Tested on:
 
-It has been tested successfully on:
-- macOS (Ventura, Sonoma & Sequoia)
-- Linux:
-   - Raspberry Pi OS (Bullseye & Bookworm)
-   - Ubuntu 24
-   - Rocky Linux (8.x, 9.x)
-   - Kali Linux (2024, 2025)
-- Windows (10 & 11)
+* **macOS**: Ventura, Sonoma, Sequoia
+* **Linux**: Raspberry Pi OS (Bullseye, Bookworm), Ubuntu 24, Rocky Linux 8.x/9.x, Kali Linux 2024/2025
+* **Windows**: 10, 11
 
 It should work on other versions of macOS, Linux, Unix and Windows as well.
 
 ## Installation
 
-Install the required Python packages:
+### Install from PyPI
 
 ```sh
-python3 -m pip install requests python-dateutil pulsefire
+pip install lol_monitor
 ```
 
-Or from requirements.txt:
+### Manual Installation
+
+Download the *[lol_monitor.py](lol_monitor.py)* file to the desired location.
+
+Install dependencies via pip:
 
 ```sh
-pip3 install -r requirements.txt
+pip install pulsefire requests python-dateutil python-dotenv
 ```
 
-Copy the *[lol_monitor.py](lol_monitor.py)* file to the desired location. 
-
-You might want to add executable rights if on Linux/Unix/macOS:
+Alternatively, from the downloaded *[requirements.txt](requirements.txt)*:
 
 ```sh
-chmod a+x lol_monitor.py
+pip install -r requirements.txt
+```
+
+## Quick Start
+
+- Grab your [Riot API key](#riot-api-key) and track the gaming activities of the `riot_id_name#tag` in selected `region`:
+
+```sh
+lol_monitor <riot_id_name#tag> <region> -r "your_riot_api_key"
+```
+
+Or if you installed [manually](#manual-installation):
+
+```sh
+python3 lol_monitor.py <riot_id_name#tag> <region> -r "your_riot_api_key"
+```
+
+To get the list of all supported command-line arguments / flags:
+
+```sh
+lol_monitor --help
 ```
 
 ## Configuration
 
-Edit the *[lol_monitor.py](lol_monitor.py)* file and change any desired configuration variables in the marked **CONFIGURATION SECTION** (all parameters have detailed description in the comments).
+### Configuration File
 
-### Riot API key
+Most settings can be configured via command-line arguments.
 
-You can get the development Riot API key valid for 24 hours here: [https://developer.riotgames.com](https://developer.riotgames.com)
+If you want to have it stored persistently, generate a default config template and save it to a file named `lol_monitor.conf`:
 
-However it is recommended to apply for persistent personal or production Riot API key here: [https://developer.riotgames.com/app-type](https://developer.riotgames.com/app-type)
+```sh
+lol_monitor --generate-config > lol_monitor.conf
+
+```
+
+Edit the `lol_monitor.conf` file and change any desired configuration options (detailed comments are provided for each).
+
+### Riot API Key
+
+Get the development Riot API key valid for 24 hours here: [https://developer.riotgames.com](https://developer.riotgames.com)
+
+It is recommended to apply for persistent personal or production Riot API key here: [https://developer.riotgames.com/app-type](https://developer.riotgames.com/app-type)
 
 It takes few days to get the approval.
 
-Change the `RIOT_API_KEY` variable to the respective value (or use **-r** parameter).
+Provide the `RIOT_API_KEY` secret using one of the following methods:
+ - Pass it at runtime with `-r` / `--riot-api-key`
+ - Set it as an [environment variable](#storing-secrets) (e.g. `export RIOT_API_KEY=...`)
+ - Add it to [.env file](#storing-secrets) (`RIOT_API_KEY=...`) for persistent use
 
-### SMTP settings
+Fallback:
+ - Hard-code it in the code or config file
 
-If you want to use email notifications functionality you need to change the SMTP settings (host, port, user, password, sender, recipient) in the *[lol_monitor.py](lol_monitor.py)* file. If you leave the default settings then no notifications will be sent.
+If you store the `RIOT_API_KEY` in a dotenv file you can update its value and send a `SIGHUP` signal to the process to reload the file with the new API key without restarting the tool. More info in [Storing Secrets](#storing-secrets) and [Signal Controls (macOS/Linux/Unix)](#signal-controls-macoslinuxunix).
 
-You can verify if your SMTP settings are correct by using **-z** parameter (the tool will try to send a test email notification):
+### SMTP Settings
 
-```sh
-./lol_monitor.py -z
-```
+If you want to use email notifications functionality, configure SMTP settings in the `lol_monitor.conf` file. 
 
-### Other settings
-
-All other variables can be left at their defaults, but feel free to experiment with it.
-
-## Getting started
-
-### List of supported parameters
-
-To get the list of all supported parameters:
+Verify your SMTP settings by using `--send-test-email` flag (the tool will try to send a test email notification):
 
 ```sh
-./lol_monitor.py -h
+lol_monitor --send-test-email
 ```
 
-or 
+### Storing Secrets
+
+It is recommended to store secrets like `RIOT_API_KEY` or `SMTP_PASSWORD` as either an environment variable or in a dotenv file.
+
+Set environment variables using `export` on **Linux/Unix/macOS/WSL** systems:
 
 ```sh
-python3 ./lol_monitor.py -h
+export RIOT_API_KEY="your_riot_api_key"
+export SMTP_PASSWORD="your_smtp_password"
 ```
 
-### Monitoring mode
+On **Windows Command Prompt** use `set` instead of `export` and on **Windows PowerShell** use `$env`.
 
-To monitor specific user activity, just type player's LoL Riot ID & region as parameters (**lol_user_id#EUNE** and **eun1** in the example below):
+Alternatively store them persistently in a dotenv file (recommended):
+
+```ini
+RIOT_API_KEY="your_riot_api_key"
+SMTP_PASSWORD="your_smtp_password"
+```
+
+By default the tool will auto-search for dotenv file named `.env` in current directory and then upward from it. 
+
+You can specify a custom file with `DOTENV_FILE` or `--env-file` flag:
 
 ```sh
-./lol_monitor.py "lol_user_id#EUNE" eun1
+lol_monitor <riot_id_name#tag> <region> --env-file /path/.env-lol_monitor
 ```
 
-If you have not changed`RIOT_API_KEY` variable in the *[lol_monitor.py](lol_monitor.py)* file, you can use **-r** parameter:
+ You can also disable `.env` auto-search with `DOTENV_FILE = "none"` or `--env-file none`:
 
 ```sh
-./lol_monitor.py "lol_user_id#EUNE" eun1 -r "your_riot_api_key"
+lol_monitor <riot_id_name#tag> <region> --env-file none
 ```
 
-LoL Riot ID consists of Riot ID game name (*lol_user_id* in the example above) and tag line (*#EUNE*). 
+As a fallback, you can also store secrets in the configuration file or source code.
 
-For the region you need to use the short form of it. You can find a list below:
+## Usage
+
+### Monitoring Mode
+
+To monitor specific user activity, just type player's LoL Riot ID & region as command-line arguments (`riot_id_name#tag` and `region` in the example below):
+
+```sh
+lol_monitor <riot_id_name#tag> <region>
+```
+
+If you have not set`RIOT_API_KEY` secret, you can use `-r` flag:
+
+```sh
+lol_monitor <riot_id_name#tag> <region> -r "your_riot_api_key"
+```
+
+LoL Riot ID consists of Riot ID game name (`riot_id_name` in the example above) and tag line (`#tag`). 
+
+For the `region` you need to use the short form of it. You can find the list below:
 
 | Region short form | Description |
 | ----------- | ----------- |
 | eun1 | Europe Nordic & East (EUNE) |
 | euw1 | Europe West (EUW) |
-| na1 | North America (NA) |
-| na2 | North America (NA) |
+| tr1 | Turkey (TR1) |
+| ru | Russia |
+| na1 | North America (NA) - now the sole NA endpoint |
 | br1 | Brazil (BR) |
 | la1 | Latin America North (LAN) |
 | la2 | Latin America South (LAS) |
-| jp1 | Japan |
-| kr | Korea |
-| tr1 | Turkey (TR1) |
-| ru | Russia |
-| ph2 | The Philippines |
-| sg2 | Singapore, Malaysia, & Indonesia |
-| tw2 | Taiwan, Hong Kong, and Macao |
-| th2 | Thailand |
-| vn2 | Vietnam |
-| oc1 | Oceania |
+| jp1 | Japan (JP) |
+| kr | Korea (KR) |
+| sg2 | Southeast Asia (SEA) - Singapore, Malaysia, Indonesia (+ Thailand & Philippines since Jan 9, 2025) |
+| tw2 | Taiwan, Hong Kong & Macao (TW/HK/MO) |
+| vn2 | Vietnam (VN) |
+| oc1 | Oceania (OC) |
 
-The tool will run indefinitely and monitor the player until the script is interrupted (Ctrl+C) or terminated in another way.
+By default, the tool looks for a configuration file named `lol_monitor.conf` in:
+ - current directory 
+ - home directory (`~`)
+ - script directory 
+
+ If you generated a configuration file as described in [Configuration](#configuration), but saved it under a different name or in a different directory, you can specify its location using the `--config-file` flag:
+
+
+```sh
+lol_monitor <riot_id_name#tag> <region> --config-file /path/lol_monitor_new.conf
+```
+
+The tool runs until interrupted (`Ctrl+C`). Use `tmux` or `screen` for persistence.
 
 You can monitor multiple LoL players by running multiple instances of the script.
 
-It is recommended to use something like **tmux** or **screen** to keep the script running after you log out from the server (unless you are running it on your desktop).
+The tool automatically saves its output to `lol_monitor_<riot_id_name>.log` file. It can be changed in the settings via `LOL_LOGFILE` configuration option or disabled completely via `DISABLE_LOGGING` / `-d` flag.
 
-The tool automatically saves its output to *lol_monitor_{riotid_name}.log* file (can be changed in the settings via `LOL_LOGFILE` variable or disabled completely with **-d** parameter).
+### Listing Mode
 
-### Listing mode
-
-There is also another mode of the tool which prints and/or saves the recent matches for the user (**-l** parameter). You can also add **-n** to define how many recent matches you want to display/save; by default, it shows the last 2 matches:
+There is also another mode of the tool which prints and/or saves the recent matches for the user (`-l` flag). You can also add `-n` to define how many recent matches you want to display/save; by default, it shows the last 2 matches:
 
 ```sh
-./lol_monitor.py "lol_user_id#EUNE" eun1 -l -n 25
+lol_monitor <riot_id_name#tag> <region> -l -n 25
 ```
 
-You can also define the range of matches to display/save by specifying the minimal match to display (**-m** parameter). So for example, to display recent matches in the range of 20-50:
+You can also define the range of matches to display/save by specifying the minimal match to display (`-m` flag). So for example, to display recent matches in the range of 20-50:
 
 ```sh
-./lol_monitor.py "lol_user_id#EUNE" eun1 -l -m 20 -n 50
+lol_monitor <riot_id_name#tag> <region> -l -m 20 -n 50
 ```
 
-If you specify the **-b** parameter (with a CSV file name) together with the **-l** parameter, it will not only display the recent matches, but also save them to the specified CSV file. For example, to display and save recent matches in the range of 5-10 for the user:
+If you specify the `-b` flag (with a CSV file name) together with the `-l` flag, it will not only display the recent matches, but also save them to the specified CSV file. For example, to display and save recent matches in the range of 5-10 for the user:
 
 ```sh
-./lol_monitor.py "lol_user_id#EUNE" eun1 -l -m 5 -n 10 -b lol_games_lol_user_id.csv
+lol_monitor <riot_id_name#tag> <region> -l -m 5 -n 10 -b lol_games_riot_id_name.csv
 ```
 
-You can use the **-l** functionality regardless if the monitoring is used or not (it does not interfere). 
+### Email Notifications
 
-## How to use other features
-
-### Email notifications
-
-If you want to receive email notifications when the user starts or finishes the match, use the **-s** parameter.
+To enable email notifications when user's playing status changes:
+- set `STATUS_NOTIFICATION` to `True`
+- or use the `-s` flag
 
 ```sh
-./lol_monitor.py "lol_user_id#EUNE" eun1 -s
+lol_monitor <riot_id_name#tag> <region> -s
+```
+
+To disable sending an email on errors (enabled by default):
+- set `ERROR_NOTIFICATION` to `False`
+- or use the `-e` flag
+
+```sh
+lol_monitor <riot_id_name#tag> <region> -e
 ```
 
 Make sure you defined your SMTP settings earlier (see [SMTP settings](#smtp-settings)).
@@ -195,55 +282,53 @@ Example email:
    <img src="./assets/lol_monitor_email_notifications.png" alt="lol_monitor_email_notifications" width="80%"/>
 </p>
 
-### Saving gaming activity to the CSV file
+### CSV Export
 
-If you want to save the gaming activity of the LoL user, use **-b** parameter with the name of the file (it will be automatically created if it does not exist):
-
-```sh
-./lol_monitor.py "lol_user_id#EUNE" eun1 -b lol_games_lol_user_id.csv
-```
-
-### Check intervals
-
-If you want to change the check interval when the user is in game to 60 seconds, use **-k** parameter and when the user is NOT in game to 2 mins (120 seconds), use **-c** parameter:
+If you want to save all reported activities of the LoL user to a CSV file, set `CSV_FILE` or use `-b` flag:
 
 ```sh
-./lol_monitor.py "lol_user_id#EUNE" eun1 -k 60 -c 120
+lol_monitor <riot_id_name#tag> <region> -b lol_games_riot_id_name.csv
 ```
 
-### Controlling the script via signals (only macOS/Linux/Unix)
+The file will be automatically created if it does not exist.
 
-The tool has several signal handlers implemented which allow to change behavior of the tool without a need to restart it with new parameters.
+### Check Intervals
+
+If you want to customize polling intervals, use `-k` and `-c` flags (or corresponding configuration options):
+
+```sh
+lol_monitor <riot_id_name#tag> <region> -k 60 -c 120
+```
+
+* `LOL_ACTIVE_CHECK_INTERVAL`, `-k`: check interval when the user is in a game (seconds)
+* `LOL_CHECK_INTERVAL`, `-c`: check interval when the user is NOT in a game (seconds)
+
+### Signal Controls (macOS/Linux/Unix)
+
+The tool has several signal handlers implemented which allow to change behavior of the tool without a need to restart it with new configuration options / flags.
 
 List of supported signals:
 
 | Signal | Description |
 | ----------- | ----------- |
-| USR1 | Toggle email notifications when user starts/finishes the match (-s) |
+| USR1 | Toggle email notifications when user's playing status changes (-s) |
 | TRAP | Increase the check timer for player activity when user is in game (by 30 seconds) |
 | ABRT | Decrease check timer for player activity when user is in game (by 30 seconds) |
+| HUP | Reload secrets from .env file |
 
-So if you want to change functionality of the running tool, just send the proper signal to the desired copy of the script.
-
-I personally use **pkill** tool, so for example to toggle email notifications when user starts/finishes playing the game, for the tool instance monitoring the *lol_user_id* user:
+Send signals with `kill` or `pkill`, e.g.:
 
 ```sh
-pkill -f -USR1 "python3 ./lol_monitor.py lol_user_id"
+pkill -USR1 -f "lol_monitor <riot_id_name#tag> <region>"
 ```
 
 As Windows supports limited number of signals, this functionality is available only on Linux/Unix/macOS.
 
-### Other
+### Coloring Log Output with GRC
 
-Check other supported parameters using **-h**.
+You can use [GRC](https://github.com/garabik/grc) to color logs.
 
-You can combine all the parameters mentioned earlier in monitoring mode (listing mode only supports **-l**, **-n**, **-m** and **-b**).
-
-## Coloring log output with GRC
-
-If you use [GRC](https://github.com/garabik/grc) and want to have the tool's log output properly colored you can use the configuration file available [here](grc/conf.monitor_logs)
-
-Change your grc configuration (typically *.grc/grc.conf*) and add this part:
+Add to your GRC config (`~/.grc/grc.conf`):
 
 ```
 # monitoring log file
@@ -251,8 +336,18 @@ Change your grc configuration (typically *.grc/grc.conf*) and add this part:
 conf.monitor_logs
 ```
 
-Now copy the *conf.monitor_logs* to your *.grc* directory and lol_monitor log files should be nicely colored when using *grc* tool.
+Now copy the [conf.monitor_logs](grc/conf.monitor_logs) to your `~/.grc/` and log files should be nicely colored when using `grc` tool.
+
+Example:
+
+```sh
+grc tail -F -n 100 lol_monitor_<riot_id_name>.log
+```
+
+## Change Log
+
+See [RELEASE_NOTES.md](RELEASE_NOTES.md) for details.
 
 ## License
 
-This project is licensed under the GPLv3 - see the [LICENSE](LICENSE) file for details
+Licensed under GPLv3. See [LICENSE](LICENSE).
