@@ -115,21 +115,18 @@ LOL_ACTIVE_CHECK_SIGNAL_VALUE = 30  # 30 seconds
 region_to_continent = {
     "eun1": "europe",   # Europe Nordic & East (EUNE)
     "euw1": "europe",   # Europe West (EUW)
-    "na1": "americas",  # North America (NA)
-    "na2": "americas",  # North America (NA)
+    "tr1": "europe",    # Turkey (TR1)
+    "ru": "europe",     # Russia
+    "na1": "americas",  # North America (NA) – now the sole NA endpoint
     "br1": "americas",  # Brazil (BR)
     "la1": "americas",  # Latin America North (LAN)
     "la2": "americas",  # Latin America South (LAS)
-    "jp1": "asia",      # Japan
-    "kr": "asia",       # Korea
-    "tr1": "europe",      # Turkey (TR1)
-    "ru": "europe",       # Russia
-    "ph2": "sea",      # The Philippines
-    "sg2": "sea",      # Singapore, Malaysia, & Indonesia
-    "tw2": "sea",      # Taiwan, Hong Kong, and Macao
-    "th2": "sea",      # Thailand
-    "vn2": "sea",      # Vietnam
-    "oc1": "sea"        # Oceania
+    "jp1": "asia",      # Japan (JP)
+    "kr": "asia",       # Korea (KR)
+    "sg2": "sea",       # Southeast Asia (SEA) – Singapore, Malaysia, Indonesia (+ Thailand & Philippines since Jan 9, 2025)
+    "tw2": "sea",       # Taiwan, Hong Kong & Macao (TW/HK/MO)
+    "vn2": "sea",       # Vietnam (VN)
+    "oc1": "sea"        # Oceania (OC)
 }
 
 game_modes_mapping = {
