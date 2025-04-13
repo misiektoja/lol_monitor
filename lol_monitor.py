@@ -11,6 +11,7 @@ Python pip3 requirements:
 pulsefire
 python-dateutil
 requests
+python-dotenv (optional)
 """
 
 VERSION = 1.6
@@ -19,17 +20,29 @@ VERSION = 1.6
 # CONFIGURATION SECTION START
 # ---------------------------
 
+CONFIG_BLOCK = """
 # Get your development Riot API key (valid for 24 hours) from:
 # https://developer.riotgames.com
 #
 # To request a persistent personal or production key, go to:
 # https://developer.riotgames.com/app-type
 #
-# Paste your Riot API key below or provide it using the -r parameter
+# Provide the RIOT_API_KEY secret using one of the following methods:
+#   - Pass it at runtime with -r / --riot-api-key
+#   - Set it as an environment variable (e.g. export RIOT_API_KEY=...)
+#   - Add it to ".env" file (RIOT_API_KEY=...) for persistent use
+# Fallback:
+#   - Hard-code it in the code or config file
 RIOT_API_KEY = "your_riot_api_key"
 
 # SMTP settings for sending email notifications
 # If left as-is, no notifications will be sent
+#
+# Provide the SMTP_PASSWORD secret using one of the following methods:
+#   - Set it as an environment variable (e.g. export SMTP_PASSWORD=...)
+#   - Add it to ".env" file (SMTP_PASSWORD=...) for persistent use
+# Fallback:
+#   - Hard-code it in the code or config file
 SMTP_HOST = "your_smtp_server_ssl"
 SMTP_PORT = 587
 SMTP_USER = "your_smtp_user"
@@ -37,6 +50,14 @@ SMTP_PASSWORD = "your_smtp_password"
 SMTP_SSL = True
 SENDER_EMAIL = "your_sender_email"
 RECEIVER_EMAIL = "your_receiver_email"
+
+# Whether to send an email when user's playing status changes
+# Can also be enabled via the -s parameter
+STATUS_NOTIFICATION = False
+
+# Whether to send an email on errors
+# Can also be disabled via the -e parameter
+ERROR_NOTIFICATION = True
 
 # How often to check for player activity when the user is NOT in a game; in seconds
 # Can also be set using the -c parameter
@@ -50,8 +71,9 @@ LOL_ACTIVE_CHECK_INTERVAL = 45  # 45 seconds
 # This helps work around occasional issues with the Riot API reporting a "stuck" in-game status
 LOL_HANGED_INGAME_INTERVAL = 1800  # 30 mins
 
-# How often to print an "alive check" message to the output; in seconds
-TOOL_ALIVE_INTERVAL = 21600  # 6 hours
+# How often to print a "liveness check" message to the output; in seconds
+# Set to 0 to disable
+LIVENESS_CHECK_INTERVAL = 43200  # 12 hours
 
 # URL used to verify internet connectivity at startup
 CHECK_INTERNET_URL = 'https://europe.api.riotgames.com/'
@@ -59,14 +81,32 @@ CHECK_INTERNET_URL = 'https://europe.api.riotgames.com/'
 # Timeout used when checking initial internet connectivity; in seconds
 CHECK_INTERNET_TIMEOUT = 5
 
-# Base name of the log file. The tool will save its output to lol_monitor_<riotidname>.log file
+# CSV file to write all game status changes
+# Can also be set using the -b parameter
+CSV_FILE = ""
+
+# Location of the optional dotenv file which can keep secrets
+# If not specified it will try to auto-search for .env files
+# To disable auto-search, set this to the literal string "none"
+# Can also be set using the --env-file parameter
+DOTENV_FILE = ""
+
+# Base name of the log file. The tool will save its output to lol_monitor_<riot_id_name>.log file
 LOL_LOGFILE = "lol_monitor"
 
-# Value used by signal handlers to increase or decrease the in-game activity check interval (LOL_ACTIVE_CHECK_INTERVAL); in seconds
-LOL_ACTIVE_CHECK_SIGNAL_VALUE = 30  # 30 seconds
+# Whether to disable logging to lol_monitor_<riot_id_name>.log
+# Can also be disabled via the -d parameter
+DISABLE_LOGGING = False
+
+# Width of horizontal line (─)
+HORIZONTAL_LINE = 113
 
 # Whether to clear the terminal screen after starting the tool
 CLEAR_SCREEN = True
+
+# Value used by signal handlers to increase or decrease the in-game activity check interval (LOL_ACTIVE_CHECK_INTERVAL); in seconds
+LOL_ACTIVE_CHECK_SIGNAL_VALUE = 30  # 30 seconds
+"""
 
 # -------------------------
 # CONFIGURATION SECTION END
@@ -106,15 +146,46 @@ game_modes_mapping = {
     "ULTBOOK": "Ultimate Spellbook"
 }
 
-# Width of horizontal line (─)
-HORIZONTAL_LINE = 105
+# Default dummy values so linters shut up
+# Do not change values below - modify them in the configuration section or config file instead
+RIOT_API_KEY = ""
+SMTP_HOST = ""
+SMTP_PORT = 0
+SMTP_USER = ""
+SMTP_PASSWORD = ""
+SMTP_SSL = False
+SENDER_EMAIL = ""
+RECEIVER_EMAIL = ""
+STATUS_NOTIFICATION = False
+ERROR_NOTIFICATION = False
+LOL_CHECK_INTERVAL = 0
+LOL_ACTIVE_CHECK_INTERVAL = 0
+LOL_HANGED_INGAME_INTERVAL = 0
+LIVENESS_CHECK_INTERVAL = 0
+CHECK_INTERNET_URL = ""
+CHECK_INTERNET_TIMEOUT = 0
+CSV_FILE = ""
+DOTENV_FILE = ""
+LOL_LOGFILE = ""
+DISABLE_LOGGING = False
+HORIZONTAL_LINE = 0
+CLEAR_SCREEN = False
+LOL_ACTIVE_CHECK_SIGNAL_VALUE = 0
 
-TOOL_ALIVE_COUNTER = TOOL_ALIVE_INTERVAL / LOL_CHECK_INTERVAL
+exec(CONFIG_BLOCK, globals())
+
+# Default name for the optional config file
+DEFAULT_CONFIG_FILENAME = "lol_monitor.conf"
+
+# List of secret keys to load from env/config
+SECRET_KEYS = ("RIOT_API_KEY", "SMTP_PASSWORD")
+
+LIVENESS_CHECK_COUNTER = LIVENESS_CHECK_INTERVAL / LOL_CHECK_INTERVAL
 
 stdout_bck = None
 csvfieldnames = ['Match Start', 'Match Stop', 'Duration', 'Victory', 'Kills', 'Deaths', 'Assists', 'Champion', 'Team 1', 'Team 2']
 
-status_notification = False
+CLI_CONFIG_PATH = None
 
 # to solve the issue: 'SyntaxError: f-string expression part cannot include a backslash'
 nl_ch = "\n"
@@ -145,8 +216,13 @@ import platform
 import re
 import ipaddress
 import asyncio
-from pulsefire.clients import RiotAPIClient
 from typing import Optional
+try:
+    from pulsefire.clients import RiotAPIClient
+except ModuleNotFoundError:
+    raise SystemExit("Error: Couldn't find the Pulsefire library !\n\nTo install it, run:\n    pip3 install pulsefire\n\nOnce installed, re-run this tool. For more help, visit:\nhttps://pulsefire.iann838.com/usage/basic/installation/")
+import shutil
+from pathlib import Path
 
 
 # Logger class to output messages to stdout and log file
@@ -374,7 +450,7 @@ def write_csv_entry(csv_file_name, start_date_ts, stop_date_ts, duration_ts, vic
             csvwriter = csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
             csvwriter.writerow({'Match Start': start_date_ts, 'Match Stop': stop_date_ts, 'Duration': duration_ts, 'Victory': victory, 'Kills': kills, 'Deaths': deaths, 'Assists': assists, 'Champion': champion, 'Team 1': team1, 'Team 2': team2})
 
-    except Exception:
+    except Exception as e:
         raise RuntimeError(f"Failed to write to CSV file '{csv_file_name}': {e}")
 
 
@@ -488,11 +564,11 @@ def get_range_of_dates_from_tss(ts1, ts2, between_sep=" - ", short=False):
 
 # Signal handler for SIGUSR1 allowing to switch game playing status changes email notifications
 def toggle_status_changes_notifications_signal_handler(sig, frame):
-    global status_notification
-    status_notification = not status_notification
+    global STATUS_NOTIFICATION
+    STATUS_NOTIFICATION = not STATUS_NOTIFICATION
     sig_name = signal.Signals(sig).name
     print(f"* Signal {sig_name} received")
-    print(f"* Email notifications: [status changes = {status_notification}]")
+    print(f"* Email notifications: [status changes = {STATUS_NOTIFICATION}]")
     print_cur_ts("Timestamp:\t\t\t")
 
 
@@ -514,6 +590,41 @@ def decrease_active_check_signal_handler(sig, frame):
     sig_name = signal.Signals(sig).name
     print(f"* Signal {sig_name} received")
     print(f"* LoL timers: [active check interval: {display_time(LOL_ACTIVE_CHECK_INTERVAL)}]")
+    print_cur_ts("Timestamp:\t\t\t")
+
+
+# Signal handler for SIGHUP allowing to reload secrets from .env
+def reload_secrets_signal_handler(sig, frame):
+    sig_name = signal.Signals(sig).name
+    print(f"* Signal {sig_name} received")
+
+    # disable autoscan if DOTENV_FILE set to none
+    if DOTENV_FILE and DOTENV_FILE.lower() == 'none':
+        env_path = None
+    else:
+        # reload .env if python-dotenv is installed
+        try:
+            from dotenv import load_dotenv, find_dotenv
+            if DOTENV_FILE:
+                env_path = DOTENV_FILE
+            else:
+                env_path = find_dotenv()
+            if env_path:
+                load_dotenv(env_path, override=True)
+            else:
+                print("* No .env file found, skipping env-var reload")
+        except ImportError:
+            env_path = None
+            print("* python-dotenv not installed, skipping env-var reload")
+
+    if env_path:
+        for secret in SECRET_KEYS:
+            old_val = globals().get(secret)
+            val = os.getenv(secret)
+            if val is not None and val != old_val:
+                globals()[secret] = val
+                print(f"* Reloaded {secret} from {env_path}")
+
     print_cur_ts("Timestamp:\t\t\t")
 
 
@@ -859,8 +970,46 @@ async def print_save_recent_matches(riotid: str, region: str, matches_min: int, 
         await print_match_history(puuid, riotid_name, region, matches_min, matches_num, False, csv_file_name)
 
 
+# Finds an optional config file
+def find_config_file(cli_path=None):
+    """
+    Search for an optional config file in:
+      1) CLI-provided path (must exist if given)
+      2) ./{DEFAULT_CONFIG_FILENAME}
+      3) ~/.{DEFAULT_CONFIG_FILENAME}
+      4) script-directory/{DEFAULT_CONFIG_FILENAME}
+    """
+
+    if cli_path:
+        p = Path(os.path.expanduser(cli_path))
+        return str(p) if p.is_file() else None
+
+    candidates = [
+        Path.cwd() / DEFAULT_CONFIG_FILENAME,
+        Path.home() / f".{DEFAULT_CONFIG_FILENAME}",
+        Path(__file__).parent / DEFAULT_CONFIG_FILENAME,
+    ]
+
+    for p in candidates:
+        if p.is_file():
+            return str(p)
+    return None
+
+
+# Resolves an executable path by checking if it's a valid file or searching in $PATH
+def resolve_executable(path):
+    if os.path.isfile(path) and os.access(path, os.X_OK):
+        return path
+
+    found = shutil.which(path)
+    if found:
+        return found
+
+    raise FileNotFoundError(f"Could not find executable '{path}'")
+
+
 # Main function that monitors gaming activity of the specified LoL user
-async def lol_monitor_user(riotid, region, error_notification, csv_file_name):
+async def lol_monitor_user(riotid, region, csv_file_name):
 
     alive_counter = 0
     last_match_start_ts = 0
@@ -875,7 +1024,7 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name):
     puuid = await get_user_puuid(riotid, region)
 
     if not puuid:
-        print("* Error: cannot get PUUID, the Riot ID or region might be wrong !")
+        print("* Error: Cannot get PUUID, the Riot ID or region might be wrong !")
         sys.exit(2)
 
     riotid_name, riotid_tag = get_user_riot_name_tag(riotid)
@@ -898,7 +1047,7 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name):
         print(f"* Error while getting last played match: {e}")
 
     if not last_match_start_ts:
-        print("* Error: cannot get last match details !")
+        print("* Error: Cannot get last match details !")
 
     last_match_start_ts_old = last_match_start_ts
     ingame = False
@@ -920,7 +1069,7 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name):
 
                 # User is playing new match
                 if ingame:
-                    current_match_start_ts = await print_current_match(puuid, riotid_name, region, last_match_start_ts, last_match_stop_ts, status_notification)
+                    current_match_start_ts = await print_current_match(puuid, riotid_name, region, last_match_start_ts, last_match_stop_ts, STATUS_NOTIFICATION)
 
                 # User stopped playing the match
                 else:
@@ -930,7 +1079,7 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name):
 
                     game_finished_ts = int(time.time())
 
-                    if status_notification:
+                    if STATUS_NOTIFICATION:
                         print(f"Sending email notification to {RECEIVER_EMAIL}")
                         send_email(m_subject, m_body, "", SMTP_SSL)
 
@@ -950,7 +1099,7 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name):
                 if last_match_start_ts_new and last_match_start_ts_new != last_match_start_ts_old:
 
                     print("User last played match:\n")
-                    last_match_start_ts_new, last_match_stop_ts_new = await print_match_history(puuid, riotid_name, region, 1, 1, status_notification, csv_file_name)
+                    last_match_start_ts_new, last_match_stop_ts_new = await print_match_history(puuid, riotid_name, region, 1, 1, STATUS_NOTIFICATION, csv_file_name)
 
                     if last_match_start_ts_new and last_match_stop_ts_new:
                         last_match_start_ts = last_match_start_ts_new
@@ -963,14 +1112,14 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name):
 
             email_sent = False
 
-            if alive_counter >= TOOL_ALIVE_COUNTER:
-                print_cur_ts("Alive check, timestamp: ")
+            if LIVENESS_CHECK_COUNTER and alive_counter >= LIVENESS_CHECK_COUNTER:
+                print_cur_ts("Liveness check, timestamp: ")
                 alive_counter = 0
         except Exception as e:
             print(f"* Error, retrying in {display_time(LOL_CHECK_INTERVAL)}: {e}")
             if 'Forbidden' in str(e) or 'Unknown patch name' in str(e):
                 print("* API key might not be valid anymore or new patch deployed!")
-                if error_notification and not email_sent:
+                if ERROR_NOTIFICATION and not email_sent:
                     m_subject = f"lol_monitor: API key error! (user: {riotid_name})"
                     m_body = f"API key might not be valid anymore or new patch deployed: {e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                     print(f"Sending email notification to {RECEIVER_EMAIL}")
@@ -980,7 +1129,17 @@ async def lol_monitor_user(riotid, region, error_notification, csv_file_name):
             time.sleep(LOL_CHECK_INTERVAL)
             continue
 
-if __name__ == "__main__":
+
+def main():
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck
+
+    if "--generate-config" in sys.argv:
+        print(CONFIG_BLOCK.strip("\n"))
+        sys.exit(0)
+
+    if "--version" in sys.argv:
+        print(f"{os.path.basename(sys.argv[0])} v{VERSION}")
+        sys.exit(0)
 
     stdout_bck = sys.stdout
 
@@ -993,7 +1152,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
         prog="lol_monitor",
-        description="Monitor a League of Legends user’s playing status and send customizable email alerts [ https://github.com/misiektoja/lol_monitor/ ]"
+        description=("Monitor a League of Legends user's playing status and send customizable email alerts [ https://github.com/misiektoja/lol_monitor/ ]"), formatter_class=argparse.RawTextHelpFormatter
     )
 
     # Positional
@@ -1012,6 +1171,33 @@ if __name__ == "__main__":
         type=str
     )
 
+    # Version, just to list in help, it is handled earlier
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s v{VERSION}"
+    )
+
+    # Configuration & dotenv files
+    conf = parser.add_argument_group("Configuration & dotenv files")
+    conf.add_argument(
+        "--config-file",
+        dest="config_file",
+        metavar="PATH",
+        help="Location of the optional config file",
+    )
+    conf.add_argument(
+        "--generate-config",
+        action="store_true",
+        help="Print default config template and exit",
+    )
+    conf.add_argument(
+        "--env-file",
+        dest="env_file",
+        metavar="PATH",
+        help="Path to optional dotenv file (auto-search if not set, disable with 'none')",
+    )
+
     # API credentials
     creds = parser.add_argument_group("API credentials")
     creds.add_argument(
@@ -1026,18 +1212,20 @@ if __name__ == "__main__":
     notify = parser.add_argument_group("Notifications")
     notify.add_argument(
         "-s", "--notify-status",
-        dest="status_notification",
+        dest="notify_status",
         action="store_true",
-        help="Email when user’s playing status changes"
+        default=None,
+        help="Email when user's playing status changes"
     )
     notify.add_argument(
         "-e", "--no-error-notify",
         dest="notify_errors",
         action="store_false",
+        default=None,
         help="Disable email on errors (e.g. invalid API key)"
     )
     notify.add_argument(
-        "-z", "--send-test-email",
+        "--send-test-email",
         dest="send_test_email",
         action="store_true",
         help="Send test email to verify SMTP settings"
@@ -1097,7 +1285,8 @@ if __name__ == "__main__":
         "-d", "--disable-logging",
         dest="disable_logging",
         action="store_true",
-        help="Disable logging to lol_monitor_<riotid_name>.log"
+        default=None,
+        help="Disable logging to lol_monitor_<riot_id_name>.log"
     )
 
     args = parser.parse_args()
@@ -1105,6 +1294,56 @@ if __name__ == "__main__":
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
         sys.exit(1)
+
+    if args.config_file:
+        CLI_CONFIG_PATH = os.path.expanduser(args.config_file)
+
+    cfg_path = find_config_file(CLI_CONFIG_PATH)
+
+    if not cfg_path and CLI_CONFIG_PATH:
+        print(f"* Error: Config file '{CLI_CONFIG_PATH}' does not exist")
+        sys.exit(1)
+
+    if cfg_path:
+        try:
+            with open(cfg_path, "r") as cf:
+                exec(cf.read(), globals())
+        except Exception as e:
+            print(f"* Error loading config file '{cfg_path}': {e}")
+            sys.exit(1)
+
+    if args.env_file:
+        DOTENV_FILE = os.path.expanduser(args.env_file)
+    else:
+        if DOTENV_FILE:
+            DOTENV_FILE = os.path.expanduser(DOTENV_FILE)
+
+    if DOTENV_FILE and DOTENV_FILE.lower() == 'none':
+        env_path = None
+    else:
+        try:
+            from dotenv import load_dotenv, find_dotenv
+
+            if DOTENV_FILE:
+                env_path = DOTENV_FILE
+                if not os.path.isfile(env_path):
+                    print(f"* Warning: dotenv file '{env_path}' does not exist\n")
+                else:
+                    load_dotenv(env_path, override=True)
+            else:
+                env_path = find_dotenv() or None
+                if env_path:
+                    load_dotenv(env_path, override=True)
+        except ImportError:
+            env_path = DOTENV_FILE if DOTENV_FILE else None
+            if env_path:
+                print(f"* Warning: Cannot load dotenv file '{env_path}' because 'python-dotenv' is not installed\n\nTo install it, run:\n    pip3 install python-dotenv\n\nOnce installed, re-run this tool\n")
+
+    if env_path:
+        for secret in SECRET_KEYS:
+            val = os.getenv(secret)
+            if val is not None:
+                globals()[secret] = val
 
     if not check_internet():
         sys.exit(1)
@@ -1122,7 +1361,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if not region_to_continent.get(args.region):
-        print("* Error: REGION might be wrong as it is not present in 'region_to_continent' dict in .py file")
+        print("* Error: REGION might be wrong as it is not present in 'region_to_continent' dictionary")
         sys.exit(1)
 
     if args.riot_api_key:
@@ -1134,17 +1373,23 @@ if __name__ == "__main__":
 
     if args.check_interval:
         LOL_CHECK_INTERVAL = args.check_interval
-        TOOL_ALIVE_COUNTER = TOOL_ALIVE_INTERVAL / LOL_CHECK_INTERVAL
+        LIVENESS_CHECK_COUNTER = LIVENESS_CHECK_INTERVAL / LOL_CHECK_INTERVAL
 
     if args.active_interval:
         LOL_ACTIVE_CHECK_INTERVAL = args.active_interval
 
     if args.csv_file:
+        CSV_FILE = os.path.expanduser(args.csv_file)
+    else:
+        if CSV_FILE:
+            CSV_FILE = os.path.expanduser(CSV_FILE)
+
+    if CSV_FILE:
         try:
-            with open(args.csv_file, 'a', newline='', buffering=1, encoding="utf-8") as _:
+            with open(CSV_FILE, 'a', newline='', buffering=1, encoding="utf-8") as _:
                 pass
         except Exception as e:
-            print(f"* Error, CSV file cannot be opened for writing: {e}")
+            print(f"* Error: CSV file cannot be opened for writing: {e}")
             sys.exit(1)
 
     if args.list_recent_matches:
@@ -1162,7 +1407,7 @@ if __name__ == "__main__":
             print("* min_of_recent_matches cannot be > number_of_recent_matches")
             sys.exit(1)
 
-        list_operation = "* Listing & saving" if args.csv_file else "* Listing"
+        list_operation = "* Listing & saving" if CSV_FILE else "* Listing"
 
         if matches_min != matches_num:
             print(f"{list_operation} recent matches from {matches_num} to {matches_min} for '{args.riot_id}':\n")
@@ -1170,7 +1415,7 @@ if __name__ == "__main__":
             print(f"{list_operation} recent match for '{args.riot_id}':\n")
 
         try:
-            asyncio.run(print_save_recent_matches(args.riot_id, args.region, matches_min, matches_num, args.csv_file))
+            asyncio.run(print_save_recent_matches(args.riot_id, args.region, matches_min, matches_num, CSV_FILE))
         except Exception as e:
             if 'Forbidden' in str(e) or 'Unknown patch name' in str(e):
                 print("* API key might not be valid anymore or new patch deployed!")
@@ -1182,29 +1427,55 @@ if __name__ == "__main__":
     if not riotid_name or not riotid_tag:
         sys.exit(1)
 
-    if not args.disable_logging:
-        LOL_LOGFILE = f"{LOL_LOGFILE}_{riotid_name}.log"
-        sys.stdout = Logger(LOL_LOGFILE)
+    if args.disable_logging is True:
+        DISABLE_LOGGING = True
 
-    status_notification = args.status_notification
-    error_notification = args.notify_errors
+    if not DISABLE_LOGGING:
+        log_path = Path(os.path.expanduser(LOL_LOGFILE))
+        if log_path.is_dir():
+            raise SystemExit(f"* Error: LOL_LOGFILE '{log_path}' is a directory, expected a filename")
+        if log_path.suffix == "":
+            log_path = log_path.with_name(f"{log_path.name}_{riotid_name}.log")
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        FINAL_LOG_PATH = str(log_path)
+        sys.stdout = Logger(FINAL_LOG_PATH)
+    else:
+        FINAL_LOG_PATH = None
 
-    print(f"* LoL timers:\t\t\t[check interval: {display_time(LOL_CHECK_INTERVAL)}] [active check interval: {display_time(LOL_ACTIVE_CHECK_INTERVAL)}]")
-    print(f"* Email notifications:\t\t[status changes = {status_notification}] [errors = {error_notification}]")
-    print(f"* Output logging enabled:\t{not args.disable_logging}" + (f" ({LOL_LOGFILE})" if not args.disable_logging else ""))
-    print(f"* CSV logging enabled:\t\t{bool(args.csv_file)}" + (f" ({args.csv_file})\n" if args.csv_file else "\n"))
+    if args.notify_status is True:
+        STATUS_NOTIFICATION = True
+
+    if args.notify_errors is False:
+        ERROR_NOTIFICATION = False
+
+    if SMTP_HOST.startswith("your_smtp_server_"):
+        STATUS_NOTIFICATION = False
+        ERROR_NOTIFICATION = False
+
+    print(f"* LoL polling intervals:\t[NOT in game: {display_time(LOL_CHECK_INTERVAL)}] [in game: {display_time(LOL_ACTIVE_CHECK_INTERVAL)}]")
+    print(f"* Email notifications:\t\t[status changes = {STATUS_NOTIFICATION}] [errors = {ERROR_NOTIFICATION}]")
+    print(f"* Liveness check:\t\t{bool(LIVENESS_CHECK_INTERVAL)}" + (f" ({display_time(LIVENESS_CHECK_INTERVAL)})" if LIVENESS_CHECK_INTERVAL else ""))
+    print(f"* CSV logging enabled:\t\t{bool(CSV_FILE)}" + (f" ({CSV_FILE})" if CSV_FILE else ""))
+    print(f"* Output logging enabled:\t{not DISABLE_LOGGING}" + (f" ({FINAL_LOG_PATH})" if not DISABLE_LOGGING else ""))
+    print(f"* Configuration file:\t\t{cfg_path}")
+    print(f"* Dotenv file:\t\t\t{env_path or 'None'}\n")
 
     # We define signal handlers only for Linux & MacOS since Windows has limited number of signals supported
     if platform.system() != 'Windows':
         signal.signal(signal.SIGUSR1, toggle_status_changes_notifications_signal_handler)
         signal.signal(signal.SIGTRAP, increase_active_check_signal_handler)
         signal.signal(signal.SIGABRT, decrease_active_check_signal_handler)
+        signal.signal(signal.SIGHUP, reload_secrets_signal_handler)
 
     out = f"Monitoring user {args.riot_id}"
     print(out)
     print("-" * len(out))
 
-    asyncio.run(lol_monitor_user(args.riot_id, args.region, args.notify_errors, args.csv_file))
+    asyncio.run(lol_monitor_user(args.riot_id, args.region, CSV_FILE))
 
     sys.stdout = stdout_bck
     sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
