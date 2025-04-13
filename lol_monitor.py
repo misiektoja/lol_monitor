@@ -106,13 +106,9 @@ CLEAR_SCREEN = True
 
 # Value used by signal handlers to increase or decrease the in-game activity check interval (LOL_ACTIVE_CHECK_INTERVAL); in seconds
 LOL_ACTIVE_CHECK_SIGNAL_VALUE = 30  # 30 seconds
-"""
 
-# -------------------------
-# CONFIGURATION SECTION END
-# -------------------------
-
-region_to_continent = {
+# LoL's region to continent mapping
+REGION_TO_CONTINENT = {
     "eun1": "europe",   # Europe Nordic & East (EUNE)
     "euw1": "europe",   # Europe West (EUW)
     "tr1": "europe",    # Turkey (TR1)
@@ -128,6 +124,11 @@ region_to_continent = {
     "vn2": "sea",       # Vietnam (VN)
     "oc1": "sea"        # Oceania (OC)
 }
+"""
+
+# -------------------------
+# CONFIGURATION SECTION END
+# -------------------------
 
 game_modes_mapping = {
     "CLASSIC": "Summoner's Rift",
@@ -168,6 +169,7 @@ DISABLE_LOGGING = False
 HORIZONTAL_LINE = 0
 CLEAR_SCREEN = False
 LOL_ACTIVE_CHECK_SIGNAL_VALUE = 0
+REGION_TO_CONTINENT = {}
 
 exec(CONFIG_BLOCK, globals())
 
@@ -662,7 +664,7 @@ async def get_user_puuid(riotid: str, region: str) -> Optional[str]:
 
     async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
         try:
-            account = await client.get_account_v1_by_riot_id(region=region_to_continent.get(region, "europe"), game_name=riotid_name, tag_line=riotid_tag)
+            account = await client.get_account_v1_by_riot_id(region=REGION_TO_CONTINENT.get(region, "europe"), game_name=riotid_name, tag_line=riotid_tag)
             puuid = account["puuid"]
         except Exception as e:
             print(f"* Error while converting Riot ID to PUUID: {e}")
@@ -701,9 +703,9 @@ async def get_last_match_start_ts(puuid: str, region: str):
 
         try:
 
-            matches_history = await client.get_lol_match_v5_match_ids_by_puuid(region=region_to_continent.get(region, "europe"), puuid=puuid, queries={"start": 0, "count": 1})
+            matches_history = await client.get_lol_match_v5_match_ids_by_puuid(region=REGION_TO_CONTINENT.get(region, "europe"), puuid=puuid, queries={"start": 0, "count": 1})
 
-            match = await client.get_lol_match_v5_match(region=region_to_continent.get(region, "europe"), id=matches_history[0])
+            match = await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, "europe"), id=matches_history[0])
 
             match_start_ts = int((match["info"]["gameStartTimestamp"]) / 1000)
 
@@ -825,7 +827,7 @@ async def print_match_history(puuid: str, riotid_name: str, region: str, matches
 
     async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
 
-        matches_history = await client.get_lol_match_v5_match_ids_by_puuid(region=region_to_continent.get(region, "europe"), puuid=puuid, queries={"start": 0, "count": matches_num})
+        matches_history = await client.get_lol_match_v5_match_ids_by_puuid(region=REGION_TO_CONTINENT.get(region, "europe"), puuid=puuid, queries={"start": 0, "count": matches_num})
 
         if matches_history:
 
@@ -842,7 +844,7 @@ async def print_match_history(puuid: str, riotid_name: str, region: str, matches
                 u_role_str = ""
                 u_lane_str = ""
 
-                match = await client.get_lol_match_v5_match(region=region_to_continent.get(region, "europe"), id=matches_history[i])
+                match = await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, "europe"), id=matches_history[i])
 
                 match_id = match["metadata"].get("matchId", 0)
                 match_creation_ts = int((match["info"].get("gameCreation", 0)) / 1000)
@@ -1110,7 +1112,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
             email_sent = False
 
             if LIVENESS_CHECK_COUNTER and alive_counter >= LIVENESS_CHECK_COUNTER:
-                print_cur_ts("Liveness check, timestamp: ")
+                print_cur_ts("Liveness check, timestamp:\t")
                 alive_counter = 0
         except Exception as e:
             print(f"* Error, retrying in {display_time(LOL_CHECK_INTERVAL)}: {e}")
@@ -1128,7 +1130,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
 
 
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT
 
     if "--generate-config" in sys.argv:
         print(CONFIG_BLOCK.strip("\n"))
@@ -1357,8 +1359,8 @@ def main():
         print("* Error: RIOT_ID and REGION arguments are required !")
         sys.exit(1)
 
-    if not region_to_continent.get(args.region):
-        print("* Error: REGION might be wrong as it is not present in 'region_to_continent' dictionary")
+    if not REGION_TO_CONTINENT.get(args.region):
+        print("* Error: REGION might be wrong as it is not present in 'REGION_TO_CONTINENT' dictionary")
         sys.exit(1)
 
     if args.riot_api_key:
