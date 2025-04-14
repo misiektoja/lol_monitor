@@ -9,8 +9,8 @@ https://github.com/misiektoja/lol_monitor/
 Python pip3 requirements:
 
 pulsefire
-python-dateutil
 requests
+python-dateutil
 python-dotenv (optional)
 """
 
@@ -52,24 +52,29 @@ SENDER_EMAIL = "your_sender_email"
 RECEIVER_EMAIL = "your_receiver_email"
 
 # Whether to send an email when user's playing status changes
-# Can also be enabled via the -s parameter
+# Can also be enabled via the -s flag
 STATUS_NOTIFICATION = False
 
 # Whether to send an email on errors
-# Can also be disabled via the -e parameter
+# Can also be disabled via the -e flag
 ERROR_NOTIFICATION = True
 
 # How often to check for player activity when the user is NOT in a game; in seconds
-# Can also be set using the -c parameter
+# Can also be set using the -c flag
 LOL_CHECK_INTERVAL = 150  # 2,5 min
 
 # How often to check for player activity when the user is IN a game; in seconds
-# Can also be set using the -k parameter
+# Can also be set using the -k flag
 LOL_ACTIVE_CHECK_INTERVAL = 45  # 45 seconds
 
 # If the user has been in-game for longer than the time below, begin checking for new historical matches
 # This helps work around occasional issues with the Riot API reporting a "stuck" in-game status
 LOL_HANGED_INGAME_INTERVAL = 1800  # 30 mins
+
+# Whether to include forbidden matches (requiring OAuth (RSO) access-token) in the output
+# Forbidden matches are skipped silently when False or shown with a notice when True
+# Can also be set using the -f flag
+INCLUDE_FORBIDDEN_MATCHES = False
 
 # How often to print a "liveness check" message to the output; in seconds
 # Set to 0 to disable
@@ -82,20 +87,20 @@ CHECK_INTERNET_URL = 'https://europe.api.riotgames.com/'
 CHECK_INTERNET_TIMEOUT = 5
 
 # CSV file to write all game status changes
-# Can also be set using the -b parameter
+# Can also be set using the -b flag
 CSV_FILE = ""
 
 # Location of the optional dotenv file which can keep secrets
 # If not specified it will try to auto-search for .env files
 # To disable auto-search, set this to the literal string "none"
-# Can also be set using the --env-file parameter
+# Can also be set using the --env-file flag
 DOTENV_FILE = ""
 
 # Base name of the log file. The tool will save its output to lol_monitor_<riot_id_name>.log file
 LOL_LOGFILE = "lol_monitor"
 
 # Whether to disable logging to lol_monitor_<riot_id_name>.log
-# Can also be disabled via the -d parameter
+# Can also be disabled via the -d flag
 DISABLE_LOGGING = False
 
 # Width of horizontal line (─)
@@ -104,7 +109,8 @@ HORIZONTAL_LINE = 113
 # Whether to clear the terminal screen after starting the tool
 CLEAR_SCREEN = True
 
-# Value used by signal handlers to increase or decrease the in-game activity check interval (LOL_ACTIVE_CHECK_INTERVAL); in seconds
+# Value used by signal handlers increasing/decreasing the check for player activity
+# when user is in-game (LOL_ACTIVE_CHECK_INTERVAL); in seconds
 LOL_ACTIVE_CHECK_SIGNAL_VALUE = 30  # 30 seconds
 
 # LoL's region to continent mapping
@@ -113,13 +119,13 @@ REGION_TO_CONTINENT = {
     "euw1": "europe",   # Europe West (EUW)
     "tr1": "europe",    # Turkey (TR1)
     "ru": "europe",     # Russia
-    "na1": "americas",  # North America (NA) – now the sole NA endpoint
+    "na1": "americas",  # North America (NA) - now the sole NA endpoint
     "br1": "americas",  # Brazil (BR)
     "la1": "americas",  # Latin America North (LAN)
     "la2": "americas",  # Latin America South (LAS)
     "jp1": "asia",      # Japan (JP)
     "kr": "asia",       # Korea (KR)
-    "sg2": "sea",       # Southeast Asia (SEA) – Singapore, Malaysia, Indonesia (+ Thailand & Philippines since Jan 9, 2025)
+    "sg2": "sea",       # Southeast Asia (SEA) - Singapore, Malaysia, Indonesia (+ Thailand & Philippines since Jan 9, 2025)
     "tw2": "sea",       # Taiwan, Hong Kong & Macao (TW/HK/MO)
     "vn2": "sea",       # Vietnam (VN)
     "oc1": "sea"        # Oceania (OC)
@@ -141,7 +147,9 @@ game_modes_mapping = {
     "ASSASSINATE": "Blood Hunt Assassin",
     "GAMEMODEX": "Nexus Blitz",
     "NEXUSBLITZ": "Nexus Blitz",
-    "ULTBOOK": "Ultimate Spellbook"
+    "ULTBOOK": "Ultimate Spellbook",
+    "ARAM": "ARAM",
+    "URF": "Ultra Rapid Fire"
 }
 
 # Default dummy values so linters shut up
@@ -159,6 +167,7 @@ ERROR_NOTIFICATION = False
 LOL_CHECK_INTERVAL = 0
 LOL_ACTIVE_CHECK_INTERVAL = 0
 LOL_HANGED_INGAME_INTERVAL = 0
+INCLUDE_FORBIDDEN_MATCHES = False
 LIVENESS_CHECK_INTERVAL = 0
 CHECK_INTERNET_URL = ""
 CHECK_INTERNET_TIMEOUT = 0
@@ -668,6 +677,8 @@ async def get_user_puuid(riotid: str, region: str) -> Optional[str]:
             puuid = account["puuid"]
         except Exception as e:
             print(f"* Error while converting Riot ID to PUUID: {e}")
+            if 'Unauthorized' in str(e):
+                print("* API key might not be valid anymore!")
             puuid = None
 
     return puuid
@@ -694,24 +705,25 @@ async def get_summoner_details(puuid: str, region: str):
     return summoner_id, summoner_accountid, summoner_level
 
 
-# Returns start & stop timestamps and duration of last played match
+# Returns start timestamp of first accessible recent match
 async def get_last_match_start_ts(puuid: str, region: str):
 
     match_start_ts = 0
 
-    async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+    async with RiotAPIClient(default_headers={'X-Riot-Token': RIOT_API_KEY}) as client:
 
-        try:
+        matches_history = await client.get_lol_match_v5_match_ids_by_puuid(region=REGION_TO_CONTINENT.get(region, 'europe'), puuid=puuid, queries={'start': 0, 'count': 10})
 
-            matches_history = await client.get_lol_match_v5_match_ids_by_puuid(region=REGION_TO_CONTINENT.get(region, "europe"), puuid=puuid, queries={"start": 0, "count": 1})
+        for match_id in matches_history:
 
-            match = await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, "europe"), id=matches_history[0])
-
-            match_start_ts = int((match["info"]["gameStartTimestamp"]) / 1000)
-
-        except Exception as e:
-            print(f"* Error while getting last match start timestamp: {e}")
-            print_cur_ts("Timestamp:\t\t\t")
+            try:
+                match = await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, 'europe'), id=match_id)
+                match_start_ts = int((match['info']['gameStartTimestamp']) / 1000)
+                break
+            except Exception as e:
+                if getattr(e, 'status', None) == 403 and not INCLUDE_FORBIDDEN_MATCHES:
+                    continue
+                break
 
     return match_start_ts
 
@@ -827,11 +839,27 @@ async def print_match_history(puuid: str, riotid_name: str, region: str, matches
 
     async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
 
-        matches_history = await client.get_lol_match_v5_match_ids_by_puuid(region=REGION_TO_CONTINENT.get(region, "europe"), puuid=puuid, queries={"start": 0, "count": matches_num})
+        matches_history = await client.get_lol_match_v5_match_ids_by_puuid(region=REGION_TO_CONTINENT.get(region, 'europe'), puuid=puuid, queries={'start': 0, 'count': max(matches_num * 3, 10)})
 
         if matches_history:
+            filtered = []
+            for mid in matches_history:
+                if len(filtered) >= matches_num:
+                    break
+                try:
+                    await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, 'europe'), id=mid)
+                    filtered.append(mid)
+                except Exception as e:
+                    if getattr(e, 'status', None) == 403:
+                        if INCLUDE_FORBIDDEN_MATCHES:
+                            filtered.append(mid)
+                        continue
+
+            if len(filtered) < matches_min:
+                return match_start_ts, match_stop_ts
 
             for i in reversed(range(matches_min - 1, matches_num)):
+                match_id = filtered[i]
 
                 u_victory = 0
                 u_champion = ""
@@ -844,7 +872,20 @@ async def print_match_history(puuid: str, riotid_name: str, region: str, matches
                 u_role_str = ""
                 u_lane_str = ""
 
-                match = await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, "europe"), id=matches_history[i])
+                try:
+                    match = await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, 'europe'), id=match_id)
+                except Exception as e:
+                    if getattr(e, 'status', None) == 403:
+                        if INCLUDE_FORBIDDEN_MATCHES:
+                            if matches_num > 1:
+                                print(f"Match number:\t\t\t{i + 1}")
+                            print(f"Match ID:\t\t\t{match_id}")
+                            print(f"\nMatch details require RSO access token")
+                            if matches_num > 1:
+                                print("─" * HORIZONTAL_LINE)
+                            else:
+                                print()
+                    continue
 
                 match_id = match["metadata"].get("matchId", 0)
                 match_creation_ts = int((match["info"].get("gameCreation", 0)) / 1000)
@@ -1023,7 +1064,6 @@ async def lol_monitor_user(riotid, region, csv_file_name):
     puuid = await get_user_puuid(riotid, region)
 
     if not puuid:
-        print("* Error: Cannot get PUUID, the Riot ID or region might be wrong !")
         sys.exit(2)
 
     riotid_name, riotid_tag = get_user_riot_name_tag(riotid)
@@ -1032,8 +1072,6 @@ async def lol_monitor_user(riotid, region, csv_file_name):
 
     print(f"Riot ID (name#tag):\t\t{riotid}")
     print(f"Riot PUUID:\t\t\t{puuid}")
-    # print(f"Summoner ID:\t\t\t{summoner_id}")
-    # print(f"Summoner account ID:\t\t{summoner_accountid}")
     print(f"Summoner level:\t\t\t{summoner_level}")
     print()
 
@@ -1041,12 +1079,12 @@ async def lol_monitor_user(riotid, region, csv_file_name):
     try:
         last_match_start_ts, last_match_stop_ts = await print_match_history(puuid, riotid_name, region, 1, 1, False, None)
     except Exception as e:
-        if 'Forbidden' in str(e) or 'Unknown patch name' in str(e):
-            print("* API key might not be valid anymore or new patch deployed!")
         print(f"* Error while getting last played match: {e}")
+        if 'Unauthorized' in str(e):
+            print("* API key might not be valid anymore!")
 
     if not last_match_start_ts:
-        print("* Error: Cannot get last match details !")
+        print("* Warning: Cannot get last match details !")
 
     last_match_start_ts_old = last_match_start_ts
     ingame = False
@@ -1116,8 +1154,8 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                 alive_counter = 0
         except Exception as e:
             print(f"* Error, retrying in {display_time(LOL_CHECK_INTERVAL)}: {e}")
-            if 'Forbidden' in str(e) or 'Unknown patch name' in str(e):
-                print("* API key might not be valid anymore or new patch deployed!")
+            if 'Unauthorized' in str(e):
+                print("* API key might not be valid anymore!")
                 if ERROR_NOTIFICATION and not email_sent:
                     m_subject = f"lol_monitor: API key error! (user: {riotid_name})"
                     m_body = f"API key might not be valid anymore or new patch deployed: {e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
@@ -1130,7 +1168,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
 
 
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT, INCLUDE_FORBIDDEN_MATCHES
 
     if "--generate-config" in sys.argv:
         print(CONFIG_BLOCK.strip("\n"))
@@ -1274,6 +1312,12 @@ def main():
     # Features & Output
     opts = parser.add_argument_group("Features & output")
     opts.add_argument(
+        "-f", "--include-forbidden-matches",
+        dest="include_forbidden_matches",
+        action="store_true",
+        help="Include forbidden matches (requiring RSO token) in the output"
+    )
+    opts.add_argument(
         "-b", "--csv-file",
         dest="csv_file",
         metavar="CSV_FILENAME",
@@ -1377,6 +1421,9 @@ def main():
     if args.active_interval:
         LOL_ACTIVE_CHECK_INTERVAL = args.active_interval
 
+    if args.include_forbidden_matches is True:
+        INCLUDE_FORBIDDEN_MATCHES = True
+
     if args.csv_file:
         CSV_FILE = os.path.expanduser(args.csv_file)
     else:
@@ -1416,9 +1463,9 @@ def main():
         try:
             asyncio.run(print_save_recent_matches(args.riot_id, args.region, matches_min, matches_num, CSV_FILE))
         except Exception as e:
-            if 'Forbidden' in str(e) or 'Unknown patch name' in str(e):
-                print("* API key might not be valid anymore or new patch deployed!")
             print(f"* Error: {e}")
+            if 'Unauthorized' in str(e):
+                print("* API key might not be valid anymore!")
         sys.exit(0)
 
     riotid_name, riotid_tag = get_user_riot_name_tag(args.riot_id)
@@ -1453,6 +1500,7 @@ def main():
 
     print(f"* LoL polling intervals:\t[NOT in game: {display_time(LOL_CHECK_INTERVAL)}] [in game: {display_time(LOL_ACTIVE_CHECK_INTERVAL)}]")
     print(f"* Email notifications:\t\t[status changes = {STATUS_NOTIFICATION}] [errors = {ERROR_NOTIFICATION}]")
+    print(f"* Include forbidden matches:\t{INCLUDE_FORBIDDEN_MATCHES}")
     print(f"* Liveness check:\t\t{bool(LIVENESS_CHECK_INTERVAL)}" + (f" ({display_time(LIVENESS_CHECK_INTERVAL)})" if LIVENESS_CHECK_INTERVAL else ""))
     print(f"* CSV logging enabled:\t\t{bool(CSV_FILE)}" + (f" ({CSV_FILE})" if CSV_FILE else ""))
     print(f"* Output logging enabled:\t{not DISABLE_LOGGING}" + (f" ({FINAL_LOG_PATH})" if not DISABLE_LOGGING else ""))
