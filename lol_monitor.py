@@ -96,7 +96,8 @@ CSV_FILE = ""
 # Can also be set using the --env-file flag
 DOTENV_FILE = ""
 
-# Base name of the log file. The tool will save its output to lol_monitor_<riot_id_name>.log file
+# Base name for the log file. Output will be saved to lol_monitor_<riot_id_name>.log
+# Can include a directory path to specify the location, e.g. ~/some_dir/lol_monitor
 LOL_LOGFILE = "lol_monitor"
 
 # Whether to disable logging to lol_monitor_<riot_id_name>.log
@@ -1478,10 +1479,12 @@ def main():
 
     if not DISABLE_LOGGING:
         log_path = Path(os.path.expanduser(LOL_LOGFILE))
-        if log_path.is_dir():
-            raise SystemExit(f"* Error: LOL_LOGFILE '{log_path}' is a directory, expected a filename")
-        if log_path.suffix == "":
-            log_path = log_path.with_name(f"{log_path.name}_{riotid_name}.log")
+        if log_path.parent != Path('.'):
+            if log_path.suffix == "":
+                log_path = log_path.parent / f"{log_path.name}_{riotid_name}.log"
+        else:
+            if log_path.suffix == "":
+                log_path = Path(f"{log_path.name}_{riotid_name}.log")
         log_path.parent.mkdir(parents=True, exist_ok=True)
         FINAL_LOG_PATH = str(log_path)
         sys.stdout = Logger(FINAL_LOG_PATH)
