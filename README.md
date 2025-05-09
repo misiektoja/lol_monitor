@@ -19,7 +19,7 @@ lol_monitor is a tool for real-time monitoring of LoL (League of Legends) player
 - Possibility to control the running copy of the script via signals
 
 <p align="center">
-   <img src="./assets/lol_monitor.png" alt="lol_monitor_screenshot" width="70%"/>
+   <img src="https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/assets/lol_monitor.png" alt="lol_monitor_screenshot" width="70%"/>
 </p>
 
 ## Table of Contents
@@ -279,7 +279,7 @@ Make sure you defined your SMTP settings earlier (see [SMTP settings](#smtp-sett
 Example email:
 
 <p align="center">
-   <img src="./assets/lol_monitor_email_notifications.png" alt="lol_monitor_email_notifications" width="80%"/>
+   <img src="https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/assets/lol_monitor_email_notifications.png" alt="lol_monitor_email_notifications" width="80%"/>
 </p>
 
 ### CSV Export
