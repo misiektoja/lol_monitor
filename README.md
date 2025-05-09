@@ -74,7 +74,7 @@ pip install lol_monitor
 <a id="manual-installation"></a>
 ### Manual Installation
 
-Download the *[lol_monitor.py](lol_monitor.py)* file to the desired location.
+Download the *[lol_monitor.py](https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/lol_monitor.py)* file to the desired location.
 
 Install dependencies via pip:
 
@@ -82,7 +82,7 @@ Install dependencies via pip:
 pip install pulsefire requests python-dateutil python-dotenv
 ```
 
-Alternatively, from the downloaded *[requirements.txt](requirements.txt)*:
+Alternatively, from the downloaded *[requirements.txt](https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/requirements.txt)*:
 
 ```sh
 pip install -r requirements.txt
@@ -356,7 +356,7 @@ Add to your GRC config (`~/.grc/grc.conf`):
 conf.monitor_logs
 ```
 
-Now copy the [conf.monitor_logs](grc/conf.monitor_logs) to your `~/.grc/` and log files should be nicely colored when using `grc` tool.
+Now copy the [conf.monitor_logs](https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/grc/conf.monitor_logs) to your `~/.grc/` and log files should be nicely colored when using `grc` tool.
 
 Example:
 
@@ -367,9 +367,9 @@ grc tail -F -n 100 lol_monitor_<riot_id_name>.log
 <a id="change-log"></a>
 ## Change Log
 
-See [RELEASE_NOTES.md](RELEASE_NOTES.md) for details.
+See [RELEASE_NOTES.md](https://github.com/misiektoja/lol_monitor/blob/main/RELEASE_NOTES.md) for details.
 
 <a id="license"></a>
 ## License
 
-Licensed under GPLv3. See [LICENSE](LICENSE).
+Licensed under GPLv3. See [LICENSE](https://github.com/misiektoja/lol_monitor/blob/main/LICENSE).
