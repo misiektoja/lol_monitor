@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lol_monitor"
+version = "1.6"
+description = "Tool implementing real-time tracking of LoL (League of Legends) players activities"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICEN[CS]E*"]
+authors = [{ name = "Michal Szymanski", email = "misiektoja-pypi@rm-rf.ninja" }]
+requires-python = ">=3.12"
+dependencies = [
+  "pulsefire>=2.0.9",
+  "requests>=2.0",
+  "python-dateutil>=2.8",
+  "python-dotenv>=0.19",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS :: MacOS X",
+]
+keywords = ["lol", "riot","league-of-legends", "monitoring", "tracking", "real-time", "osint", "pulsefire"]
+
+[project.urls]
+Homepage = "https://github.com/misiektoja/lol_monitor"
+Source   = "https://github.com/misiektoja/lol_monitor"
+Changelog= "https://github.com/misiektoja/lol_monitor/blob/main/RELEASE_NOTES.md"
+
+[project.scripts]
+lol_monitor = "lol_monitor:main"
+
+[tool.setuptools]
+py-modules = ["lol_monitor"]
+include-package-data = true
