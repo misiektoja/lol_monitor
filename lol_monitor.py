@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.6
+v1.7
 
 Tool implementing real-time tracking of LoL (League of Legends) players activities:
 https://github.com/misiektoja/lol_monitor/
@@ -14,7 +14,7 @@ python-dateutil
 python-dotenv (optional)
 """
 
-VERSION = 1.6
+VERSION = "1.7"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -66,10 +66,6 @@ LOL_CHECK_INTERVAL = 150  # 2,5 min
 # How often to check for player activity when the user is IN a game; in seconds
 # Can also be set using the -k flag
 LOL_ACTIVE_CHECK_INTERVAL = 45  # 45 seconds
-
-# If the user has been in-game for longer than the time below, begin checking for new historical matches
-# This helps work around occasional issues with the Riot API reporting a "stuck" in-game status
-LOL_HANGED_INGAME_INTERVAL = 1800  # 30 mins
 
 # Whether to include forbidden matches (requiring OAuth (RSO) access-token) in the output
 # Forbidden matches are skipped silently when False or shown with a notice when True
@@ -167,7 +163,6 @@ STATUS_NOTIFICATION = False
 ERROR_NOTIFICATION = False
 LOL_CHECK_INTERVAL = 0
 LOL_ACTIVE_CHECK_INTERVAL = 0
-LOL_HANGED_INGAME_INTERVAL = 0
 INCLUDE_FORBIDDEN_MATCHES = False
 LIVENESS_CHECK_INTERVAL = 0
 CHECK_INTERNET_URL = ""
@@ -706,29 +701,6 @@ async def get_summoner_details(puuid: str, region: str):
     return summoner_id, summoner_accountid, summoner_level
 
 
-# Returns start timestamp of first accessible recent match
-async def get_last_match_start_ts(puuid: str, region: str):
-
-    match_start_ts = 0
-
-    async with RiotAPIClient(default_headers={'X-Riot-Token': RIOT_API_KEY}) as client:
-
-        matches_history = await client.get_lol_match_v5_match_ids_by_puuid(region=REGION_TO_CONTINENT.get(region, 'europe'), puuid=puuid, queries={'start': 0, 'count': 10})
-
-        for match_id in matches_history:
-
-            try:
-                match = await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, 'europe'), id=match_id)
-                match_start_ts = int((match['info']['gameStartTimestamp']) / 1000)
-                break
-            except Exception as e:
-                if getattr(e, 'status', None) == 403 and not INCLUDE_FORBIDDEN_MATCHES:
-                    continue
-                break
-
-    return match_start_ts
-
-
 # Checks if the player is currently in game
 async def is_user_in_match(puuid: str, region: str):
 
@@ -743,7 +715,7 @@ async def is_user_in_match(puuid: str, region: str):
 
 
 # Prints details of the current player's match (user is in game)
-async def print_current_match(puuid: str, riotid_name: str, region: str, last_match_start_ts: int, last_match_stop_ts: int, status_notification_flag):
+async def print_current_match(puuid: str, riotid_name: str, region: str, last_match_start_ts: int, last_match_stop_ts: int, status_notification_flag: bool):
 
     async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
 
@@ -831,168 +803,184 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
             return 0
 
 
-# Prints history of matches with relevant details
-async def print_match_history(puuid: str, riotid_name: str, region: str, matches_min: int, matches_num: int, status_notification_flag, csv_file_name):
+# Gets recent match IDs
+async def get_latest_match_ids(puuid: str, region: str, count: int = 10) -> list:
+    try:
+        async with RiotAPIClient(default_headers={'X-Riot-Token': RIOT_API_KEY}) as client:
+            matches = await client.get_lol_match_v5_match_ids_by_puuid(region=REGION_TO_CONTINENT.get(region, 'europe'), puuid=puuid, queries={'start': 0, 'count': count})
+            return matches
+    except Exception as e:
+        print(f"* Error fetching latest match IDs: {e}")
+        return []
 
-    match_start_ts = 0
-    match_stop_ts = 0
-    match_duration = 0
+
+# Processes and prints details for a single match id, handling forbidden matches
+async def process_and_print_single_match(match_id: str, puuid: str, riotid_name: str, region: str, status_notification_flag: bool, csv_file_name: Optional[str]) -> tuple[int, int]:
 
     async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+        try:
+            match = await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, 'europe'), id=match_id)
 
-        matches_history = await client.get_lol_match_v5_match_ids_by_puuid(region=REGION_TO_CONTINENT.get(region, 'europe'), puuid=puuid, queries={'start': 0, 'count': max(matches_num * 3, 10)})
+            match_info = match.get("info", {})
+            match_metadata = match.get("metadata", {})
 
-        if matches_history:
-            filtered = []
-            for mid in matches_history:
-                if len(filtered) >= matches_num:
-                    break
+            match_start_ts = int(match_info.get("gameStartTimestamp", 0) / 1000)
+            match_stop_ts = int(match_info.get("gameEndTimestamp", 0) / 1000)
+            match_creation_ts = int(match_info.get("gameCreation", 0) / 1000)
+            match_duration = match_info.get("gameDuration", 0)
+            gamemode = game_modes_mapping.get(match_info.get("gameMode"), match_info.get("gameMode"))
+
+            print(f"Match ID:\t\t\t{match_id}")
+            print(f"Game mode:\t\t\t{gamemode}")
+            print(f"\nMatch start-end date:\t\t{get_range_of_dates_from_tss(match_start_ts, match_stop_ts)}")
+            print(f"Match creation:\t\t\t{get_date_from_ts(match_creation_ts)}")
+            print(f"Match duration:\t\t\t{display_time(int(match_duration))}")
+
+            last_played = calculate_timespan(int(time.time()), match_stop_ts)
+            print(f"\nMatch finished:\t\t\t{last_played} ago")
+
+            teams = []
+            user_participant = None
+
+            for p in match_info.get("participants", []):
+                if p.get("puuid") == puuid:
+                    user_participant = p
+
+                p_riotid_name = p.get("riotIdGameName", p.get("summonerName", "Unknown Player"))
+                p_teamid = p.get("teamId", 0)
+                add_new_team_member(teams, p_teamid, p_riotid_name)
+
+            u_victory = "No"
+            u_champion, u_level, u_role, u_lane = "N/A", "N/A", "N/A", "N/A"
+            u_kills, u_deaths, u_assists = 0, 0, 0
+
+            if user_participant:
+                u_victory = "Yes" if user_participant.get("win", False) else "No"
+                u_champion = user_participant.get("championName")
+                u_kills = user_participant.get("kills", 0)
+                u_deaths = user_participant.get("deaths", 0)
+                u_assists = user_participant.get("assists", 0)
+                u_level = user_participant.get("champLevel")
+                u_role = user_participant.get("role")
+                u_lane = user_participant.get("lane")
+
+            print(f"\nVictory:\t\t\t{u_victory}")
+            print(f"Kills/Deaths/Assists:\t\t{u_kills}/{u_deaths}/{u_assists}")
+
+            print(f"\nChampion:\t\t\t{u_champion}")
+
+            print(f"Level:\t\t\t\t{u_level}")
+
+            if u_role and u_role != "NONE":
+                print(f"Role:\t\t\t\t{u_role}")
+
+            if u_lane and u_lane != "NONE":
+                print(f"Lane:\t\t\t\t{u_lane}")
+
+            print(f"Teams:\t\t\t\t{len(teams)}")
+            for team in teams:
+                print(f'\nTeam id {team["id"]}:')
+                for member in team["members"]:
+                    print(f"- {member}")
+            if csv_file_name:
                 try:
-                    await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, 'europe'), id=mid)
-                    filtered.append(mid)
-                except Exception as e:
-                    if getattr(e, 'status', None) == 403:
-                        if INCLUDE_FORBIDDEN_MATCHES:
-                            filtered.append(mid)
-                        continue
-
-            if len(filtered) < matches_min:
-                return match_start_ts, match_stop_ts
-
-            for i in reversed(range(matches_min - 1, matches_num)):
-                match_id = filtered[i]
-
-                u_victory = 0
-                u_champion = ""
-                u_kills = 0
-                u_deaths = 0
-                u_assists = 0
-                u_level = ""
-                u_role = ""
-                u_lane = ""
-                u_role_str = ""
-                u_lane_str = ""
-
-                try:
-                    match = await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, 'europe'), id=match_id)
-                except Exception as e:
-                    if getattr(e, 'status', None) == 403:
-                        if INCLUDE_FORBIDDEN_MATCHES:
-                            if matches_num > 1:
-                                print(f"Match number:\t\t\t{i + 1}")
-                            print(f"Match ID:\t\t\t{match_id}")
-                            print(f"\nMatch details require RSO access token")
-                            if matches_num > 1:
-                                print("─" * HORIZONTAL_LINE)
-                            else:
-                                print()
-                    continue
-
-                match_id = match["metadata"].get("matchId", 0)
-                match_creation_ts = int((match["info"].get("gameCreation", 0)) / 1000)
-                match_start_ts = int((match["info"].get("gameStartTimestamp", 0)) / 1000)
-                match_stop_ts = int((match["info"].get("gameEndTimestamp", 0)) / 1000)
-                match_duration = match["info"].get("gameDuration", 0)
-
-                gamemode = match["info"].get("gameMode")
-
-                if game_modes_mapping.get(gamemode):
-                    gamemode = game_modes_mapping.get(gamemode)
-
-                if matches_num > 1:
-                    print(f"Match number:\t\t\t{i + 1}")
-                print(f"Match ID:\t\t\t{match_id}")
-                print(f"Game mode:\t\t\t{gamemode}")
-                print(f"\nMatch start-end date:\t\t{get_range_of_dates_from_tss(match_start_ts, match_stop_ts)}")
-                print(f"Match creation:\t\t\t{get_date_from_ts(match_creation_ts)}")
-                print(f"Match duration:\t\t\t{display_time(int(match_duration))}")
-
-                last_played = calculate_timespan(int(time.time()), match_stop_ts)
-                if i == 0:
-                    print(f"\nUser played last time:\t\t{last_played} ago")
-
-                teams = []
-
-                for p in match["info"].get("participants"):
-                    u_riotid_name = p.get("riotIdGameName", None)
-                    if not u_riotid_name:
-                        u_riotid_name = p.get("summonerName", None)  # supporting old matches
-
-                    u_teamid = p.get("teamId", 0)
-
-                    add_new_team_member(teams, u_teamid, u_riotid_name)
-
-                    if u_riotid_name == riotid_name:
-                        u_victory = p.get("win", 0)
-                        u_champion = p.get("championName")
-                        u_kills = p.get("kills", 0)
-                        u_deaths = p.get("deaths", 0)
-                        u_assists = p.get("assists", 0)
-                        u_level = p.get("champLevel")
-                        u_role = p.get("role")
-                        u_lane = p.get("lane")
-
-                        print(f"\nVictory:\t\t\t{u_victory}")
-                        print(f"Kills/Deaths/Assists:\t\t{u_kills}/{u_deaths}/{u_assists}")
-
-                        print(f"\nChampion:\t\t\t{u_champion}")
-                        print(f"Level:\t\t\t\t{u_level}")
-                        if u_role and u_role != "NONE":
-                            print(f"Role:\t\t\t\t{u_role}")
-                            u_role_str = f"\nRole: {u_role}"
-                        else:
-                            u_role_str = ""
-                        if u_lane and u_lane != "NONE":
-                            print(f"Lane:\t\t\t\t{u_lane}")
-                            u_lane_str = f"\nLane: {u_lane}"
-                        else:
-                            u_lane_str = ""
-
-                u_teams_number = len(teams)
-                print(f"Teams:\t\t\t\t{u_teams_number}")
-
-                # We display all teams in the console and emails
-                teams_str = ""
-
-                # We save only first two teams to CSV file
-                team1 = []
-                team2 = []
-
-                x = 0
-                for team in teams:
-                    x += 1
-                    teamid_str = f'\nTeam id {team["id"]}:'
-                    teams_str += f"{teamid_str}\n"
-                    print(teamid_str)
-
-                    for member in team["members"]:
-                        member_str = f"- {member}"
-                        teams_str += f"{member_str}\n"
-                        print(member_str)
-                        if x == 1:
-                            team1.append(member)
-                        elif x == 2:
-                            team2.append(member)
-
-                team1_str = " ".join(f"'{x}'" for x in team1)
-                team2_str = " ".join(f"'{x}'" for x in team2)
-
-                try:
-                    if csv_file_name:
-                        write_csv_entry(csv_file_name, str(datetime.fromtimestamp(match_start_ts)), str(datetime.fromtimestamp(match_stop_ts)), display_time(int(match_duration)), u_victory, u_kills, u_deaths, u_assists, u_champion, team1_str, team2_str)
+                    team1_str = " ".join(f"'{p}'" for p in teams[0]["members"]) if len(teams) > 0 else ""
+                    team2_str = " ".join(f"'{p}'" for p in teams[1]["members"]) if len(teams) > 1 else ""
+                    write_csv_entry(csv_file_name, str(datetime.fromtimestamp(match_start_ts)), str(datetime.fromtimestamp(match_stop_ts)), display_time(int(match_duration)), u_victory, u_kills, u_deaths, u_assists, u_champion, team1_str, team2_str)
                 except Exception as e:
                     print(f"* Error: {e}")
 
-                if status_notification_flag and i == 0:
-                    m_subject = f"LoL user {riotid_name} match summary ({get_range_of_dates_from_tss(match_start_ts, match_stop_ts, short=True)}, {display_time(int(match_duration), granularity=1)}, {u_victory})"
-                    m_body = f"LoL user {riotid_name} last match summary\n\nMatch ID: {match_id}\nGame mode: {gamemode}\n\nMatch start-end date: {get_range_of_dates_from_tss(match_start_ts, match_stop_ts)}\nMatch creation: {get_date_from_ts(match_creation_ts)}\nMatch duration: {display_time(int(match_duration))}\n\nVictory: {u_victory}\nKills/deaths/assists: {u_kills}/{u_deaths}/{u_assists}\n\nChampion: {u_champion}\nLevel: {u_level}{u_role_str}{u_lane_str}\nTeams: {u_teams_number}\n{teams_str}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                    print(f"Sending email notification to {RECEIVER_EMAIL}")
-                    send_email(m_subject, m_body, "", SMTP_SSL)
+            if status_notification_flag:
+                teams_str = ""
+                for team in teams:
+                    teams_str += f'{nl_ch}Team id {team["id"]}:{nl_ch}'
+                    for member in team["members"]:
+                        teams_str += f"- {member}{nl_ch}"
 
-                if matches_num > 1:
-                    print("─" * HORIZONTAL_LINE)
+                u_role_str = f"{nl_ch}Role: {u_role}" if u_role and u_role != "NONE" else ""
+                u_lane_str = f"{nl_ch}Lane: {u_lane}" if u_lane and u_lane != "NONE" else ""
 
-    return match_start_ts, match_stop_ts
+                m_subject = f"LoL user {riotid_name} match summary ({get_range_of_dates_from_tss(match_start_ts, match_stop_ts, short=True)}, {display_time(int(match_duration), granularity=1)}, {u_victory})"
+                m_body = f"LoL user {riotid_name} last match summary\n\nMatch ID: {match_id}\nGame mode: {gamemode}\n\nMatch start-end date: {get_range_of_dates_from_tss(match_start_ts, match_stop_ts)}\nMatch creation: {get_date_from_ts(match_creation_ts)}\nMatch duration: {display_time(int(match_duration))}\n\nVictory: {u_victory}\nKills/deaths/assists: {u_kills}/{u_deaths}/{u_assists}\n\nChampion: {u_champion}\nLevel: {u_level}{u_role_str}{u_lane_str}\nTeams: {len(teams)}\n{teams_str}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                print(f"\nSending email notification to {RECEIVER_EMAIL}")
+                send_email(m_subject, m_body, "", SMTP_SSL)
+
+            return match_start_ts, match_stop_ts
+
+        except Exception as e:
+            if getattr(e, 'status', None) == 403:
+                if INCLUDE_FORBIDDEN_MATCHES:
+                    print(f"Match ID:\t\t\t{match_id}")
+                    print(f"Match details require RSO token")
+                    if status_notification_flag:
+                        m_subject = f"LoL user {riotid_name} new forbidden match detected"
+
+                        m_body = (f"LoL user {riotid_name} finished a forbidden match whose details are protected (requires RSO token)\n\nMatch ID: {match_id}\n{get_cur_ts(nl_ch + 'Timestamp: ')}")
+                        print(f"\nSending email notification to {RECEIVER_EMAIL}")
+                        send_email(m_subject, m_body, "", SMTP_SSL)
+            else:
+                print(f"* An unexpected error occurred while processing match {match_id}: {e}")
+
+            return 0, 0
+
+
+# Prints history of matches with relevant details
+async def print_match_history(puuid: str, riotid_name: str, region: str, matches_min: int, matches_num: int, csv_file_name):
+
+    if matches_min > matches_num:
+        return 0, 0
+
+    filtered_match_ids = []
+
+    initial_ids_to_fetch = max(matches_num * 3, 20)
+
+    all_fetched_ids = await get_latest_match_ids(puuid, region, count=initial_ids_to_fetch)
+
+    if not all_fetched_ids:
+        print("* Error: No match history found")
+        return 0, 0
+
+    async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+
+        for match_id in all_fetched_ids:
+            if len(filtered_match_ids) >= matches_num:
+                break
+            try:
+                await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, 'europe'), id=match_id)
+                filtered_match_ids.append(match_id)  # Accessible match
+            except Exception as e:
+                if getattr(e, 'status', None) == 403:  # Forbidden match
+                    if INCLUDE_FORBIDDEN_MATCHES:
+                        filtered_match_ids.append(match_id)  # Add if we're including them
+                    # If not including forbidden, we just skip this ID
+                else:
+                    print(f"* Warning: Cannot check accessibility for match {match_id}, skipping: {e}")
+
+    if len(filtered_match_ids) < matches_min:
+        print(f"* Warning: Not enough displayable matches found. Requested min: {matches_min}, found: {len(filtered_match_ids)}")
+        return 0, 0
+
+    slice_to_display_ordered_newest_to_oldest = filtered_match_ids[matches_min - 1: matches_num]
+
+    last_start_ts, last_stop_ts = 0, 0
+
+    for i_in_slice, match_id_to_process in enumerate(reversed(slice_to_display_ordered_newest_to_oldest)):
+
+        try:
+            match_number = filtered_match_ids.index(match_id_to_process) + 1
+        except ValueError:
+            match_number = "Unknown"
+
+        print(f"Match number:\t\t\t{match_number}\n")
+
+        start_ts, stop_ts = await process_and_print_single_match(match_id_to_process, puuid, riotid_name, region, False, csv_file_name)
+
+        print("─" * HORIZONTAL_LINE)
+
+        if i_in_slice == len(slice_to_display_ordered_newest_to_oldest) - 1:
+            last_start_ts, last_stop_ts = start_ts, stop_ts
+
+    return last_start_ts, last_stop_ts
 
 
 # Prints last n matches for the user
@@ -1008,7 +996,7 @@ async def print_save_recent_matches(riotid: str, region: str, matches_min: int, 
     riotid_name, riotid_tag = get_user_riot_name_tag(riotid)
 
     if puuid:
-        await print_match_history(puuid, riotid_name, region, matches_min, matches_num, False, csv_file_name)
+        await print_match_history(puuid, riotid_name, region, matches_min, matches_num, csv_file_name)
 
 
 # Finds an optional config file
@@ -1055,6 +1043,9 @@ async def lol_monitor_user(riotid, region, csv_file_name):
     alive_counter = 0
     last_match_start_ts = 0
     last_match_stop_ts = 0
+    puuid = None
+    riotid_name = ""
+    summoner_level = "N/A"
 
     try:
         if csv_file_name:
@@ -1069,48 +1060,84 @@ async def lol_monitor_user(riotid, region, csv_file_name):
 
     riotid_name, riotid_tag = get_user_riot_name_tag(riotid)
 
-    summoner_id, summoner_accountid, summoner_level = await get_summoner_details(puuid, region)
+    try:
+        summoner_id, summoner_accountid, summoner_level = await get_summoner_details(puuid, region)
+    except Exception as e:
+        print(f"* Warning: Could not fetch summoner details: {e}")
 
     print(f"Riot ID (name#tag):\t\t{riotid}")
     print(f"Riot PUUID:\t\t\t{puuid}")
     print(f"Summoner level:\t\t\t{summoner_level}")
     print()
 
-    print("User last played match:\n")
+    processed_match_ids = set()
+    initial_match_ids = []
+
     try:
-        last_match_start_ts, last_match_stop_ts = await print_match_history(puuid, riotid_name, region, 1, 1, False, None)
+        initial_match_ids = await get_latest_match_ids(puuid, region, count=20)
     except Exception as e:
-        print(f"* Error while getting last played match: {e}")
-        if 'Unauthorized' in str(e):
-            print("* API key might not be valid anymore!")
+        print(f"* Warning: Could not fetch initial match history due to an error: {e}")
+        print("* The tool will start with no history and detect the first new match played")
 
-    if not last_match_start_ts:
-        print("* Warning: Cannot get last match details !")
+    if initial_match_ids:
+        processed_match_ids.update(initial_match_ids)
+        print("User last played match:\n")
+        try:
+            last_match_start_ts, last_match_stop_ts = await process_and_print_single_match(initial_match_ids[0], puuid, riotid_name, region, False, None)
+        except Exception as e:
+            print(f"* Warning: Could not display details for the last known match: {e}")
+    else:
+        print("* Warning: Could not fetch initial match history. Will detect first new match played")
 
-    last_match_start_ts_old = last_match_start_ts
     ingame = False
-    ingameold = False
+    ingame_old = False
     game_finished_ts = 0
-    alive_counter = 0
     email_sent = False
-    current_match_start_ts = 0
 
     print_cur_ts("\nTimestamp:\t\t\t")
 
     while True:
 
-        ingame = await is_user_in_match(puuid, region)
-
         try:
 
-            if ingame != ingameold:
+            processed_new_match_in_this_cycle = False
+
+            latest_match_ids = await get_latest_match_ids(puuid, region, count=10)
+            if latest_match_ids:
+
+                new_match_ids = [mid for mid in latest_match_ids if mid not in processed_match_ids]
+
+                if new_match_ids:
+                    print(f"*** Found {len(new_match_ids)} new completed match(es)")
+
+                    for match_id in reversed(new_match_ids):
+                        print("─" * HORIZONTAL_LINE)
+
+                        start_ts, stop_ts = await process_and_print_single_match(match_id, puuid, riotid_name, region, STATUS_NOTIFICATION, csv_file_name)
+
+                        if start_ts:
+                            last_match_start_ts = start_ts
+
+                        if stop_ts:
+                            last_match_stop_ts = stop_ts
+
+                        processed_match_ids.add(match_id)
+
+                        processed_new_match_in_this_cycle = True
+
+                    print_cur_ts("\nTimestamp:\t\t\t")
+
+            ingame = await is_user_in_match(puuid, region)
+
+            if ingame != ingame_old:
 
                 # User is playing new match
                 if ingame:
-                    current_match_start_ts = await print_current_match(puuid, riotid_name, region, last_match_start_ts, last_match_stop_ts, STATUS_NOTIFICATION)
+                    await print_current_match(puuid, riotid_name, region, last_match_start_ts, last_match_stop_ts, STATUS_NOTIFICATION)
+                    print_cur_ts("\nTimestamp:\t\t\t")
 
                 # User stopped playing the match
-                else:
+                elif not ingame and not processed_new_match_in_this_cycle:
                     print(f"*** LoL user {riotid_name} stopped playing !")
                     m_subject = f"LoL user {riotid_name} stopped playing"
                     m_body = f"LoL user {riotid_name} stopped playing{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
@@ -1121,38 +1148,21 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                         print(f"Sending email notification to {RECEIVER_EMAIL}")
                         send_email(m_subject, m_body, "", SMTP_SSL)
 
-                print_cur_ts("\nTimestamp:\t\t\t")
-
-            ingameold = ingame
-            alive_counter += 1
-
-            if ingame or (not ingame and game_finished_ts and (int(time.time()) - game_finished_ts) <= LOL_CHECK_INTERVAL):
-                time.sleep(LOL_ACTIVE_CHECK_INTERVAL)
-            else:
-                time.sleep(LOL_CHECK_INTERVAL)
-
-            if not ingame or (ingame and current_match_start_ts and (int(time.time()) - current_match_start_ts) > LOL_HANGED_INGAME_INTERVAL):
-                last_match_start_ts_new = await get_last_match_start_ts(puuid, region)
-
-                if last_match_start_ts_new and last_match_start_ts_new != last_match_start_ts_old:
-
-                    print("User last played match:\n")
-                    last_match_start_ts_new, last_match_stop_ts_new = await print_match_history(puuid, riotid_name, region, 1, 1, STATUS_NOTIFICATION, csv_file_name)
-
-                    if last_match_start_ts_new and last_match_stop_ts_new:
-                        last_match_start_ts = last_match_start_ts_new
-                        last_match_stop_ts = last_match_stop_ts_new
-                        last_match_start_ts_old = last_match_start_ts
-                    else:
-                        print("* Error while getting last match details!")
-
                     print_cur_ts("\nTimestamp:\t\t\t")
 
+            ingame_old = ingame
+            alive_counter += 1
             email_sent = False
 
             if LIVENESS_CHECK_COUNTER and alive_counter >= LIVENESS_CHECK_COUNTER:
                 print_cur_ts("Liveness check, timestamp:\t")
                 alive_counter = 0
+
+            if ingame or (game_finished_ts and (int(time.time()) - game_finished_ts) <= LOL_CHECK_INTERVAL):
+                time.sleep(LOL_ACTIVE_CHECK_INTERVAL)
+            else:
+                time.sleep(LOL_CHECK_INTERVAL)
+
         except Exception as e:
             print(f"* Error, retrying in {display_time(LOL_CHECK_INTERVAL)}: {e}")
             if 'Unauthorized' in str(e):
@@ -1451,15 +1461,16 @@ def main():
             matches_min = 1
 
         if matches_min > matches_num:
-            print("* min_of_recent_matches cannot be > number_of_recent_matches")
+            print(f"* Min matches ({matches_min}) cannot be greater than max matches ({matches_num})")
             sys.exit(1)
 
         list_operation = "* Listing & saving" if CSV_FILE else "* Listing"
+        csv_destination_str = f" to '{CSV_FILE}'" if CSV_FILE else ""
 
         if matches_min != matches_num:
-            print(f"{list_operation} recent matches from {matches_num} to {matches_min} for '{args.riot_id}':\n")
+            print(f"{list_operation} recent matches from {matches_num} to {matches_min} for '{args.riot_id}'{csv_destination_str}:\n")
         else:
-            print(f"{list_operation} recent match for '{args.riot_id}':\n")
+            print(f"{list_operation} recent match for '{args.riot_id}'{csv_destination_str}:\n")
 
         try:
             asyncio.run(print_save_recent_matches(args.riot_id, args.region, matches_min, matches_num, CSV_FILE))
