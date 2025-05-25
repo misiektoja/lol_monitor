@@ -2,6 +2,15 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 1.7 (26 May 2025)
+
+**Features and Improvements**:
+
+- **NEW:** Overhauled the core logic to detect new matches using unique match IDs instead of fragile timestamp-based mechanism, increasing reliability and robustness
+- **NEW:** Email notifications for finished forbidden matches (requiring RSO token)
+- **IMPROVE:** The new ID-based system better handles "forbidden" matches that previously lacked timestamp data
+- **IMPROVE:** Better handling of "stuck" in-game status
+
 # Changes in 1.6 (22 May 2025)
 
 **Features and Improvements**:
