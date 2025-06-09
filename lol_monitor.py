@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.7
+v1.7.1
 
 Tool implementing real-time tracking of LoL (League of Legends) players activities:
 https://github.com/misiektoja/lol_monitor/
@@ -14,7 +14,7 @@ python-dateutil
 python-dotenv (optional)
 """
 
-VERSION = "1.7"
+VERSION = "1.7.1"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -810,7 +810,8 @@ async def get_latest_match_ids(puuid: str, region: str, count: int = 10) -> list
             matches = await client.get_lol_match_v5_match_ids_by_puuid(region=REGION_TO_CONTINENT.get(region, 'europe'), puuid=puuid, queries={'start': 0, 'count': count})
             return matches
     except Exception as e:
-        print(f"* Error fetching latest match IDs: {e}")
+        print(f"* Error: Cannot fetch latest match IDs: {e}")
+        print_cur_ts("Timestamp:\t\t\t")
         return []
 
 
@@ -1103,6 +1104,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
             processed_new_match_in_this_cycle = False
 
             latest_match_ids = await get_latest_match_ids(puuid, region, count=10)
+
             if latest_match_ids:
 
                 new_match_ids = [mid for mid in latest_match_ids if mid not in processed_match_ids]
