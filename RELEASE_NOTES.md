@@ -2,6 +2,12 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 1.7.1 (09 Jun 2025)
+
+**Features and Improvements**:
+
+- **IMPROVE:** Tweaked printed message and added missing timestamp output
+
 # Changes in 1.7 (26 May 2025)
 
 **Features and Improvements**:
