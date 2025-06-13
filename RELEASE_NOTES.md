@@ -2,6 +2,12 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 1.7.2 (13 Jun 2025)
+
+**Bug fixes**:
+
+- **BUGFIX:** Fixed config file generation to work reliably on Windows systems
+
 # Changes in 1.7.1 (09 Jun 2025)
 
 **Features and Improvements**:
