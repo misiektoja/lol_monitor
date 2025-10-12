@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.7.2
+v1.8
 
 Tool implementing real-time tracking of LoL (League of Legends) players activities:
 https://github.com/misiektoja/lol_monitor/
@@ -14,7 +14,7 @@ python-dateutil
 python-dotenv (optional)
 """
 
-VERSION = "1.7.2"
+VERSION = "1.8"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -683,22 +683,18 @@ async def get_user_puuid(riotid: str, region: str) -> Optional[str]:
 # Gets summoner details
 async def get_summoner_details(puuid: str, region: str):
 
-    summoner_id = ""
-    summoner_accountid = ""
     summoner_level = ""
 
     async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
         try:
             summoner = await client.get_lol_summoner_v4_by_puuid(region=region, puuid=puuid)
 
-            summoner_id = str(summoner["id"])
-            summoner_accountid = str(summoner["accountId"])
             summoner_level = str(summoner["summonerLevel"])
 
         except Exception as e:
             print(f"* Error while getting summoner details: {e}")
 
-    return summoner_id, summoner_accountid, summoner_level
+    return summoner_level
 
 
 # Checks if the player is currently in game
@@ -1062,7 +1058,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
     riotid_name, riotid_tag = get_user_riot_name_tag(riotid)
 
     try:
-        summoner_id, summoner_accountid, summoner_level = await get_summoner_details(puuid, region)
+        summoner_level = await get_summoner_details(puuid, region)
     except Exception as e:
         print(f"* Warning: Could not fetch summoner details: {e}")
 
