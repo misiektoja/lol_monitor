@@ -1,6 +1,6 @@
 # lol_monitor
 
-lol_monitor is a tool for real-time monitoring of LoL (League of Legends) players' activities. 
+lol_monitor is a tool for real-time monitoring of **LoL (League of Legends) players' activities**. 
 
 <a id="features"></a>
 ## Features
@@ -18,6 +18,7 @@ lol_monitor is a tool for real-time monitoring of LoL (League of Legends) player
 - Email notifications for different events (player starts or finishes a match, match summary, errors)
 - Saving all gaming activities with timestamps to a CSV file
 - Possibility to control the running copy of the script via signals
+- Functional, procedural Python (minimal OOP)
 
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/assets/lol_monitor.png" alt="lol_monitor_screenshot" width="70%"/>
@@ -55,8 +56,8 @@ lol_monitor is a tool for real-time monitoring of LoL (League of Legends) player
 
 Tested on:
 
-* **macOS**: Ventura, Sonoma, Sequoia
-* **Linux**: Raspberry Pi OS (Bullseye, Bookworm), Ubuntu 24, Rocky Linux 8.x/9.x, Kali Linux 2024/2025
+* **macOS**: Ventura, Sonoma, Sequoia, Tahoe
+* **Linux**: Raspberry Pi OS (Bullseye, Bookworm, Trixie), Ubuntu 24/25, Rocky Linux 8.x/9.x, Kali Linux 2024/2025
 * **Windows**: 10, 11
 
 It should work on other versions of macOS, Linux, Unix and Windows as well.
