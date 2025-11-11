@@ -5,8 +5,8 @@ lol_monitor is a tool for real-time monitoring of **LoL (League of Legends) play
 <a id="features"></a>
 ## Features
 
-- Real-time tracking of LoL users' gaming activity (including detection when a user starts or finishes a match)
-- Most important statistics for finished matches:
+- **Real-time tracking** of LoL users' gaming activity (including detection when a user starts or finishes a match)
+- **Most important statistics for finished matches**:
   - game mode
   - victory or defeat
   - kills, deaths, assists
@@ -15,10 +15,10 @@ lol_monitor is a tool for real-time monitoring of **LoL (League of Legends) play
   - role
   - lane
   - team members
-- Email notifications for different events (player starts or finishes a match, match summary, errors)
-- Saving all gaming activities with timestamps to a CSV file
-- Possibility to control the running copy of the script via signals
-- Functional, procedural Python (minimal OOP)
+- **Email notifications** for different events (player starts or finishes a match, match summary, errors)
+- **Saving all gaming activities** with timestamps to a **CSV file**
+- Possibility to **control the running copy** of the script via signals
+- **Functional, procedural Python** (minimal OOP)
 
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/assets/lol_monitor.png" alt="lol_monitor_screenshot" width="70%"/>
