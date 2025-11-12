@@ -929,7 +929,9 @@ async def print_match_history(puuid: str, riotid_name: str, region: str, matches
 
     filtered_match_ids = []
 
-    initial_ids_to_fetch = max(matches_num * 3, 20)
+    # use below to widen the detection of not accessible / forbidden matches
+    # initial_ids_to_fetch = max(matches_num * 3, 20)
+    initial_ids_to_fetch = max(matches_num, 20)
 
     all_fetched_ids = await get_latest_match_ids(puuid, region, count=initial_ids_to_fetch)
 
@@ -1078,7 +1080,12 @@ async def save_custom_match_to_csv(snapshot: dict, riotid_name: str, start_ts: i
     if not csv_file_name or not snapshot:
         return
 
+    snap_start = int(snapshot.get('start_ts') or 0)
+    if snap_start:
+        start_ts = snap_start
+
     start_dt_str = str(datetime.fromtimestamp(start_ts)) if start_ts else ""
+
     stop_dt_str = str(datetime.fromtimestamp(stop_ts)) if stop_ts else ""
     duration_sec = max(0, (stop_ts or 0) - (start_ts or 0))
     duration_str = display_time(int(duration_sec))
@@ -1146,7 +1153,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
     processed_match_ids = set()
     initial_match_ids = []
 
-    CUSTOM_SAVE_DELAY = 300  # 5 minutes
+    CUSTOM_SAVE_DELAY = LOL_ACTIVE_CHECK_INTERVAL * 2
     current_custom_snapshot = None
     current_match_start_ts = 0
     pending_custom = None
@@ -1228,7 +1235,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                         snap = await get_current_match_details(puuid, region)
                         if snap and snap.get('mode') == 'CUSTOM_GAME':
                             current_custom_snapshot = snap
-                            current_match_start_ts = int(time.time())
+                            current_match_start_ts = int(snap.get('start_ts') or 0)
                         else:
                             current_custom_snapshot = None
                             current_match_start_ts = 0
@@ -1255,7 +1262,6 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                             'start_ts': current_match_start_ts or last_match_start_ts or 0,
                             'stop_ts': game_finished_ts,
                         }
-                        print(f"Armed custom game save if no completion arrives by {display_time(CUSTOM_SAVE_DELAY)} from now")
 
                     started_announced = False
 
@@ -1275,9 +1281,11 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                         pending_custom['stop_ts'],
                         csv_file_name
                     )
-                    print("*** Saved custom game match to CSV (no completion within 5 minutes)")
+                    print(f"*** Saved custom game match to CSV (no completion within {display_time(CUSTOM_SAVE_DELAY)})")
+                    print_cur_ts("\nTimestamp:\t\t\t")
                 except Exception as e:
                     print(f"* Warning: Could not save custom game match to CSV: {e}")
+                    print_cur_ts("\nTimestamp:\t\t\t")
                 finally:
                     pending_custom = None
                     current_custom_snapshot = None
