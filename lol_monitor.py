@@ -1034,6 +1034,81 @@ def resolve_executable(path):
     raise FileNotFoundError(f"Could not find executable '{path}'")
 
 
+# Returns a compact snapshot of the current live match with mode, start_ts, and participants
+async def get_current_match_details(puuid: str, region: str) -> dict:
+    async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+        try:
+            current_match = await client.get_lol_spectator_v5_active_game_by_summoner(region=region, puuid=puuid)
+        except Exception:
+            return {}
+
+    if not current_match:
+        return {}
+
+    gamemode_raw = current_match.get("gameMode")
+    gamemode = game_modes_mapping.get(gamemode_raw, gamemode_raw)
+
+    start_ts = int((current_match.get("gameStartTime", 0)) / 1000)
+    if start_ts < 1000000000:
+        start_ts = int(time.time())
+
+    participants = []
+    for p in current_match.get("participants", []):
+        riot_id = p.get("riotId")
+        if riot_id:
+            riotid_name = riot_id.split("#", 1)[0]
+        else:
+            riotid_name = p.get("riotIdGameName") or p.get("summonerName") or "Unknown Player"
+
+        participants.append({
+            "riotIdName": riotid_name,
+            "teamId": p.get("teamId", 0),
+            "championId": p.get("championId", 0),
+        })
+
+    return {
+        "mode": gamemode,
+        "start_ts": start_ts,
+        "participants": participants,
+    }
+
+
+# Append a CSV row from a live snapshot for custom game matches that never show up
+async def save_custom_match_to_csv(snapshot: dict, riotid_name: str, start_ts: int, stop_ts: int, csv_file_name: str) -> None:
+    if not csv_file_name or not snapshot:
+        return
+
+    start_dt_str = str(datetime.fromtimestamp(start_ts)) if start_ts else ""
+    stop_dt_str = str(datetime.fromtimestamp(stop_ts)) if stop_ts else ""
+    duration_sec = max(0, (stop_ts or 0) - (start_ts or 0))
+    duration_str = display_time(int(duration_sec))
+
+    teams_map = {}  # teamId -> [names]
+    for p in snapshot.get("participants", []):
+        t = p.get("teamId", 0)
+        teams_map.setdefault(t, []).append(p.get("riotIdName", "Unknown Player"))
+
+    team_ids_sorted = sorted(teams_map.keys())
+    team1_members = teams_map.get(team_ids_sorted[0], []) if team_ids_sorted else []
+    team2_members = teams_map.get(team_ids_sorted[1], []) if len(team_ids_sorted) > 1 else []
+
+    team1_str = " ".join(f"'{n}'" for n in team1_members)
+    team2_str = " ".join(f"'{n}'" for n in team2_members)
+
+    user_champion = "N/A"
+    for p in snapshot.get("participants", []):
+        if p.get("riotIdName") == riotid_name:
+            user_champion = p.get("championId", "N/A")
+            break
+
+    victory = "N/A"
+    kills = ""
+    deaths = ""
+    assists = ""
+
+    write_csv_entry(csv_file_name=csv_file_name, start_date_ts=start_dt_str, stop_date_ts=stop_dt_str, duration_ts=duration_str, victory=victory, kills=kills, deaths=deaths, assists=assists, champion=user_champion, team1=team1_str, team2=team2_str)
+
+
 # Main function that monitors gaming activity of the specified LoL user
 async def lol_monitor_user(riotid, region, csv_file_name):
 
@@ -1069,6 +1144,11 @@ async def lol_monitor_user(riotid, region, csv_file_name):
 
     processed_match_ids = set()
     initial_match_ids = []
+
+    CUSTOM_SAVE_DELAY = 300  # 5 minutes
+    current_custom_snapshot = None
+    current_match_start_ts = 0
+    pending_custom = None
 
     try:
         initial_match_ids = await get_latest_match_ids(puuid, region, count=20)
@@ -1107,6 +1187,11 @@ async def lol_monitor_user(riotid, region, csv_file_name):
 
                 if new_match_ids:
                     print(f"*** Found {len(new_match_ids)} new completed match(es)")
+                    # Any completion arriving cancels a pending custom game save (assume it corresponds to the last stop)
+                    if pending_custom:
+                        pending_custom = None
+                        current_custom_snapshot = None
+                        current_match_start_ts = 0
 
                     for match_id in reversed(new_match_ids):
                         print("─" * HORIZONTAL_LINE)
@@ -1132,6 +1217,20 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                 # User is playing new match
                 if ingame:
                     await print_current_match(puuid, riotid_name, region, last_match_start_ts, last_match_stop_ts, STATUS_NOTIFICATION)
+                    # Capture snapshot for custom games so we can persist it later if no completion arrives
+                    try:
+                        snap = await get_current_match_details(puuid, region)
+                        if snap and snap.get('mode') == 'CUSTOM_GAME':
+                            current_custom_snapshot = snap
+                            current_match_start_ts = int(time.time())
+                        else:
+                            current_custom_snapshot = None
+                            current_match_start_ts = 0
+                    except Exception as e:
+                        print(f"* Warning: Could not capture current match details: {e}")
+                        current_custom_snapshot = None
+                        current_match_start_ts = 0
+
                     print_cur_ts("\nTimestamp:\t\t\t")
 
                 # User stopped playing the match
@@ -1142,11 +1241,39 @@ async def lol_monitor_user(riotid, region, csv_file_name):
 
                     game_finished_ts = int(time.time())
 
+                    # If the last active game was a custom game, arm a delayed save in case no completion arrives
+                    if current_custom_snapshot:
+                        pending_custom = {
+                            'deadline': game_finished_ts + CUSTOM_SAVE_DELAY,
+                            'snapshot': current_custom_snapshot,
+                            'start_ts': current_match_start_ts or last_match_start_ts or 0,
+                            'stop_ts': game_finished_ts,
+                        }
+                        print(f"Armed custom game save if no completion arrives by {display_time(CUSTOM_SAVE_DELAY)} from now")
+
                     if STATUS_NOTIFICATION:
                         print(f"Sending email notification to {RECEIVER_EMAIL}")
                         send_email(m_subject, m_body, "", SMTP_SSL)
 
                     print_cur_ts("\nTimestamp:\t\t\t")
+
+            # Fire pending custom game save if deadline passed and no completion arrived
+            if pending_custom and int(time.time()) >= pending_custom['deadline']:
+                try:
+                    await save_custom_match_to_csv(
+                        pending_custom['snapshot'],
+                        riotid_name,
+                        pending_custom['start_ts'],
+                        pending_custom['stop_ts'],
+                        csv_file_name
+                    )
+                    print("*** Saved custom game match to CSV (no completion within 5 minutes)")
+                except Exception as e:
+                    print(f"* Warning: Could not save custom game match to CSV: {e}")
+                finally:
+                    pending_custom = None
+                    current_custom_snapshot = None
+                    current_match_start_ts = 0
 
             ingame_old = ingame
             alive_counter += 1
