@@ -801,14 +801,95 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
 
 # Gets recent match IDs
 async def get_latest_match_ids(puuid: str, region: str, count: int = 10) -> list:
+    """
+    Fetches match IDs from Riot API with pagination support.
+    The Riot API has a maximum limit of 100 matches per request.
+    For requests > 100, this function automatically paginates.
+    """
+    MAX_MATCHES_PER_REQUEST = 100
+    all_matches = []
+    
     try:
         async with RiotAPIClient(default_headers={'X-Riot-Token': RIOT_API_KEY}) as client:
-            matches = await client.get_lol_match_v5_match_ids_by_puuid(region=REGION_TO_CONTINENT.get(region, 'europe'), puuid=puuid, queries={'start': 0, 'count': count})
-            return matches
+            # If count <= 100, make a single request
+            if count <= MAX_MATCHES_PER_REQUEST:
+                matches = await client.get_lol_match_v5_match_ids_by_puuid(
+                    region=REGION_TO_CONTINENT.get(region, 'europe'),
+                    puuid=puuid,
+                    queries={'start': 0, 'count': count}
+                )
+                return matches if matches else []
+            
+            # For counts > 100, paginate with multiple requests
+            start = 0
+            remaining = count
+            
+            while remaining > 0:
+                # Request up to MAX_MATCHES_PER_REQUEST matches per call
+                request_count = min(remaining, MAX_MATCHES_PER_REQUEST)
+                
+                matches = await client.get_lol_match_v5_match_ids_by_puuid(
+                    region=REGION_TO_CONTINENT.get(region, 'europe'),
+                    puuid=puuid,
+                    queries={'start': start, 'count': request_count}
+                )
+                
+                if not matches:
+                    # No more matches available
+                    break
+                
+                all_matches.extend(matches)
+                
+                # If we got fewer matches than requested, we've reached the end
+                if len(matches) < request_count:
+                    break
+                
+                start += len(matches)
+                remaining -= len(matches)
+            
+            return all_matches[:count]  # Return exactly the requested count (or less if not available)
+            
     except Exception as e:
         print(f"* Error: Cannot fetch latest match IDs: {e}")
         print_cur_ts("Timestamp:\t\t\t")
         return []
+
+
+# Gets the total count of available matches
+async def get_total_match_count(puuid: str, region: str) -> int:
+    """
+    Fetches all available match IDs to determine total count.
+    Returns the total number of matches available for this player.
+    """
+    MAX_MATCHES_PER_REQUEST = 100
+    all_matches = []
+    start = 0
+    
+    try:
+        async with RiotAPIClient(default_headers={'X-Riot-Token': RIOT_API_KEY}) as client:
+            while True:
+                matches = await client.get_lol_match_v5_match_ids_by_puuid(
+                    region=REGION_TO_CONTINENT.get(region, 'europe'),
+                    puuid=puuid,
+                    queries={'start': start, 'count': MAX_MATCHES_PER_REQUEST}
+                )
+                
+                if not matches:
+                    break
+                
+                all_matches.extend(matches)
+                
+                # If we got fewer than requested, we've reached the end
+                if len(matches) < MAX_MATCHES_PER_REQUEST:
+                    break
+                
+                start += len(matches)
+            
+            return len(all_matches)
+            
+    except Exception as e:
+        print(f"* Error: Cannot determine total match count: {e}")
+        return 0
 
 
 # Processes and prints details for a single match id, handling forbidden matches
@@ -935,7 +1016,9 @@ async def print_match_history(puuid: str, riotid_name: str, region: str, matches
 
     # use below to widen the detection of not accessible / forbidden matches
     # initial_ids_to_fetch = max(matches_num * 3, 20)
-    initial_ids_to_fetch = max(matches_num, 20)
+    # Fetch enough matches to cover the range we need
+    # We need at least matches_num matches, but if matches_min > 1, we need even more
+    initial_ids_to_fetch = max(matches_num, matches_min, 20)
 
     all_fetched_ids = await get_latest_match_ids(puuid, region, count=initial_ids_to_fetch)
 
@@ -1467,6 +1550,12 @@ def main():
         type=int,
         help="Minimum match index when listing recent matches"
     )
+    listing.add_argument(
+        "-a", "--all-matches",
+        dest="all_matches",
+        action="store_true",
+        help="Fetch all available matches (use with -l)"
+    )
 
     # Features & Output
     opts = parser.add_argument_group("Features & output")
@@ -1598,15 +1687,43 @@ def main():
             sys.exit(1)
 
     if args.list_recent_matches:
-        if args.recent_matches_count and args.recent_matches_count > 0:
-            matches_num = args.recent_matches_count
+        if args.all_matches:
+            # Fetch all available matches
+            print("* Determining total number of available matches...")
+            try:
+                async def get_all_matches_info():
+                    puuid = await get_user_puuid(args.riot_id, args.region)
+                    if puuid:
+                        total_count = await get_total_match_count(puuid, args.region)
+                        return puuid, total_count
+                    return None, 0
+                
+                puuid, total_count = asyncio.run(get_all_matches_info())
+                if puuid and total_count > 0:
+                    matches_num = total_count
+                    matches_min = 1
+                    print(f"* Found {total_count} total matches available\n")
+                else:
+                    if not puuid:
+                        print("* Error: Could not get PUUID for user")
+                    else:
+                        print("* Error: Could not determine total match count")
+                    sys.exit(1)
+            except Exception as e:
+                print(f"* Error: {e}")
+                if 'Unauthorized' in str(e):
+                    print("* API key might not be valid anymore!")
+                sys.exit(1)
         else:
-            matches_num = 2
+            if args.recent_matches_count and args.recent_matches_count > 0:
+                matches_num = args.recent_matches_count
+            else:
+                matches_num = 2
 
-        if args.min_of_recent_matches and args.min_of_recent_matches > 0:
-            matches_min = args.min_of_recent_matches
-        else:
-            matches_min = 1
+            if args.min_of_recent_matches and args.min_of_recent_matches > 0:
+                matches_min = args.min_of_recent_matches
+            else:
+                matches_min = 1
 
         if matches_min > matches_num:
             print(f"* Min matches ({matches_min}) cannot be greater than max matches ({matches_num})")
