@@ -1118,6 +1118,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
     puuid = None
     riotid_name = ""
     summoner_level = "N/A"
+    started_announced = False
 
     try:
         if csv_file_name:
@@ -1208,6 +1209,8 @@ async def lol_monitor_user(riotid, region, csv_file_name):
 
                         processed_new_match_in_this_cycle = True
 
+                        started_announced = False
+
                     print_cur_ts("\nTimestamp:\t\t\t")
 
             ingame = await is_user_in_match(puuid, region)
@@ -1216,7 +1219,10 @@ async def lol_monitor_user(riotid, region, csv_file_name):
 
                 # User is playing new match
                 if ingame:
-                    await print_current_match(puuid, riotid_name, region, last_match_start_ts, last_match_stop_ts, STATUS_NOTIFICATION)
+                    ts = await print_current_match(puuid, riotid_name, region, last_match_start_ts, last_match_stop_ts, STATUS_NOTIFICATION)
+                    if ts and ts > 0:
+                        started_announced = True
+
                     # Capture snapshot for custom games so we can persist it later if no completion arrives
                     try:
                         snap = await get_current_match_details(puuid, region)
@@ -1234,7 +1240,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                     print_cur_ts("\nTimestamp:\t\t\t")
 
                 # User stopped playing the match
-                elif not ingame and not processed_new_match_in_this_cycle:
+                elif not ingame and not processed_new_match_in_this_cycle and started_announced:
                     print(f"*** LoL user {riotid_name} stopped playing !")
                     m_subject = f"LoL user {riotid_name} stopped playing"
                     m_body = f"LoL user {riotid_name} stopped playing{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
@@ -1250,6 +1256,8 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                             'stop_ts': game_finished_ts,
                         }
                         print(f"Armed custom game save if no completion arrives by {display_time(CUSTOM_SAVE_DELAY)} from now")
+
+                    started_announced = False
 
                     if STATUS_NOTIFICATION:
                         print(f"Sending email notification to {RECEIVER_EMAIL}")
