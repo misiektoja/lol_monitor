@@ -1024,22 +1024,18 @@ async def print_match_history(puuid: str, riotid_name: str, region: str, matches
     start_index = matches_min - 1
     range_size = matches_num - matches_min + 1
     
-    # Fetch a buffer to account for forbidden matches (up to 20% more, but at least 5 extra)
-    # This helps ensure we get enough accessible matches even if some are forbidden
-    buffer_size = max(int(range_size * 0.2), 5)
-    ids_to_fetch = range_size + buffer_size
-
-    # Fetch match IDs starting from the correct index
-    all_fetched_ids = await get_latest_match_ids(puuid, region, count=ids_to_fetch, start=start_index)
+    # First, fetch exactly what we need (no buffer to avoid extra API calls)
+    all_fetched_ids = await get_latest_match_ids(puuid, region, count=range_size, start=start_index)
 
     if not all_fetched_ids:
         print("* Error: No match history found")
         return 0, 0
 
     filtered_match_ids = []
+    current_start = start_index + len(all_fetched_ids)
     async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
 
-        # Only check accessibility for matches we actually need
+        # Check accessibility for the matches we fetched
         for match_id in all_fetched_ids:
             if len(filtered_match_ids) >= range_size:
                 break
@@ -1053,6 +1049,38 @@ async def print_match_history(puuid: str, riotid_name: str, region: str, matches
                     # If not including forbidden, we just skip this ID
                 else:
                     print(f"* Warning: Cannot check accessibility for match {match_id}, skipping: {e}")
+        
+        # If we don't have enough accessible matches, fetch more incrementally
+        # This avoids fetching a large buffer upfront when it might not be needed
+        while len(filtered_match_ids) < range_size:
+            # Calculate how many more we need
+            needed = range_size - len(filtered_match_ids)
+            # Fetch a small batch (up to 20 at a time to avoid large unnecessary fetches)
+            batch_size = min(needed + 5, 20)  # Fetch a bit extra to account for more forbidden matches
+            
+            additional_ids = await get_latest_match_ids(puuid, region, count=batch_size, start=current_start)
+            
+            if not additional_ids:
+                # No more matches available
+                break
+            
+            all_fetched_ids.extend(additional_ids)
+            current_start += len(additional_ids)
+            
+            # Check accessibility for the new matches
+            for match_id in additional_ids:
+                if len(filtered_match_ids) >= range_size:
+                    break
+                try:
+                    await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, 'europe'), id=match_id)
+                    filtered_match_ids.append(match_id)  # Accessible match
+                except Exception as e:
+                    if getattr(e, 'status', None) == 403:  # Forbidden match
+                        if INCLUDE_FORBIDDEN_MATCHES:
+                            filtered_match_ids.append(match_id)  # Add if we're including them
+                        # If not including forbidden, we just skip this ID
+                    else:
+                        print(f"* Warning: Cannot check accessibility for match {match_id}, skipping: {e}")
 
     if len(filtered_match_ids) < range_size:
         print(f"* Warning: Not enough displayable matches found. Requested {range_size} matches (from #{matches_min} to #{matches_num}), found: {len(filtered_match_ids)}")
