@@ -800,11 +800,17 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
 
 
 # Gets recent match IDs
-async def get_latest_match_ids(puuid: str, region: str, count: int = 10) -> list:
+async def get_latest_match_ids(puuid: str, region: str, count: int = 10, start: int = 0) -> list:
     """
     Fetches match IDs from Riot API with pagination support.
     The Riot API has a maximum limit of 100 matches per request.
     For requests > 100, this function automatically paginates.
+    
+    Args:
+        puuid: Player's PUUID
+        region: Region code
+        count: Number of matches to fetch
+        start: Starting index (0-based, where 0 is the newest match)
     """
     MAX_MATCHES_PER_REQUEST = 100
     all_matches = []
@@ -816,12 +822,12 @@ async def get_latest_match_ids(puuid: str, region: str, count: int = 10) -> list
                 matches = await client.get_lol_match_v5_match_ids_by_puuid(
                     region=REGION_TO_CONTINENT.get(region, 'europe'),
                     puuid=puuid,
-                    queries={'start': 0, 'count': count}
+                    queries={'start': start, 'count': count}
                 )
                 return matches if matches else []
             
             # For counts > 100, paginate with multiple requests
-            start = 0
+            current_start = start
             remaining = count
             
             while remaining > 0:
@@ -831,7 +837,7 @@ async def get_latest_match_ids(puuid: str, region: str, count: int = 10) -> list
                 matches = await client.get_lol_match_v5_match_ids_by_puuid(
                     region=REGION_TO_CONTINENT.get(region, 'europe'),
                     puuid=puuid,
-                    queries={'start': start, 'count': request_count}
+                    queries={'start': current_start, 'count': request_count}
                 )
                 
                 if not matches:
@@ -844,7 +850,7 @@ async def get_latest_match_ids(puuid: str, region: str, count: int = 10) -> list
                 if len(matches) < request_count:
                     break
                 
-                start += len(matches)
+                current_start += len(matches)
                 remaining -= len(matches)
             
             return all_matches[:count]  # Return exactly the requested count (or less if not available)
@@ -860,6 +866,7 @@ async def get_total_match_count(puuid: str, region: str) -> int:
     """
     Fetches all available match IDs to determine total count.
     Returns the total number of matches available for this player.
+    This is optimized to stop as soon as we detect the end.
     """
     MAX_MATCHES_PER_REQUEST = 100
     all_matches = []
@@ -1012,24 +1019,29 @@ async def print_match_history(puuid: str, riotid_name: str, region: str, matches
     if matches_min > matches_num:
         return 0, 0
 
-    filtered_match_ids = []
+    # Convert 1-based match numbers to 0-based indices
+    # Match #1 (newest) = index 0, Match #101 = index 100
+    start_index = matches_min - 1
+    range_size = matches_num - matches_min + 1
+    
+    # Fetch a buffer to account for forbidden matches (up to 20% more, but at least 5 extra)
+    # This helps ensure we get enough accessible matches even if some are forbidden
+    buffer_size = max(int(range_size * 0.2), 5)
+    ids_to_fetch = range_size + buffer_size
 
-    # use below to widen the detection of not accessible / forbidden matches
-    # initial_ids_to_fetch = max(matches_num * 3, 20)
-    # Fetch enough matches to cover the range we need
-    # We need at least matches_num matches, but if matches_min > 1, we need even more
-    initial_ids_to_fetch = max(matches_num, matches_min, 20)
-
-    all_fetched_ids = await get_latest_match_ids(puuid, region, count=initial_ids_to_fetch)
+    # Fetch match IDs starting from the correct index
+    all_fetched_ids = await get_latest_match_ids(puuid, region, count=ids_to_fetch, start=start_index)
 
     if not all_fetched_ids:
         print("* Error: No match history found")
         return 0, 0
 
+    filtered_match_ids = []
     async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
 
+        # Only check accessibility for matches we actually need
         for match_id in all_fetched_ids:
-            if len(filtered_match_ids) >= matches_num:
+            if len(filtered_match_ids) >= range_size:
                 break
             try:
                 await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, 'europe'), id=match_id)
@@ -1042,20 +1054,25 @@ async def print_match_history(puuid: str, riotid_name: str, region: str, matches
                 else:
                     print(f"* Warning: Cannot check accessibility for match {match_id}, skipping: {e}")
 
-    if len(filtered_match_ids) < matches_min:
-        print(f"* Warning: Not enough displayable matches found. Requested min: {matches_min}, found: {len(filtered_match_ids)}")
-        return 0, 0
+    if len(filtered_match_ids) < range_size:
+        print(f"* Warning: Not enough displayable matches found. Requested {range_size} matches (from #{matches_min} to #{matches_num}), found: {len(filtered_match_ids)}")
+        if len(filtered_match_ids) == 0:
+            return 0, 0
 
-    slice_to_display_ordered_newest_to_oldest = filtered_match_ids[matches_min - 1: matches_num]
+    # Use the matches we found (they're already in the correct range)
+    slice_to_display_ordered_newest_to_oldest = filtered_match_ids[:range_size]
 
     last_start_ts, last_stop_ts = 0, 0
 
     for i_in_slice, match_id_to_process in enumerate(reversed(slice_to_display_ordered_newest_to_oldest)):
 
         try:
-            match_number = filtered_match_ids.index(match_id_to_process) + 1
+            # Calculate the actual match number (1-based)
+            # filtered_match_ids contains matches starting from matches_min
+            match_index_in_filtered = filtered_match_ids.index(match_id_to_process)
+            match_number = matches_min + match_index_in_filtered
         except ValueError:
-            match_number = "Unknown"
+            match_number = matches_min + i_in_slice
 
         print(f"Match number:\t\t\t{match_number}\n")
 
