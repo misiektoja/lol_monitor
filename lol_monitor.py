@@ -1241,9 +1241,9 @@ async def save_custom_match_to_csv(snapshot: dict, riotid_name: str, start_ts: i
             break
 
     victory = "N/A"
-    kills = ""
-    deaths = ""
-    assists = ""
+    kills = "N/A"
+    deaths = "N/A"
+    assists = "N/A"
     level = "N/A"
     role = "N/A"
     lane = "N/A"
