@@ -220,7 +220,7 @@ import platform
 import re
 import ipaddress
 import asyncio
-from typing import Optional
+from typing import Optional, Any
 try:
     from pulsefire.clients import RiotAPIClient
 except ModuleNotFoundError:
@@ -805,7 +805,7 @@ async def get_latest_match_ids(puuid: str, region: str, count: int = 10, start: 
     Fetches match IDs from Riot API with pagination support.
     The Riot API has a maximum limit of 100 matches per request.
     For requests > 100, this function automatically paginates.
-    
+
     Args:
         puuid: Player's PUUID
         region: Region code
@@ -814,7 +814,7 @@ async def get_latest_match_ids(puuid: str, region: str, count: int = 10, start: 
     """
     MAX_MATCHES_PER_REQUEST = 100
     all_matches = []
-    
+
     try:
         async with RiotAPIClient(default_headers={'X-Riot-Token': RIOT_API_KEY}) as client:
             # If count <= 100, make a single request
@@ -825,36 +825,36 @@ async def get_latest_match_ids(puuid: str, region: str, count: int = 10, start: 
                     queries={'start': start, 'count': count}
                 )
                 return matches if matches else []
-            
+
             # For counts > 100, paginate with multiple requests
             current_start = start
             remaining = count
-            
+
             while remaining > 0:
                 # Request up to MAX_MATCHES_PER_REQUEST matches per call
                 request_count = min(remaining, MAX_MATCHES_PER_REQUEST)
-                
+
                 matches = await client.get_lol_match_v5_match_ids_by_puuid(
                     region=REGION_TO_CONTINENT.get(region, 'europe'),
                     puuid=puuid,
                     queries={'start': current_start, 'count': request_count}
                 )
-                
+
                 if not matches:
                     # No more matches available
                     break
-                
+
                 all_matches.extend(matches)
-                
+
                 # If we got fewer matches than requested, we've reached the end
                 if len(matches) < request_count:
                     break
-                
+
                 current_start += len(matches)
                 remaining -= len(matches)
-            
+
             return all_matches[:count]  # Return exactly the requested count (or less if not available)
-            
+
     except Exception as e:
         print(f"* Error: Cannot fetch latest match IDs: {e}")
         print_cur_ts("Timestamp:\t\t\t")
@@ -871,7 +871,7 @@ async def get_total_match_count(puuid: str, region: str) -> int:
     MAX_MATCHES_PER_REQUEST = 100
     all_matches = []
     start = 0
-    
+
     try:
         async with RiotAPIClient(default_headers={'X-Riot-Token': RIOT_API_KEY}) as client:
             while True:
@@ -880,137 +880,156 @@ async def get_total_match_count(puuid: str, region: str) -> int:
                     puuid=puuid,
                     queries={'start': start, 'count': MAX_MATCHES_PER_REQUEST}
                 )
-                
+
                 if not matches:
                     break
-                
+
                 all_matches.extend(matches)
-                
+
                 # If we got fewer than requested, we've reached the end
                 if len(matches) < MAX_MATCHES_PER_REQUEST:
                     break
-                
+
                 start += len(matches)
-            
+
             return len(all_matches)
-            
+
     except Exception as e:
         print(f"* Error: Cannot determine total match count: {e}")
         return 0
 
 
 # Processes and prints details for a single match id, handling forbidden matches
-async def process_and_print_single_match(match_id: str, puuid: str, riotid_name: str, region: str, status_notification_flag: bool, csv_file_name: Optional[str]) -> tuple[int, int]:
+async def process_and_print_single_match(match_id: str, puuid: str, riotid_name: str, region: str, status_notification_flag: bool, csv_file_name: Optional[str], cached_match_data: Optional[Any] = None) -> tuple[int, int]:
 
-    async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
-        try:
-            match = await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, 'europe'), id=match_id)
+    # Use cached match data if provided, otherwise fetch it
+    if cached_match_data:
+        match = cached_match_data
+    else:
+        async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+            try:
+                match = await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, 'europe'), id=match_id)
+            except Exception as e:
+                if getattr(e, 'status', None) == 403:
+                    if INCLUDE_FORBIDDEN_MATCHES:
+                        print(f"Match ID:\t\t\t{match_id}")
+                        print(f"Match details require RSO token")
+                        if status_notification_flag:
+                            m_subject = f"LoL user {riotid_name} new forbidden match detected"
+                            m_body = (f"LoL user {riotid_name} finished a forbidden match whose details are protected (requires RSO token)\n\nMatch ID: {match_id}\n{get_cur_ts(nl_ch + 'Timestamp: ')}")
+                            print(f"\nSending email notification to {RECEIVER_EMAIL}")
+                            send_email(m_subject, m_body, "", SMTP_SSL)
+                    return 0, 0
+                else:
+                    print(f"* An unexpected error occurred while processing match {match_id}: {e}")
+                    return 0, 0
 
-            match_info = match.get("info", {})
-            match_metadata = match.get("metadata", {})
+    try:
+        match_info = match.get("info", {})
+        match_metadata = match.get("metadata", {})
 
-            match_start_ts = int(match_info.get("gameStartTimestamp", 0) / 1000)
-            match_stop_ts = int(match_info.get("gameEndTimestamp", 0) / 1000)
-            match_creation_ts = int(match_info.get("gameCreation", 0) / 1000)
-            match_duration = match_info.get("gameDuration", 0)
-            gamemode = game_modes_mapping.get(match_info.get("gameMode"), match_info.get("gameMode"))
+        match_start_ts = int(match_info.get("gameStartTimestamp", 0) / 1000)
+        match_stop_ts = int(match_info.get("gameEndTimestamp", 0) / 1000)
+        match_creation_ts = int(match_info.get("gameCreation", 0) / 1000)
+        match_duration = match_info.get("gameDuration", 0)
+        gamemode = game_modes_mapping.get(match_info.get("gameMode"), match_info.get("gameMode"))
 
-            print(f"Match ID:\t\t\t{match_id}")
-            print(f"Game mode:\t\t\t{gamemode}")
-            print(f"\nMatch start-end date:\t\t{get_range_of_dates_from_tss(match_start_ts, match_stop_ts)}")
-            print(f"Match creation:\t\t\t{get_date_from_ts(match_creation_ts)}")
-            print(f"Match duration:\t\t\t{display_time(int(match_duration))}")
+        print(f"Match ID:\t\t\t{match_id}")
+        print(f"Game mode:\t\t\t{gamemode}")
+        print(f"\nMatch start-end date:\t\t{get_range_of_dates_from_tss(match_start_ts, match_stop_ts)}")
+        print(f"Match creation:\t\t\t{get_date_from_ts(match_creation_ts)}")
+        print(f"Match duration:\t\t\t{display_time(int(match_duration))}")
 
-            last_played = calculate_timespan(int(time.time()), match_stop_ts)
-            print(f"\nMatch finished:\t\t\t{last_played} ago")
+        last_played = calculate_timespan(int(time.time()), match_stop_ts)
+        print(f"\nMatch finished:\t\t\t{last_played} ago")
 
-            teams = []
-            user_participant = None
+        teams = []
+        user_participant = None
 
-            for p in match_info.get("participants", []):
-                if p.get("puuid") == puuid:
-                    user_participant = p
+        for p in match_info.get("participants", []):
+            if p.get("puuid") == puuid:
+                user_participant = p
 
-                p_riotid_name = p.get("riotIdGameName", p.get("summonerName", "Unknown Player"))
-                p_teamid = p.get("teamId", 0)
-                add_new_team_member(teams, p_teamid, p_riotid_name)
+            p_riotid_name = p.get("riotIdGameName", p.get("summonerName", "Unknown Player"))
+            p_teamid = p.get("teamId", 0)
+            add_new_team_member(teams, p_teamid, p_riotid_name)
 
-            u_victory = "No"
-            u_champion, u_level, u_role, u_lane = "N/A", "N/A", "N/A", "N/A"
-            u_kills, u_deaths, u_assists = 0, 0, 0
+        u_victory = "No"
+        u_champion, u_level, u_role, u_lane = "N/A", "N/A", "N/A", "N/A"
+        u_kills, u_deaths, u_assists = 0, 0, 0
 
-            if user_participant:
-                u_victory = "Yes" if user_participant.get("win", False) else "No"
-                u_champion = user_participant.get("championName")
-                u_kills = user_participant.get("kills", 0)
-                u_deaths = user_participant.get("deaths", 0)
-                u_assists = user_participant.get("assists", 0)
-                u_level = user_participant.get("champLevel")
-                u_role = user_participant.get("role")
-                u_lane = user_participant.get("lane")
+        if user_participant:
+            u_victory = "Yes" if user_participant.get("win", False) else "No"
+            u_champion = user_participant.get("championName")
+            u_kills = user_participant.get("kills", 0)
+            u_deaths = user_participant.get("deaths", 0)
+            u_assists = user_participant.get("assists", 0)
+            u_level = user_participant.get("champLevel")
+            u_role = user_participant.get("role")
+            u_lane = user_participant.get("lane")
 
-            print(f"\nVictory:\t\t\t{u_victory}")
-            print(f"Kills/Deaths/Assists:\t\t{u_kills}/{u_deaths}/{u_assists}")
+        print(f"\nVictory:\t\t\t{u_victory}")
+        print(f"Kills/Deaths/Assists:\t\t{u_kills}/{u_deaths}/{u_assists}")
 
-            print(f"\nChampion:\t\t\t{u_champion}")
+        print(f"\nChampion:\t\t\t{u_champion}")
 
-            print(f"Level:\t\t\t\t{u_level}")
+        print(f"Level:\t\t\t\t{u_level}")
 
-            if u_role and u_role != "NONE":
-                print(f"Role:\t\t\t\t{u_role}")
+        if u_role and u_role != "NONE":
+            print(f"Role:\t\t\t\t{u_role}")
 
-            if u_lane and u_lane != "NONE":
-                print(f"Lane:\t\t\t\t{u_lane}")
+        if u_lane and u_lane != "NONE":
+            print(f"Lane:\t\t\t\t{u_lane}")
 
-            print(f"Teams:\t\t\t\t{len(teams)}")
+        print(f"Teams:\t\t\t\t{len(teams)}")
+        for team in teams:
+            print(f'\nTeam id {team["id"]}:')
+            for member in team["members"]:
+                print(f"- {member}")
+        if csv_file_name:
+            try:
+                team1_str = " ".join(f"'{p}'" for p in teams[0]["members"]) if len(teams) > 0 else ""
+                team2_str = " ".join(f"'{p}'" for p in teams[1]["members"]) if len(teams) > 1 else ""
+                # Convert None values to "N/A" for CSV
+                csv_level = u_level if u_level is not None else "N/A"
+                csv_role = u_role if (u_role is not None and u_role != "NONE") else "N/A"
+                csv_lane = u_lane if (u_lane is not None and u_lane != "NONE") else "N/A"
+                write_csv_entry(csv_file_name, str(datetime.fromtimestamp(match_start_ts)), str(datetime.fromtimestamp(match_stop_ts)), display_time(int(match_duration)), u_victory, u_kills, u_deaths, u_assists, u_champion, csv_level, csv_role, csv_lane, team1_str, team2_str)
+            except Exception as e:
+                print(f"* Error: {e}")
+
+        if status_notification_flag:
+            teams_str = ""
             for team in teams:
-                print(f'\nTeam id {team["id"]}:')
+                teams_str += f'{nl_ch}Team id {team["id"]}:{nl_ch}'
                 for member in team["members"]:
-                    print(f"- {member}")
-            if csv_file_name:
-                try:
-                    team1_str = " ".join(f"'{p}'" for p in teams[0]["members"]) if len(teams) > 0 else ""
-                    team2_str = " ".join(f"'{p}'" for p in teams[1]["members"]) if len(teams) > 1 else ""
-                    # Convert None values to "N/A" for CSV
-                    csv_level = u_level if u_level is not None else "N/A"
-                    csv_role = u_role if (u_role is not None and u_role != "NONE") else "N/A"
-                    csv_lane = u_lane if (u_lane is not None and u_lane != "NONE") else "N/A"
-                    write_csv_entry(csv_file_name, str(datetime.fromtimestamp(match_start_ts)), str(datetime.fromtimestamp(match_stop_ts)), display_time(int(match_duration)), u_victory, u_kills, u_deaths, u_assists, u_champion, csv_level, csv_role, csv_lane, team1_str, team2_str)
-                except Exception as e:
-                    print(f"* Error: {e}")
+                    teams_str += f"- {member}{nl_ch}"
 
-            if status_notification_flag:
-                teams_str = ""
-                for team in teams:
-                    teams_str += f'{nl_ch}Team id {team["id"]}:{nl_ch}'
-                    for member in team["members"]:
-                        teams_str += f"- {member}{nl_ch}"
+            u_role_str = f"{nl_ch}Role: {u_role}" if u_role and u_role != "NONE" else ""
+            u_lane_str = f"{nl_ch}Lane: {u_lane}" if u_lane and u_lane != "NONE" else ""
 
-                u_role_str = f"{nl_ch}Role: {u_role}" if u_role and u_role != "NONE" else ""
-                u_lane_str = f"{nl_ch}Lane: {u_lane}" if u_lane and u_lane != "NONE" else ""
+            m_subject = f"LoL user {riotid_name} match summary ({get_range_of_dates_from_tss(match_start_ts, match_stop_ts, short=True)}, {display_time(int(match_duration), granularity=1)}, {u_victory})"
+            m_body = f"LoL user {riotid_name} last match summary\n\nMatch ID: {match_id}\nGame mode: {gamemode}\n\nMatch start-end date: {get_range_of_dates_from_tss(match_start_ts, match_stop_ts)}\nMatch creation: {get_date_from_ts(match_creation_ts)}\nMatch duration: {display_time(int(match_duration))}\n\nVictory: {u_victory}\nKills/deaths/assists: {u_kills}/{u_deaths}/{u_assists}\n\nChampion: {u_champion}\nLevel: {u_level}{u_role_str}{u_lane_str}\nTeams: {len(teams)}\n{teams_str}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+            print(f"\nSending email notification to {RECEIVER_EMAIL}")
+            send_email(m_subject, m_body, "", SMTP_SSL)
 
-                m_subject = f"LoL user {riotid_name} match summary ({get_range_of_dates_from_tss(match_start_ts, match_stop_ts, short=True)}, {display_time(int(match_duration), granularity=1)}, {u_victory})"
-                m_body = f"LoL user {riotid_name} last match summary\n\nMatch ID: {match_id}\nGame mode: {gamemode}\n\nMatch start-end date: {get_range_of_dates_from_tss(match_start_ts, match_stop_ts)}\nMatch creation: {get_date_from_ts(match_creation_ts)}\nMatch duration: {display_time(int(match_duration))}\n\nVictory: {u_victory}\nKills/deaths/assists: {u_kills}/{u_deaths}/{u_assists}\n\nChampion: {u_champion}\nLevel: {u_level}{u_role_str}{u_lane_str}\nTeams: {len(teams)}\n{teams_str}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                print(f"\nSending email notification to {RECEIVER_EMAIL}")
-                send_email(m_subject, m_body, "", SMTP_SSL)
+        return match_start_ts, match_stop_ts
 
-            return match_start_ts, match_stop_ts
+    except Exception as e:
+        if getattr(e, 'status', None) == 403:
+            if INCLUDE_FORBIDDEN_MATCHES:
+                print(f"Match ID:\t\t\t{match_id}")
+                print(f"Match details require RSO token")
+                if status_notification_flag:
+                    m_subject = f"LoL user {riotid_name} new forbidden match detected"
 
-        except Exception as e:
-            if getattr(e, 'status', None) == 403:
-                if INCLUDE_FORBIDDEN_MATCHES:
-                    print(f"Match ID:\t\t\t{match_id}")
-                    print(f"Match details require RSO token")
-                    if status_notification_flag:
-                        m_subject = f"LoL user {riotid_name} new forbidden match detected"
+                    m_body = (f"LoL user {riotid_name} finished a forbidden match whose details are protected (requires RSO token)\n\nMatch ID: {match_id}\n{get_cur_ts(nl_ch + 'Timestamp: ')}")
+                    print(f"\nSending email notification to {RECEIVER_EMAIL}")
+                    send_email(m_subject, m_body, "", SMTP_SSL)
+        else:
+            print(f"* An unexpected error occurred while processing match {match_id}: {e}")
 
-                        m_body = (f"LoL user {riotid_name} finished a forbidden match whose details are protected (requires RSO token)\n\nMatch ID: {match_id}\n{get_cur_ts(nl_ch + 'Timestamp: ')}")
-                        print(f"\nSending email notification to {RECEIVER_EMAIL}")
-                        send_email(m_subject, m_body, "", SMTP_SSL)
-            else:
-                print(f"* An unexpected error occurred while processing match {match_id}: {e}")
-
-            return 0, 0
+        return 0, 0
 
 
 # Prints history of matches with relevant details
@@ -1023,93 +1042,74 @@ async def print_match_history(puuid: str, riotid_name: str, region: str, matches
     # Match #1 (newest) = index 0, Match #101 = index 100
     start_index = matches_min - 1
     range_size = matches_num - matches_min + 1
-    
-    # First, fetch exactly what we need (no buffer to avoid extra API calls)
+
+    # First, fetch all match IDs
+    print(f"* Fetching match IDs ({range_size} matches)...")
     all_fetched_ids = await get_latest_match_ids(puuid, region, count=range_size, start=start_index)
 
     if not all_fetched_ids:
         print("* Error: No match history found")
         return 0, 0
 
-    filtered_match_ids = []
-    current_start = start_index + len(all_fetched_ids)
-    async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+    # Reverse immediately so we process oldest to newest
+    # The API returns newest to oldest, so reversing gives us oldest first
+    all_fetched_ids = list(reversed(all_fetched_ids))
 
-        # Check accessibility for the matches we fetched
-        for match_id in all_fetched_ids:
-            if len(filtered_match_ids) >= range_size:
-                break
-            try:
-                await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, 'europe'), id=match_id)
-                filtered_match_ids.append(match_id)  # Accessible match
-            except Exception as e:
-                if getattr(e, 'status', None) == 403:  # Forbidden match
-                    if INCLUDE_FORBIDDEN_MATCHES:
-                        filtered_match_ids.append(match_id)  # Add if we're including them
-                    # If not including forbidden, we just skip this ID
-                else:
-                    print(f"* Warning: Cannot check accessibility for match {match_id}, skipping: {e}")
-        
-        # If we don't have enough accessible matches, fetch more incrementally
-        # This avoids fetching a large buffer upfront when it might not be needed
-        while len(filtered_match_ids) < range_size:
-            # Calculate how many more we need
-            needed = range_size - len(filtered_match_ids)
-            # Fetch a small batch (up to 20 at a time to avoid large unnecessary fetches)
-            batch_size = min(needed + 5, 20)  # Fetch a bit extra to account for more forbidden matches
-            
-            additional_ids = await get_latest_match_ids(puuid, region, count=batch_size, start=current_start)
-            
-            if not additional_ids:
-                # No more matches available
-                break
-            
-            all_fetched_ids.extend(additional_ids)
-            current_start += len(additional_ids)
-            
-            # Check accessibility for the new matches
-            for match_id in additional_ids:
-                if len(filtered_match_ids) >= range_size:
-                    break
+    print(f"* Processing matches in batches of 10 (oldest to newest)...\n")
+
+    last_start_ts, last_stop_ts = 0, 0
+    BATCH_SIZE = 10
+    processed_count = 0
+    accessible_match_ids = []
+
+    async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+        # Process in batches
+        for batch_start in range(0, len(all_fetched_ids), BATCH_SIZE):
+            batch_end = min(batch_start + BATCH_SIZE, len(all_fetched_ids))
+            batch_ids = all_fetched_ids[batch_start:batch_end]
+
+            # Fetch and process this batch
+            for match_id in batch_ids:
                 try:
-                    await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, 'europe'), id=match_id)
-                    filtered_match_ids.append(match_id)  # Accessible match
+                    # Fetch match details
+                    match = await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, 'europe'), id=match_id)
+
+                    # Calculate match number
+                    # Since we reversed the list, oldest is at index 0
+                    # Match numbers go from matches_num (oldest) down to matches_min (newest)
+                    match_index_in_reversed = all_fetched_ids.index(match_id)
+                    match_number = matches_num - match_index_in_reversed
+
+                    print(f"Match number:\t\t\t{match_number}\n")
+
+                    # Process and display (this also writes to CSV)
+                    start_ts, stop_ts = await process_and_print_single_match(match_id, puuid, riotid_name, region, False, csv_file_name, cached_match_data=match)
+
+                    print("─" * HORIZONTAL_LINE)
+
+                    accessible_match_ids.append(match_id)
+                    processed_count += 1
+
+                    # Track the last match for return value (newest match in the range)
+                    if match_index_in_reversed == len(all_fetched_ids) - 1:
+                        last_start_ts, last_stop_ts = start_ts, stop_ts
+
                 except Exception as e:
                     if getattr(e, 'status', None) == 403:  # Forbidden match
                         if INCLUDE_FORBIDDEN_MATCHES:
-                            filtered_match_ids.append(match_id)  # Add if we're including them
-                        # If not including forbidden, we just skip this ID
+                            match_index_in_reversed = all_fetched_ids.index(match_id)
+                            match_number = matches_num - match_index_in_reversed
+                            print(f"Match number:\t\t\t{match_number}\n")
+                            print(f"Match ID:\t\t\t{match_id}")
+                            print(f"Match details require RSO token\n")
+                            print("─" * HORIZONTAL_LINE)
+                            accessible_match_ids.append(match_id)
+                            processed_count += 1
                     else:
-                        print(f"* Warning: Cannot check accessibility for match {match_id}, skipping: {e}")
+                        print(f"* Warning: Error processing match {match_id}: {e}")
 
-    if len(filtered_match_ids) < range_size:
-        print(f"* Warning: Not enough displayable matches found. Requested {range_size} matches (from #{matches_min} to #{matches_num}), found: {len(filtered_match_ids)}")
-        if len(filtered_match_ids) == 0:
-            return 0, 0
-
-    # Use the matches we found (they're already in the correct range)
-    slice_to_display_ordered_newest_to_oldest = filtered_match_ids[:range_size]
-
-    last_start_ts, last_stop_ts = 0, 0
-
-    for i_in_slice, match_id_to_process in enumerate(reversed(slice_to_display_ordered_newest_to_oldest)):
-
-        try:
-            # Calculate the actual match number (1-based)
-            # filtered_match_ids contains matches starting from matches_min
-            match_index_in_filtered = filtered_match_ids.index(match_id_to_process)
-            match_number = matches_min + match_index_in_filtered
-        except ValueError:
-            match_number = matches_min + i_in_slice
-
-        print(f"Match number:\t\t\t{match_number}\n")
-
-        start_ts, stop_ts = await process_and_print_single_match(match_id_to_process, puuid, riotid_name, region, False, csv_file_name)
-
-        print("─" * HORIZONTAL_LINE)
-
-        if i_in_slice == len(slice_to_display_ordered_newest_to_oldest) - 1:
-            last_start_ts, last_stop_ts = start_ts, stop_ts
+    if len(accessible_match_ids) < range_size:
+        print(f"* Warning: Not enough displayable matches found. Requested {range_size} matches (from #{matches_min} to #{matches_num}), found: {len(accessible_match_ids)}")
 
     return last_start_ts, last_stop_ts
 
@@ -1742,7 +1742,7 @@ def main():
                         total_count = await get_total_match_count(puuid, args.region)
                         return puuid, total_count
                     return None, 0
-                
+
                 puuid, total_count = asyncio.run(get_all_matches_info())
                 if puuid and total_count > 0:
                     matches_num = total_count
@@ -1778,7 +1778,7 @@ def main():
         csv_destination_str = f" to '{CSV_FILE}'" if CSV_FILE else ""
 
         if matches_min != matches_num:
-            print(f"{list_operation} recent matches from {matches_num} to {matches_min} for '{args.riot_id}'{csv_destination_str}:\n")
+            print(f"{list_operation} recent matches from {matches_min} to {matches_num} for '{args.riot_id}'{csv_destination_str}:\n")
         else:
             print(f"{list_operation} recent match for '{args.riot_id}'{csv_destination_str}:\n")
 
