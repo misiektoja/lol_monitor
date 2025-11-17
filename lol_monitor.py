@@ -187,7 +187,7 @@ SECRET_KEYS = ("RIOT_API_KEY", "SMTP_PASSWORD")
 LIVENESS_CHECK_COUNTER = LIVENESS_CHECK_INTERVAL / LOL_CHECK_INTERVAL
 
 stdout_bck = None
-csvfieldnames = ['Match Start', 'Match Stop', 'Duration', 'Victory', 'Kills', 'Deaths', 'Assists', 'Champion', 'Level', 'Role', 'Lane', 'Team 1', 'Team 2']
+csvfieldnames = ['Match Start', 'Match Stop', 'Duration', 'Game Mode', 'Victory', 'Kills', 'Deaths', 'Assists', 'Champion', 'Level', 'Role', 'Lane', 'Team 1', 'Team 2']
 
 CLI_CONFIG_PATH = None
 
@@ -447,12 +447,12 @@ def init_csv_file(csv_file_name):
 
 
 # Writes CSV entry
-def write_csv_entry(csv_file_name, start_date_ts, stop_date_ts, duration_ts, victory, kills, deaths, assists, champion, level, role, lane, team1, team2):
+def write_csv_entry(csv_file_name, start_date_ts, stop_date_ts, duration_ts, game_mode, victory, kills, deaths, assists, champion, level, role, lane, team1, team2):
     try:
 
         with open(csv_file_name, 'a', newline='', buffering=1, encoding="utf-8") as csv_file:
             csvwriter = csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
-            csvwriter.writerow({'Match Start': start_date_ts, 'Match Stop': stop_date_ts, 'Duration': duration_ts, 'Victory': victory, 'Kills': kills, 'Deaths': deaths, 'Assists': assists, 'Champion': champion, 'Level': level, 'Role': role, 'Lane': lane, 'Team 1': team1, 'Team 2': team2})
+            csvwriter.writerow({'Match Start': start_date_ts, 'Match Stop': stop_date_ts, 'Duration': duration_ts, 'Game Mode': game_mode, 'Victory': victory, 'Kills': kills, 'Deaths': deaths, 'Assists': assists, 'Champion': champion, 'Level': level, 'Role': role, 'Lane': lane, 'Team 1': team1, 'Team 2': team2})
 
     except Exception as e:
         raise RuntimeError(f"Failed to write to CSV file '{csv_file_name}': {e}")
@@ -994,7 +994,7 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
                 csv_level = u_level if u_level is not None else "N/A"
                 csv_role = u_role if (u_role is not None and u_role != "NONE") else "N/A"
                 csv_lane = u_lane if (u_lane is not None and u_lane != "NONE") else "N/A"
-                write_csv_entry(csv_file_name, str(datetime.fromtimestamp(match_start_ts)), str(datetime.fromtimestamp(match_stop_ts)), display_time(int(match_duration)), u_victory, u_kills, u_deaths, u_assists, u_champion, csv_level, csv_role, csv_lane, team1_str, team2_str)
+                write_csv_entry(csv_file_name, str(datetime.fromtimestamp(match_start_ts)), str(datetime.fromtimestamp(match_stop_ts)), display_time(int(match_duration)), gamemode, u_victory, u_kills, u_deaths, u_assists, u_champion, csv_level, csv_role, csv_lane, team1_str, team2_str)
             except Exception as e:
                 print(f"* Error: {e}")
 
@@ -1247,8 +1247,9 @@ async def save_custom_match_to_csv(snapshot: dict, riotid_name: str, start_ts: i
     level = "N/A"
     role = "N/A"
     lane = "N/A"
+    game_mode = snapshot.get('mode', 'N/A')
 
-    write_csv_entry(csv_file_name=csv_file_name, start_date_ts=start_dt_str, stop_date_ts=stop_dt_str, duration_ts=duration_str, victory=victory, kills=kills, deaths=deaths, assists=assists, champion=user_champion, level=level, role=role, lane=lane, team1=team1_str, team2=team2_str)
+    write_csv_entry(csv_file_name=csv_file_name, start_date_ts=start_dt_str, stop_date_ts=stop_dt_str, duration_ts=duration_str, game_mode=game_mode, victory=victory, kills=kills, deaths=deaths, assists=assists, champion=user_champion, level=level, role=role, lane=lane, team1=team1_str, team2=team2_str)
 
 
 # Main function that monitors gaming activity of the specified LoL user
