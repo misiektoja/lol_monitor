@@ -34,6 +34,7 @@ pandas
 import argparse
 import json
 import math
+import os
 import re
 from collections import Counter
 from datetime import datetime
@@ -285,6 +286,109 @@ def scalar_similarity(a: float, b: float, scale: float) -> float:
     return max(0.0, 1.0 - min(1.0, diff / scale))
 
 
+# Mode-specific duration thresholds (in minutes)
+# These represent typical variation within each game mode
+MODE_DURATION_THRESHOLDS = {
+    "ARAM": 6.0,
+    "Summoner's Rift": 10.0,
+    "Arena": 6.0,
+    "Ultra Rapid Fire": 6.0,
+    "Ultimate Spellbook": 8.0,
+    "One for All": 8.0,
+    "Nexus Blitz": 6.0,
+    "All Random Summoner's Rift": 8.0,
+    "Tutorial": 5.0,
+    "Dominion/Crystal Scar": 5.0,
+    "Nexus Siege": 5.0,
+    "Blood Hunt Assassin": 5.0,
+    # Default threshold for unknown modes
+    "default": 8.0,
+}
+
+
+# Computes duration similarity using mode-specific thresholds
+def duration_similarity_by_mode(df1: pd.DataFrame, df2: pd.DataFrame) -> float:
+    """
+    Computes duration similarity by comparing durations within each game mode,
+    using mode-specific thresholds. This accounts for the fact that different
+    game modes have very different typical durations.
+    Handles N/A/unknown modes as a special category.
+    """
+    # Normalize game modes: treat N/A, empty, etc. as "Unknown"
+    def normalize_mode(mode):
+        if pd.isna(mode):
+            return "Unknown"
+        mode_str = str(mode).strip()
+        if mode_str.upper() in ("N/A", "NONE", "NAN", ""):
+            return "Unknown"
+        return mode_str
+
+    # Get all game modes (including "Unknown" for N/A values)
+    modes1 = set(normalize_mode(m) for m in df1["game_mode"])
+    modes2 = set(normalize_mode(m) for m in df2["game_mode"])
+    common_modes = modes1 & modes2
+
+    if not common_modes:
+        # No common modes - fall back to overall comparison with default threshold
+        mean1 = df1["duration_min"].mean()
+        mean2 = df2["duration_min"].mean()
+        if any(pd.isna(x) for x in [mean1, mean2]):
+            return 0.0
+        threshold = MODE_DURATION_THRESHOLDS.get("default", 8.0)
+        return scalar_similarity(mean1, mean2, threshold)
+
+    # Calculate similarity for each common mode, weighted by frequency
+    mode_similarities = []
+    mode_weights = []
+
+    for mode in common_modes:
+        # Get matches for this mode in each dataframe
+        df1_mode = df1[df1["game_mode"].apply(normalize_mode) == mode]
+        df2_mode = df2[df2["game_mode"].apply(normalize_mode) == mode]
+
+        # Skip if either dataframe has no valid duration data for this mode
+        if len(df1_mode) == 0 or len(df2_mode) == 0:
+            continue
+
+        mean1 = df1_mode["duration_min"].mean()
+        mean2 = df2_mode["duration_min"].mean()
+
+        if any(pd.isna(x) for x in [mean1, mean2]):
+            continue
+
+        # Get mode-specific threshold (use default for "Unknown" modes)
+        if mode == "Unknown":
+            threshold = MODE_DURATION_THRESHOLDS.get("default", 8.0)
+        else:
+            threshold = MODE_DURATION_THRESHOLDS.get(mode, MODE_DURATION_THRESHOLDS["default"])
+
+        # Calculate similarity for this mode
+        mode_sim = scalar_similarity(mean1, mean2, threshold)
+
+        # Weight by combined frequency (how often this mode appears in both files)
+        weight = len(df1_mode) + len(df2_mode)
+
+        mode_similarities.append(mode_sim)
+        mode_weights.append(weight)
+
+    if not mode_similarities:
+        # No valid mode comparisons - fall back to overall
+        mean1 = df1["duration_min"].mean()
+        mean2 = df2["duration_min"].mean()
+        if any(pd.isna(x) for x in [mean1, mean2]):
+            return 0.0
+        threshold = MODE_DURATION_THRESHOLDS.get("default", 8.0)
+        return scalar_similarity(mean1, mean2, threshold)
+
+    # Weighted average of mode-specific similarities
+    total_weight = sum(mode_weights)
+    if total_weight == 0:
+        return 0.0
+
+    weighted_sim = sum(sim * weight for sim, weight in zip(mode_similarities, mode_weights)) / total_weight
+    return weighted_sim
+
+
 # Heuristically guesses the focal player by most frequent name across matches
 def guess_player_name(df: pd.DataFrame) -> Tuple[str, float]:
     freq = Counter()
@@ -316,8 +420,8 @@ def compare_profiles(df1: pd.DataFrame, df2: pd.DataFrame) -> Dict[str, float]:
     wr2 = df2["victory"].mean() if len(df2) else pd.NA
     winrate_sim = scalar_similarity(wr1, wr2, scale=0.25)
 
-    # Feature 4: Average duration similarity
-    dur_sim = scalar_similarity(df1["duration_min"].mean(), df2["duration_min"].mean(), scale=6.0)
+    # Feature 4: Average duration similarity (mode-aware)
+    dur_sim = duration_similarity_by_mode(df1, df2)
 
     # Feature 5: Time-of-day habit similarity
     tod_sim = cosine_sim(
@@ -335,18 +439,19 @@ def compare_profiles(df1: pd.DataFrame, df2: pd.DataFrame) -> Dict[str, float]:
     lane_sim = cosine_sim(lane_distribution(df1), lane_distribution(df2))
 
     # Feature 9: Average level similarity (indicates skill/playstyle)
-    level_sim = scalar_similarity(df1["level"].mean(), df2["level"].mean(), scale=3.0)
+    # Only compute if both files have sufficient level data (>50% valid)
+    level_valid1 = df1["level"].notna().mean()
+    level_valid2 = df2["level"].notna().mean()
+    if level_valid1 >= 0.5 and level_valid2 >= 0.5:
+        level_sim = scalar_similarity(df1["level"].mean(), df2["level"].mean(), scale=4.0)
+    else:
+        # If either file has sparse level data, set similarity to 0.5 (neutral)
+        # to avoid penalizing accounts with missing level data
+        level_sim = 0.5 if (level_valid1 < 0.5 or level_valid2 < 0.5) else 0.0
 
     # Feature 10: Game mode preference similarity
     # Lower weight since new modes are introduced periodically
     mode_sim = cosine_sim(game_mode_distribution(df1), game_mode_distribution(df2))
-
-    # Feature 11: Direct repeated name signal
-    p1, c1 = guess_player_name(df1)
-    p2, c2 = guess_player_name(df2)
-    direct_name_boost = 0.0
-    if p1 and p2 and p1 == p2 and min(c1, c2) >= 0.3:
-        direct_name_boost = 0.15
 
     # Weighted blend (adjusted weights to accommodate new features)
     # Game mode gets lower weight since new modes are introduced periodically
@@ -362,7 +467,7 @@ def compare_profiles(df1: pd.DataFrame, df2: pd.DataFrame) -> Dict[str, float]:
         "level": 0.04,
         "game_mode": 0.05,
     }
-    base = (
+    overall = (
         weights["champ"] * champ_sim
         + weights["kda"] * kda_sim
         + weights["winrate"] * winrate_sim
@@ -374,7 +479,7 @@ def compare_profiles(df1: pd.DataFrame, df2: pd.DataFrame) -> Dict[str, float]:
         + weights["level"] * level_sim
         + weights["game_mode"] * mode_sim
     )
-    overall = min(1.0, max(0.0, base + direct_name_boost))
+    overall = min(1.0, max(0.0, overall))
 
     return {
         "champion_similarity": round(champ_sim, 4),
@@ -387,12 +492,11 @@ def compare_profiles(df1: pd.DataFrame, df2: pd.DataFrame) -> Dict[str, float]:
         "lane_similarity": round(lane_sim, 4),
         "level_similarity": round(level_sim, 4),
         "game_mode_similarity": round(mode_sim, 4),
-        "direct_name_boost": round(direct_name_boost, 4),
         "overall_score_0_100": round(overall * 100, 1),
-        "guessed_player_file1": p1,
-        "guess_conf_file1": round(c1, 3),
-        "guessed_player_file2": p2,
-        "guess_conf_file2": round(c2, 3),
+        "guessed_player_file1": guess_player_name(df1)[0],
+        "guess_conf_file1": round(guess_player_name(df1)[1], 3),
+        "guessed_player_file2": guess_player_name(df2)[0],
+        "guess_conf_file2": round(guess_player_name(df2)[1], 3),
     }
 
 
@@ -569,9 +673,6 @@ def print_readable_report(result: Dict, file1: str, file2: str, df1: pd.DataFram
     print(f"  Teammate Overlap:       {format_similarity(result['teammate_overlap_similarity'])}")
     print(f"  Time of Day Patterns:   {format_similarity(result['time_of_day_similarity'])}")
 
-    # Direct name boost
-    if result.get("direct_name_boost", 0) > 0:
-        print(f"\nDirect Name Match Bonus: +{result['direct_name_boost'] * 100:.1f}%")
 
     # Temporal overlap check (only if overlaps were actually computed or skipped for a reason)
     if df1 is not None and df2 is not None:
@@ -614,16 +715,31 @@ def print_readable_report(result: Dict, file1: str, file2: str, df1: pd.DataFram
 
                 print("Overlapping Matches:")
                 print()
+
+                # Extract filenames and player names
+                file1_name = os.path.basename(file1)
+                file2_name = os.path.basename(file2)
+                player1 = result.get("guessed_player_file1", "")
+                player2 = result.get("guessed_player_file2", "")
+
                 total_overlaps = len(overlaps)
                 for i, overlap in enumerate(displayed_overlaps, 1):
                     overlap_num = total_overlaps - len(displayed_overlaps) + i
                     print(f"Overlap #{overlap_num}:")
-                    print(f"  File 1 Match:")
+
+                    # File 1 match with filename and player name
+                    print(f"  File 1 ({file1_name}) Match:")
+                    if player1:
+                        print(f"    Player: {player1}")
                     print(f"    Start:  {overlap['file1_start'].strftime('%Y-%m-%d %H:%M:%S')}")
                     print(f"    Stop:   {overlap['file1_stop'].strftime('%Y-%m-%d %H:%M:%S')}")
                     print(f"    Champion: {overlap['file1_champion']}")
                     print(f"    Mode:     {overlap['file1_mode']}")
-                    print(f"  File 2 Match:")
+
+                    # File 2 match with filename and player name
+                    print(f"  File 2 ({file2_name}) Match:")
+                    if player2:
+                        print(f"    Player: {player2}")
                     print(f"    Start:  {overlap['file2_start'].strftime('%Y-%m-%d %H:%M:%S')}")
                     print(f"    Stop:   {overlap['file2_stop'].strftime('%Y-%m-%d %H:%M:%S')}")
                     print(f"    Champion: {overlap['file2_champion']}")
