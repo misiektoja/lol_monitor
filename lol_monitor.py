@@ -683,18 +683,142 @@ async def get_user_puuid(riotid: str, region: str) -> Optional[str]:
 # Gets summoner details
 async def get_summoner_details(puuid: str, region: str):
 
-    summoner_level = ""
+    summoner_info = {
+        "summoner_level": "N/A",
+        "revision_date": "N/A"
+    }
 
     async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
         try:
             summoner = await client.get_lol_summoner_v4_by_puuid(region=region, puuid=puuid)
 
-            summoner_level = str(summoner["summonerLevel"])
+            summoner_info["summoner_level"] = str(summoner.get("summonerLevel", "N/A"))
+
+            # revisionDate is in milliseconds
+            revision_date_ts = summoner.get("revisionDate", 0)
+            if revision_date_ts:
+                revision_date = datetime.fromtimestamp(revision_date_ts / 1000)
+                summoner_info["revision_date"] = get_date_from_ts(revision_date)
 
         except Exception as e:
             print(f"* Error while getting summoner details: {e}")
 
-    return summoner_level
+    return summoner_info
+
+
+# Gets ranked information
+async def get_ranked_info(puuid: str, region: str):
+    ranked_info = {
+        "solo_duo": {"tier": "N/A", "rank": "N/A", "lp": "N/A", "wins": 0, "losses": 0},
+        "flex": {"tier": "N/A", "rank": "N/A", "lp": "N/A", "wins": 0, "losses": 0}
+    }
+
+    if not puuid or puuid == "N/A":
+        return ranked_info
+
+    async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+        try:
+            league_entries = await client.get_lol_league_v4_entries_by_puuid(region=region, puuid=puuid)
+
+            if not league_entries:
+                return ranked_info
+
+            for entry in league_entries:
+                queue_type = entry.get("queueType", "")
+                tier = entry.get("tier", "UNRANKED")
+                rank = entry.get("rank", "")
+                lp = entry.get("leaguePoints", 0)
+                wins = entry.get("wins", 0)
+                losses = entry.get("losses", 0)
+
+                if queue_type == "RANKED_SOLO_5x5":
+                    ranked_info["solo_duo"] = {
+                        "tier": tier,
+                        "rank": rank,
+                        "lp": str(lp),
+                        "wins": wins,
+                        "losses": losses
+                    }
+                elif queue_type == "RANKED_FLEX_SR":
+                    ranked_info["flex"] = {
+                        "tier": tier,
+                        "rank": rank,
+                        "lp": str(lp),
+                        "wins": wins,
+                        "losses": losses
+                    }
+        except Exception as e:
+            # Player might not be ranked, this is not an error
+            pass
+
+    return ranked_info
+
+
+# Gets champion ID to name mapping from Data Dragon
+_champion_id_to_name_cache = None
+
+def get_champion_name(champion_id: int) -> str:
+    """Get champion name from champion ID using Data Dragon."""
+    global _champion_id_to_name_cache
+
+    if _champion_id_to_name_cache is None:
+        _champion_id_to_name_cache = {}
+        try:
+            # Get latest Data Dragon version
+            versions_response = req.get("https://ddragon.leagueoflegends.com/api/versions.json", timeout=5)
+            if versions_response.status_code == 200:
+                versions = versions_response.json()
+                latest_version = versions[0]
+
+                # Get champion data
+                champions_url = f"https://ddragon.leagueoflegends.com/cdn/{latest_version}/data/en_US/champion.json"
+                champions_response = req.get(champions_url, timeout=5)
+                if champions_response.status_code == 200:
+                    champions_data = champions_response.json().get("data", {})
+                    for champion_name, champion_info in champions_data.items():
+                        champ_id = int(champion_info.get("key", 0))
+                        if champ_id:
+                            _champion_id_to_name_cache[champ_id] = champion_name
+        except Exception:
+            # If Data Dragon fails, return "Unknown"
+            pass
+
+    return _champion_id_to_name_cache.get(champion_id, f"Champion {champion_id}")
+
+
+# Gets champion mastery information
+async def get_champion_mastery(puuid: str, region: str, top_n: int = 3):
+    mastery_info = []
+
+    if not puuid or puuid == "N/A":
+        return mastery_info
+
+    async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+        try:
+            champion_masteries = await client.get_lol_champion_v4_top_masteries_by_puuid(region=region, puuid=puuid)
+
+            if not champion_masteries:
+                return mastery_info
+
+            # Sort by mastery points and get top N
+            sorted_masteries = sorted(champion_masteries, key=lambda x: x.get("championPoints", 0), reverse=True)[:top_n]
+
+            for mastery in sorted_masteries:
+                champion_id = mastery.get("championId", 0)
+                champion_level = mastery.get("championLevel", 0)
+                champion_points = mastery.get("championPoints", 0)
+                champion_name = get_champion_name(champion_id)
+                mastery_info.append({
+                    "champion_id": champion_id,
+                    "champion_name": champion_name,
+                    "level": champion_level,
+                    "points": champion_points
+                })
+        except Exception as e:
+            # Champion mastery might not be available, this is not an error
+            pass
+
+    return mastery_info
 
 
 # Checks if the player is currently in game
@@ -1276,15 +1400,68 @@ async def lol_monitor_user(riotid, region, csv_file_name):
 
     riotid_name, riotid_tag = get_user_riot_name_tag(riotid)
 
+    summoner_info = {}
+    ranked_info = {}
+    mastery_info = []
+
     try:
-        summoner_level = await get_summoner_details(puuid, region)
+        summoner_info = await get_summoner_details(puuid, region)
     except Exception as e:
         print(f"* Warning: Could not fetch summoner details: {e}")
+        summoner_info = {"summoner_level": "N/A", "revision_date": "N/A"}
+
+    try:
+        ranked_info = await get_ranked_info(puuid, region)
+    except Exception as e:
+        print(f"* Warning: Could not fetch ranked information: {e}")
+        ranked_info = {"solo_duo": {"tier": "N/A", "rank": "N/A", "lp": "N/A"}, "flex": {"tier": "N/A", "rank": "N/A", "lp": "N/A"}}
+
+    try:
+        mastery_info = await get_champion_mastery(puuid, region, top_n=3)
+    except Exception as e:
+        print(f"* Warning: Could not fetch champion mastery: {e}")
 
     print(f"Riot ID (name#tag):\t\t{riotid}")
     print(f"Riot PUUID:\t\t\t{puuid}")
-    print(f"Summoner level:\t\t\t{summoner_level}")
-    print()
+    print(f"Summoner level:\t\t\t{summoner_info.get('summoner_level', 'N/A')}")
+    print(f"Last modified:\t\t\t{summoner_info.get('revision_date', 'N/A')}")
+
+    print("─" * HORIZONTAL_LINE)
+
+    print("Ranked Information:\n")
+
+    solo = ranked_info.get("solo_duo", {})
+    if solo.get("tier") != "N/A" and solo.get("tier") != "UNRANKED":
+        solo_wins = solo.get("wins", 0)
+        solo_losses = solo.get("losses", 0)
+        solo_total = solo_wins + solo_losses
+        solo_wr = f"{(solo_wins / solo_total * 100):.1f}%" if solo_total > 0 else "N/A"
+        print(f"Solo/Duo:\t\t\t{solo.get('tier', 'N/A')} {solo.get('rank', 'N/A')} ({solo.get('lp', 'N/A')} LP) - Wins: {solo_wins} / Losses: {solo_losses} (Winrate: {solo_wr})")
+    else:
+        print(f"Solo/Duo:\t\t\tUnranked")
+
+    flex = ranked_info.get("flex", {})
+    if flex.get("tier") != "N/A" and flex.get("tier") != "UNRANKED":
+        flex_wins = flex.get("wins", 0)
+        flex_losses = flex.get("losses", 0)
+        flex_total = flex_wins + flex_losses
+        flex_wr = f"{(flex_wins / flex_total * 100):.1f}%" if flex_total > 0 else "N/A"
+        print(f"Flex:\t\t\t\t{flex.get('tier', 'N/A')} {flex.get('rank', 'N/A')} ({flex.get('lp', 'N/A')} LP) - Wins: {flex_wins} / Losses: {flex_losses} (Winrate: {flex_wr})")
+    else:
+        print(f"Flex:\t\t\t\tUnranked")
+
+    if mastery_info:
+        print("─" * HORIZONTAL_LINE)
+        print(f"Top Champion Mastery:\t\t")
+        for i, mastery in enumerate(mastery_info, 1):
+            champion_name = mastery.get("champion_name", "Unknown")
+            level = mastery.get("level", 0)
+            points = mastery.get("points", 0)
+            # Format points with commas for readability
+            points_str = f"{points:,}" if points > 0 else "0"
+            print(f"\t\t\t\t{i}. {champion_name}:\tLevel {level} ({points_str} points)")
+
+    print("─" * HORIZONTAL_LINE)
 
     processed_match_ids = set()
     initial_match_ids = []
@@ -1841,7 +2018,8 @@ def main():
 
     out = f"Monitoring user {args.riot_id}"
     print(out)
-    print("-" * len(out))
+    # print("-" * len(out))
+    print("─" * HORIZONTAL_LINE)
 
     asyncio.run(lol_monitor_user(args.riot_id, args.region, CSV_FILE))
 
