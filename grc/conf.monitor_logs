@@ -50,6 +50,9 @@ colours=unchanged, magenta
 regexp=\* Last time user was available:\s+(.*)$
 colours=unchanged, magenta
 -
+regexp=^Estimated last activity:\s+(\w+ \d+ \w+ \d+, \d\d:\d\d:\d\d)(.*)$
+colours=unchanged, magenta, unchanged
+-
 regexp=^Last seen:\s+(.*)$
 colours=unchanged, magenta
 -
@@ -260,11 +263,11 @@ colours=unchanged, red, red
 regexp=(?i)\* Signal.*received
 colours=yellow
 -
-regexp=(?i)(True| online| appeared )|\bYes\b
+regexp=(?i)( online| appeared )|\bYes\b|\bTrue\b
 colours=green
 count=more
 -
-regexp=(?i)(False| offline| away| snooze)|\bNo\b
+regexp=(?i)( offline| away| snooze)|\bNo\b|\bFalse\b
 colours=red
 count=more
 -
@@ -358,6 +361,12 @@ colours=unchanged, white, unchanged
 regexp=.*, online start timestamp set back to (\w+ \d+ \w+ \d\d:\d\d)
 colours=unchanged, magenta
 -
+regexp=\s+(~\d+ (seconds*|minutes*|hours*|days*|weeks*|months*|years*), \d+ (seconds*|minutes*|hours*|days*|weeks*|months*|years*))
+colours=unchanged, green, green, green, green
+-
+regexp=\s+(~\d+ (seconds*|minutes*|hours*|days*|weeks*|months*|years*))( ago)*
+colours=unchanged, green, green
+-
 regexp=\s+(\d+ seconds*|\d+ minutes*|\d+ hours*|\d+ days*|\d+ weeks*|\d+ months*|\d+ years*)( ago)*
 colours=green
 count=more
@@ -374,4 +383,3 @@ colours=unchanged, green, unchanged
 -
 regexp=^\* Playlist URL: (.*)
 colours=unchanged, blue
-
