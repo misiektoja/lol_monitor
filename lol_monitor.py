@@ -1064,6 +1064,7 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
             detailed_teams = {}
             u_champion_id = 0
             u_champion_name = None
+            u_teamid = None
 
             for p in current_match.get("participants", []):
                 u_riotid = p.get("riotId")
@@ -1073,9 +1074,9 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
                 else:
                     u_riotid_name = "unknown"
 
-                u_teamid = p.get("teamId", 0)
+                p_teamid = p.get("teamId", 0)
 
-                add_new_team_member(current_teams, u_teamid, u_riotid_name)
+                add_new_team_member(current_teams, p_teamid, u_riotid_name)
 
                 champion_id = p.get("championId", 0)
                 champion_name = get_champion_name(champion_id) if champion_id else None
@@ -1084,11 +1085,12 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
                 member_display = u_riotid_name
                 if champion_display != "Unknown":
                     member_display = f"{u_riotid_name} ({champion_display})"
-                detailed_teams.setdefault(u_teamid, []).append(member_display)
+                detailed_teams.setdefault(p_teamid, []).append(member_display)
 
                 if u_riotid_name == riotid_name:
                     u_champion_id = champion_id
                     u_champion_name = champion_name
+                    u_teamid = p_teamid
 
             champion_line = format_named_value(u_champion_name, u_champion_id)
             print(f"\nChampion:\t\t\t{champion_line}")
@@ -1103,7 +1105,9 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
                 else:
                     print()
                     current_teams_str_lines.append("")
-                teamid_str = f"Team id {team['id']}:"
+                # Add star marker if this is the monitored user's team
+                team_marker = " ⭐" if u_teamid is not None and team['id'] == u_teamid else ""
+                teamid_str = f"Team id {team['id']}:{team_marker}"
                 print(teamid_str)
                 current_teams_str_lines.append(teamid_str)
 
@@ -1341,6 +1345,7 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
         u_champion_name, u_level, u_role, u_lane = "N/A", "N/A", "N/A", "N/A"
         u_champion_id = None
         u_kills, u_deaths, u_assists = 0, 0, 0
+        u_teamid = None
         if user_participant:
             u_victory = "Yes" if user_participant.get("win", False) else "No"
             u_champion_name = user_participant.get("championName")
@@ -1351,6 +1356,7 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
             u_level = user_participant.get("champLevel")
             u_role = user_participant.get("role")
             u_lane = user_participant.get("lane")
+            u_teamid = user_participant.get("teamId")
 
         print(f"\nVictory:\t\t\t{u_victory}")
         print(f"Kills/Deaths/Assists:\t\t{u_kills}/{u_deaths}/{u_assists}")
@@ -1374,7 +1380,9 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
             else:
                 print()
                 teams_lines.append("")
-            team_header = f'Team id {team["id"]}:'
+            # Add star marker if this is the monitored user's team
+            team_marker = " ⭐" if u_teamid is not None and team["id"] == u_teamid else ""
+            team_header = f'Team id {team["id"]}:{team_marker}'
             print(team_header)
             teams_lines.append(team_header)
             members_to_print = team_roster_details.get(team["id"], team["members"])
