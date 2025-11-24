@@ -1766,14 +1766,18 @@ async def get_current_match_details(puuid: str, region: str) -> dict:
             "championId": p.get("championId", 0),
         })
 
+    game_type_raw = current_match.get("gameType")
+
     return {
         "mode": gamemode,
+        "mode_raw": gamemode_raw,
+        "game_type": game_type_raw,
         "start_ts": start_ts,
         "participants": participants,
     }
 
 
-# Append a CSV row from a live snapshot for custom game matches that never show up
+# Append a CSV row from a live snapshot for custom game matches that never show up in match history
 async def save_custom_match_to_csv(snapshot: dict, riotid_name: str, start_ts: int, stop_ts: int, csv_file_name: str) -> None:
     if not csv_file_name or not snapshot:
         return
@@ -1989,9 +1993,19 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                     # Capture snapshot for custom games so we can persist it later if no completion arrives
                     try:
                         snap = await get_current_match_details(puuid, region)
-                        if snap and snap.get('mode') == 'CUSTOM_GAME':
-                            current_custom_snapshot = snap
-                            current_match_start_ts = int(snap.get('start_ts') or 0)
+                        if snap:
+                            # Check if it's a custom game: gameType is CUSTOM_GAME or gameMode is unknown
+                            game_type = snap.get('game_type')
+                            mode_raw = snap.get('mode_raw')
+                            is_custom = (game_type == "CUSTOM_GAME" or
+                                       (mode_raw and mode_raw not in game_modes_mapping))
+
+                            if is_custom:
+                                current_custom_snapshot = snap
+                                current_match_start_ts = int(snap.get('start_ts') or 0)
+                            else:
+                                current_custom_snapshot = None
+                                current_match_start_ts = 0
                         else:
                             current_custom_snapshot = None
                             current_match_start_ts = 0
