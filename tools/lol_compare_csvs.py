@@ -518,7 +518,7 @@ def find_temporal_overlaps(df1: pd.DataFrame, df2: pd.DataFrame, verbose: bool =
 
 
 # Prints human-readable comparison report
-def print_readable_report(result: Dict, file1: str, file2: str, df1: pd.DataFrame = None, df2: pd.DataFrame = None, overlaps: List[Dict] = None) -> None:
+def print_readable_report(result: Dict, file1: str, file2: str, df1: pd.DataFrame = None, df2: pd.DataFrame = None, overlaps: List[Dict] = None, max_overlaps: int = None) -> None:
     print("=" * 80)
     print(" LoL Match History Comparison Report")
     print("=" * 80)
@@ -601,10 +601,23 @@ def print_readable_report(result: Dict, file1: str, file2: str, df1: pd.DataFram
                 print("   This indicates the players were active at the same time,")
                 print("   which strongly suggests they are DIFFERENT players.\n")
 
+                # Limit displayed overlaps if max_overlaps is specified
+                displayed_overlaps = overlaps
+                if max_overlaps is None:
+                    # User explicitly requested all overlaps
+                    pass  # Show all
+                elif len(overlaps) > max_overlaps:
+                    # Limit to last N overlaps
+                    displayed_overlaps = overlaps[-max_overlaps:]  # Show last N overlaps
+                    print(f"Showing last {max_overlaps} of {len(overlaps)} overlapping matches:")
+                    print("  (Use --max-overlaps to change this limit or --max-overlaps all to show all)\n")
+
                 print("Overlapping Matches:")
                 print()
-                for i, overlap in enumerate(overlaps, 1):
-                    print(f"Overlap #{i}:")
+                total_overlaps = len(overlaps)
+                for i, overlap in enumerate(displayed_overlaps, 1):
+                    overlap_num = total_overlaps - len(displayed_overlaps) + i
+                    print(f"Overlap #{overlap_num}:")
                     print(f"  File 1 Match:")
                     print(f"    Start:  {overlap['file1_start'].strftime('%Y-%m-%d %H:%M:%S')}")
                     print(f"    Stop:   {overlap['file1_stop'].strftime('%Y-%m-%d %H:%M:%S')}")
@@ -617,7 +630,7 @@ def print_readable_report(result: Dict, file1: str, file2: str, df1: pd.DataFram
                     print(f"    Mode:     {overlap['file2_mode']}")
                     print(f"  Overlap Duration: {overlap['overlap_duration_minutes']:.1f} minutes")
                     print(f"    ({overlap['overlap_start'].strftime('%Y-%m-%d %H:%M:%S')} - {overlap['overlap_stop'].strftime('%Y-%m-%d %H:%M:%S')})")
-                    if i < len(overlaps):
+                    if i < len(displayed_overlaps):
                         print()
 
                 print("\n" + "=" * 80)
@@ -657,6 +670,12 @@ def main():
         action="store_true",
         dest="skip_overlap",
         help="Skip temporal overlap analysis (faster, but less comprehensive)",
+    )
+    parser.add_argument(
+        "--max-overlaps",
+        type=str,
+        default="20",
+        help="Maximum number of temporal overlaps to display (default: 20, use 'all' to show all)",
     )
     args = parser.parse_args()
 
@@ -737,6 +756,18 @@ def main():
             for o in overlaps
         ]
 
+    # Parse max_overlaps argument
+    if args.max_overlaps.lower() == "all":
+        max_overlaps = None  # None means show all
+    else:
+        try:
+            max_overlaps = int(args.max_overlaps)
+            if max_overlaps < 0:
+                raise ValueError("max_overlaps must be non-negative")
+        except ValueError:
+            print(f"Error: --max-overlaps must be a non-negative integer or 'all', got '{args.max_overlaps}'")
+            return 1
+
     # Output format selection
     if args.json:
         # JSON output (compact or pretty)
@@ -746,7 +777,7 @@ def main():
             print(json.dumps(result, separators=(",", ":")))
     else:
         # Human-readable format (default)
-        print_readable_report(result, args.file1, args.file2, df1, df2, overlaps)
+        print_readable_report(result, args.file1, args.file2, df1, df2, overlaps, max_overlaps)
 
         # If --pretty is also specified, also show JSON
         if args.pretty:
