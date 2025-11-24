@@ -149,6 +149,65 @@ game_modes_mapping = {
     "URF": "Ultra Rapid Fire"
 }
 
+game_queue_mapping = {
+    400: "Draft Pick (SR)",
+    420: "Ranked Solo/Duo",
+    430: "Blind Pick (SR)",
+    440: "Ranked Flex (SR)",
+    450: "ARAM",
+    460: "Twisted Treeline (Blind)",
+    470: "Twisted Treeline (Ranked)",
+    490: "Normal (Quickplay SR)",
+    700: "Clash",
+    720: "ARAM Clash",
+    830: "Co-op vs AI (Intro)",
+    840: "Co-op vs AI (Beginner)",
+    850: "Co-op vs AI (Intermediate)",
+    900: "URF",
+    920: "Legend of the Poro King",
+    1020: "One for All",
+    1300: "Nexus Blitz",
+    1400: "Ultimate Spellbook",
+    1700: "Arena"
+}
+
+map_id_mapping = {
+    1: "Summoner's Rift (Autumn)",
+    2: "Summoner's Rift (Summer)",
+    3: "The Proving Grounds",
+    4: "Twisted Treeline (Original)",
+    8: "The Crystal Scar",
+    10: "Twisted Treeline",
+    11: "Summoner's Rift",
+    12: "Howling Abyss",
+    14: "Butcher's Bridge",
+    16: "Cosmic Ruins",
+    18: "Valoran City Park",
+    19: "Substructure 43",
+    20: "Crash Site",
+    21: "Nexus Blitz",
+    22: "Convergence",
+    30: "Butcher's Bridge (Legacy)",
+    76: "Cosmic Ruins",
+    83: "Valoran City Park",
+    100: "Overcharge",
+    200: "Convergence",
+    2100: "Arena"
+}
+
+game_type_mapping = {
+    "MATCHED": "Matched",
+    "MATCHED_GAME": "Matched",
+    "CUSTOM_GAME": "Custom",
+    "NORMAL_GAME": "Normal",
+    "RANKED_GAME": "Ranked",
+    "TUTORIAL_GAME": "Tutorial",
+    "BOT": "Co-op vs AI",
+    "ARAM_UNRANKED_5x5": "ARAM",
+    "ONEFORALL": "One for All"
+}
+
+
 # Default dummy values so linters shut up
 # Do not change values below - modify them in the configuration section or config file instead
 RIOT_API_KEY = ""
@@ -220,13 +279,13 @@ import platform
 import re
 import ipaddress
 import asyncio
-from typing import Optional, Any
 try:
     from pulsefire.clients import RiotAPIClient
 except ModuleNotFoundError:
     raise SystemExit("Error: Couldn't find the Pulsefire library !\n\nTo install it, run:\n    pip3 install pulsefire\n\nOnce installed, re-run this tool. For more help, visit:\nhttps://pulsefire.iann838.com/usage/basic/installation/")
 import shutil
 from pathlib import Path
+from typing import Optional, Any, Dict, List, Tuple
 
 
 # Logger class to output messages to stdout and log file
@@ -460,7 +519,7 @@ def write_csv_entry(csv_file_name, start_date_ts, stop_date_ts, duration_ts, gam
 
 # Returns the current date/time in human readable format; eg. Sun 21 Apr 2024, 15:08:45
 def get_cur_ts(ts_str=""):
-    return (f'{ts_str}{calendar.day_abbr[(datetime.fromtimestamp(int(time.time()))).weekday()]}, {datetime.fromtimestamp(int(time.time())).strftime("%d %b %Y, %H:%M:%S")}')
+    return (f'{ts_str}{calendar.day_abbr[(datetime.fromtimestamp(int(time.time()))).weekday()]} {datetime.fromtimestamp(int(time.time())).strftime("%d %b %Y, %H:%M:%S")}')
 
 
 # Prints the current date/time in human readable format with separator; eg. Sun 21 Apr 2024, 15:08:45
@@ -649,6 +708,95 @@ def add_new_team_member(list_of_teams, teamid, member):
         list_of_teams.append({"id": teamid, "members": [member]})
 
 
+# Converts Riot's gameType to a human-friendly label
+def humanize_game_type(game_type: Optional[str]) -> str:
+    if not game_type:
+        return "Unknown"
+    return game_type_mapping.get(game_type, game_type.replace("_", " ").title())
+
+
+# Returns a short patch label (major.minor) and full build when available
+def format_game_version_label(game_version: Optional[str]) -> str:
+    if not game_version:
+        return "Unknown"
+
+    version = str(game_version).strip()
+    if not version or version.lower() == "unknown":
+        return "Unknown"
+
+    parts = version.split(".")
+    if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+        short_version = f"{parts[0]}.{parts[1]}"
+        if short_version != version:
+            return f"{short_version} ({version})"
+        return short_version
+
+    return version
+
+
+# Returns the best available Riot name for a participant
+def get_participant_display_name(participant: dict) -> str:
+    if not participant:
+        return "unknown"
+
+    riot_game_name = participant.get("riotIdGameName")
+    if riot_game_name:
+        return riot_game_name
+
+    riot_id = participant.get("riotId")
+    if isinstance(riot_id, dict):
+        game_name = riot_id.get("gameName")
+        if game_name:
+            return game_name
+        riot_str = riot_id.get("riotId")
+        if isinstance(riot_str, str) and riot_str:
+            return riot_str.split('#', 1)[0]
+    elif isinstance(riot_id, str) and riot_id:
+        return riot_id.split('#', 1)[0]
+
+    summoner_name = participant.get("summonerName")
+    if summoner_name:
+        return summoner_name
+
+    return "unknown"
+
+
+# Builds printable lines for banned champions grouped by team
+def format_banned_champions_output(bans_by_team: Dict[int, List[Tuple[Optional[int], str]]]):
+    total_bans = sum(len(bans) for bans in bans_by_team.values())
+    if total_bans == 0:
+        return [], False
+
+    non_empty_team_ids = [team_id for team_id, bans in bans_by_team.items() if bans]
+    shared_pool = len(non_empty_team_ids) <= 1
+    lines: List[str] = []
+
+    if shared_pool:
+        combined_bans: List[Tuple[Optional[int], str]] = []
+        for team_id in non_empty_team_ids:
+            combined_bans.extend(bans_by_team.get(team_id, []))
+        combined_bans.sort(key=lambda x: x[0] or 0)
+        for pick_turn, champ_label in combined_bans:
+            pick_info = f"pick {pick_turn}" if pick_turn else "pick ?"
+            lines.append(f"- {champ_label} ({pick_info})")
+    else:
+        for idx, team_id in enumerate(sorted(bans_by_team.keys())):
+            if idx > 0:
+                lines.append("")
+            team_line = f"Team id {team_id}:"
+            lines.append(team_line)
+            team_bans = bans_by_team.get(team_id, [])
+            if team_bans:
+                sorted_bans = sorted(team_bans, key=lambda x: x[0] or 0)
+                for pick_turn, champ_label in sorted_bans:
+                    pick_info = f"pick {pick_turn}" if pick_turn else "pick ?"
+                    lines.append(f"- {champ_label} ({pick_info})")
+            else:
+                lines.append("- No bans listed")
+
+    return lines, shared_pool
+
+
 # Returns Riot game name & tag line for specified Riot ID
 def get_user_riot_name_tag(riotid: str):
 
@@ -757,8 +905,9 @@ async def get_ranked_info(puuid: str, region: str):
 # Gets champion ID to name mapping from Data Dragon
 _champion_id_to_name_cache = None
 
-def get_champion_name(champion_id: int) -> str:
-    """Get champion name from champion ID using Data Dragon."""
+
+# Gets champion name from champion ID using Data Dragon
+def get_champion_name(champion_id: int) -> Optional[str]:
     global _champion_id_to_name_cache
 
     if _champion_id_to_name_cache is None:
@@ -780,10 +929,24 @@ def get_champion_name(champion_id: int) -> str:
                         if champ_id:
                             _champion_id_to_name_cache[champ_id] = champion_name
         except Exception:
-            # If Data Dragon fails, return "Unknown"
+            # If Data Dragon fails, this will return None
             pass
 
-    return _champion_id_to_name_cache.get(champion_id, f"Champion {champion_id}")
+    if not champion_id:
+        return None
+
+    return _champion_id_to_name_cache.get(champion_id)
+
+
+# Returns name when available, otherwise fall back to numeric identifier
+def format_named_value(name: Optional[str], identifier: Optional[int]) -> str:
+    if name and name != "Unknown":
+        return name
+
+    if identifier is not None and identifier != 0:
+        return str(identifier)
+
+    return "Unknown"
 
 
 # Gets champion mastery information
@@ -808,6 +971,8 @@ async def get_champion_mastery(puuid: str, region: str, top_n: int = 3):
                 champion_level = mastery.get("championLevel", 0)
                 champion_points = mastery.get("championPoints", 0)
                 champion_name = get_champion_name(champion_id)
+                if not champion_name:
+                    champion_name = str(champion_id) if champion_id else "Unknown"
                 mastery_info.append({
                     "champion_id": champion_id,
                     "champion_name": champion_name,
@@ -851,9 +1016,25 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
             match_duration = current_match.get("gameLength", 0)
 
             gamemode = current_match.get("gameMode")
+            queue_id = current_match.get("gameQueueConfigId")
+            map_id = current_match.get("mapId")
+            game_type_raw = current_match.get("gameType")
+            game_type = humanize_game_type(game_type_raw)
+            game_version_raw = current_match.get("gameVersion")
+            game_version = format_game_version_label(game_version_raw)
 
             if game_modes_mapping.get(gamemode):
                 gamemode = game_modes_mapping.get(gamemode)
+
+            if queue_id is not None:
+                queue_desc = format_named_value(game_queue_mapping.get(queue_id), queue_id)
+            else:
+                queue_desc = "Unknown"
+
+            if map_id is not None:
+                map_desc = format_named_value(map_id_mapping.get(map_id), map_id)
+            else:
+                map_desc = "Unknown"
 
             if match_start_ts < 1000000000:
                 match_start_ts = int(time.time())
@@ -864,6 +1045,10 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
 
             print(f"Match ID:\t\t\t{match_id}")
             print(f"Game mode:\t\t\t{gamemode}")
+            print(f"Queue:\t\t\t\t{queue_desc}")
+            print(f"Map:\t\t\t\t{map_desc}")
+            print(f"Game type:\t\t\t{game_type}")
+            print(f"Game version:\t\t\t{game_version}")
 
             print(f"\nMatch start date:\t\t{get_date_from_ts(match_start_ts)}")
 
@@ -876,9 +1061,11 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
             print(f"Match duration:\t\t\t{current_match_duration}")
 
             current_teams = []
-            u_champion_id = ""
+            detailed_teams = {}
+            u_champion_id = 0
+            u_champion_name = None
 
-            for p in current_match.get("participants"):
+            for p in current_match.get("participants", []):
                 u_riotid = p.get("riotId")
                 if u_riotid:
                     u_riotid_name = u_riotid.split('#', 1)[0]
@@ -890,28 +1077,78 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
 
                 add_new_team_member(current_teams, u_teamid, u_riotid_name)
 
-                if u_riotid_name == riotid_name:
-                    u_champion_id = p["championId"]
+                champion_id = p.get("championId", 0)
+                champion_name = get_champion_name(champion_id) if champion_id else None
+                champion_display = format_named_value(champion_name, champion_id)
 
-                    print(f"\nChampion ID:\t\t\t{u_champion_id}")
+                member_display = u_riotid_name
+                if champion_display != "Unknown":
+                    member_display = f"{u_riotid_name} ({champion_display})"
+                detailed_teams.setdefault(u_teamid, []).append(member_display)
+
+                if u_riotid_name == riotid_name:
+                    u_champion_id = champion_id
+                    u_champion_name = champion_name
+
+            champion_line = format_named_value(u_champion_name, u_champion_id)
+            print(f"\nChampion:\t\t\t{champion_line}")
 
             current_teams_number = len(current_teams)
             print(f"Teams:\t\t\t\t{current_teams_number}")
 
-            current_teams_str = ""
-
-            for team in current_teams:
-                teamid_str = f'\nTeam id {team["id"]}:'
-                current_teams_str += f"{teamid_str}\n"
+            current_teams_str_lines = []
+            for team_index, team in enumerate(current_teams):
+                if team_index == 0:
+                    print()
+                else:
+                    print()
+                    current_teams_str_lines.append("")
+                teamid_str = f"Team id {team['id']}:"
                 print(teamid_str)
+                current_teams_str_lines.append(teamid_str)
 
-                for member in team["members"]:
+                members_to_print = detailed_teams.get(team["id"], team["members"])
+                for member in members_to_print:
                     member_str = f"- {member}"
-                    current_teams_str += f"{member_str}\n"
+                    current_teams_str_lines.append(member_str)
                     print(member_str)
 
+            current_teams_str = "\n".join(current_teams_str_lines) + "\n" if current_teams_str_lines else ""
+
+            banned_champions = current_match.get("bannedChampions") or []
+            banned_champions_str = ""
+            if banned_champions:
+                bans_by_team = {}
+                for ban in banned_champions:
+                    team_id = ban.get("teamId", 0)
+                    champ_id = ban.get("championId", 0)
+                    pick_turn = ban.get("pickTurn")
+                    if champ_id and champ_id > 0:
+                        champ_display = format_named_value(get_champion_name(champ_id), champ_id)
+                    else:
+                        champ_display = "No ban"
+                    bans_by_team.setdefault(team_id, []).append((pick_turn, champ_display))
+
+                ban_lines, shared_pool = format_banned_champions_output(bans_by_team)
+                if ban_lines:
+                    print("\nBanned champions:\n")
+                    for line in ban_lines:
+                        if line:
+                            print(line)
+                        else:
+                            print()
+                    banned_champions_str = "\n".join(ban_lines) + "\n"
+
             m_subject = f"LoL user {riotid_name} is in game now (after {calculate_timespan(match_start_ts, int(last_match_stop_ts), show_seconds=False)} - {get_short_date_from_ts(last_match_stop_ts)})"
-            m_body = f"LoL user {riotid_name} is in game now (after {calculate_timespan(match_start_ts, int(last_match_stop_ts))})\n\nUser played last time: {get_range_of_dates_from_tss(last_match_start_ts, last_match_stop_ts)}\n\nMatch ID: {match_id}\nGame mode: {gamemode}\n\nMatch start date: {get_date_from_ts(match_start_ts)}\nMatch duration: {current_match_duration}\n\nChampion ID: {u_champion_id}\nTeams: {current_teams_number}\n{current_teams_str}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+            bans_email_section = f"\nBanned champions:\n\n{banned_champions_str}" if banned_champions_str else ""
+            m_body = (
+                f"LoL user {riotid_name} is in game now (after {calculate_timespan(match_start_ts, int(last_match_stop_ts))})\n\n"
+                f"User played last time: {get_range_of_dates_from_tss(last_match_start_ts, last_match_stop_ts)}\n\n"
+                f"Match ID: {match_id}\nGame mode: {gamemode}\nQueue: {queue_desc}\nMap: {map_desc}\nGame type: {game_type}\nGame version: {game_version}\n\n"
+                f"Match start date: {get_date_from_ts(match_start_ts)}\nMatch duration: {current_match_duration}\n\n"
+                f"Champion: {champion_line}\nTeams: {current_teams_number}\n\n{current_teams_str}{bans_email_section}"
+                f"{get_cur_ts(nl_ch + 'Timestamp: ')}"
+            )
 
             if status_notification_flag:
                 print(f"Sending email notification to {RECEIVER_EMAIL}")
@@ -985,13 +1222,8 @@ async def get_latest_match_ids(puuid: str, region: str, count: int = 10, start: 
         return []
 
 
-# Gets the total count of available matches
+# Fetches all available match IDs to determine total count
 async def get_total_match_count(puuid: str, region: str) -> int:
-    """
-    Fetches all available match IDs to determine total count.
-    Returns the total number of matches available for this player.
-    This is optimized to stop as soon as we detect the end.
-    """
     MAX_MATCHES_PER_REQUEST = 100
     all_matches = []
     start = 0
@@ -1057,9 +1289,28 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
         match_creation_ts = int(match_info.get("gameCreation", 0) / 1000)
         match_duration = match_info.get("gameDuration", 0)
         gamemode = game_modes_mapping.get(match_info.get("gameMode"), match_info.get("gameMode"))
+        queue_id = match_info.get("queueId")
+        map_id = match_info.get("mapId")
+        match_type_raw = match_info.get("gameType") or match_info.get("matchType")
+        match_type = humanize_game_type(match_type_raw)
+        game_version = format_game_version_label(match_info.get("gameVersion"))
+
+        if queue_id is not None:
+            queue_desc = format_named_value(game_queue_mapping.get(queue_id), queue_id)
+        else:
+            queue_desc = "Unknown"
+
+        if map_id is not None:
+            map_desc = format_named_value(map_id_mapping.get(map_id), map_id)
+        else:
+            map_desc = "Unknown"
 
         print(f"Match ID:\t\t\t{match_id}")
         print(f"Game mode:\t\t\t{gamemode}")
+        print(f"Queue:\t\t\t\t{queue_desc}")
+        print(f"Map:\t\t\t\t{map_desc}")
+        print(f"Game type:\t\t\t{match_type}")
+        print(f"Game version:\t\t\t{game_version}")
         print(f"\nMatch start-end date:\t\t{get_range_of_dates_from_tss(match_start_ts, match_stop_ts)}")
         print(f"Match creation:\t\t\t{get_date_from_ts(match_creation_ts)}")
         print(f"Match duration:\t\t\t{display_time(int(match_duration))}")
@@ -1068,23 +1319,32 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
         print(f"\nMatch finished:\t\t\t{last_played} ago")
 
         teams = []
+        team_roster_details = {}
         user_participant = None
 
         for p in match_info.get("participants", []):
             if p.get("puuid") == puuid:
                 user_participant = p
 
-            p_riotid_name = p.get("riotIdGameName", p.get("summonerName", "Unknown Player"))
+            p_riotid_name = get_participant_display_name(p)
             p_teamid = p.get("teamId", 0)
+            champion_played_name = p.get("championName")
+            champion_played_id = p.get("championId")
+            champion_display = format_named_value(champion_played_name, champion_played_id)
             add_new_team_member(teams, p_teamid, p_riotid_name)
+            if champion_display != "Unknown":
+                team_roster_details.setdefault(p_teamid, []).append(f"{p_riotid_name} ({champion_display})")
+            else:
+                team_roster_details.setdefault(p_teamid, []).append(p_riotid_name)
 
         u_victory = "No"
-        u_champion, u_level, u_role, u_lane = "N/A", "N/A", "N/A", "N/A"
+        u_champion_name, u_level, u_role, u_lane = "N/A", "N/A", "N/A", "N/A"
+        u_champion_id = None
         u_kills, u_deaths, u_assists = 0, 0, 0
-
         if user_participant:
             u_victory = "Yes" if user_participant.get("win", False) else "No"
-            u_champion = user_participant.get("championName")
+            u_champion_name = user_participant.get("championName")
+            u_champion_id = user_participant.get("championId")
             u_kills = user_participant.get("kills", 0)
             u_deaths = user_participant.get("deaths", 0)
             u_assists = user_participant.get("assists", 0)
@@ -1095,7 +1355,8 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
         print(f"\nVictory:\t\t\t{u_victory}")
         print(f"Kills/Deaths/Assists:\t\t{u_kills}/{u_deaths}/{u_assists}")
 
-        print(f"\nChampion:\t\t\t{u_champion}")
+        u_champion_display = format_named_value(u_champion_name, u_champion_id)
+        print(f"\nChampion:\t\t\t{u_champion_display}")
 
         print(f"Level:\t\t\t\t{u_level}")
 
@@ -1106,10 +1367,49 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
             print(f"Lane:\t\t\t\t{u_lane}")
 
         print(f"Teams:\t\t\t\t{len(teams)}")
-        for team in teams:
-            print(f'\nTeam id {team["id"]}:')
-            for member in team["members"]:
-                print(f"- {member}")
+        teams_lines = []
+        for team_index, team in enumerate(teams):
+            if team_index == 0:
+                print()
+            else:
+                print()
+                teams_lines.append("")
+            team_header = f'Team id {team["id"]}:'
+            print(team_header)
+            teams_lines.append(team_header)
+            members_to_print = team_roster_details.get(team["id"], team["members"])
+            for member in members_to_print:
+                detail_line = f"- {member}"
+                print(detail_line)
+                teams_lines.append(detail_line)
+        teams_detailed_str = "\n".join(teams_lines) + "\n" if teams_lines else ""
+
+        banned_champions_email_str = ""
+        match_team_data = match_info.get("teams", [])
+        if match_team_data:
+            team_bans_dict = {}
+            for team in match_team_data:
+                team_id = team.get("teamId", 0)
+                team_bans = []
+                for ban in team.get("bans", []):
+                    champ_id = ban.get("championId", 0)
+                    pick_turn = ban.get("pickTurn")
+                    if champ_id and champ_id > 0:
+                        champ_display = format_named_value(get_champion_name(champ_id), champ_id)
+                    else:
+                        champ_display = "No ban"
+                    team_bans.append((pick_turn, champ_display))
+                team_bans_dict[team_id] = team_bans
+
+            ban_lines, shared_pool = format_banned_champions_output(team_bans_dict)
+            if ban_lines:
+                print("\nBanned champions:\n")
+                for line in ban_lines:
+                    if line:
+                        print(line)
+                    else:
+                        print()
+                banned_champions_email_str = "\n".join(ban_lines) + "\n"
         if csv_file_name:
             try:
                 team1_str = " ".join(f"'{p}'" for p in teams[0]["members"]) if len(teams) > 0 else ""
@@ -1118,22 +1418,28 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
                 csv_level = u_level if u_level is not None else "N/A"
                 csv_role = u_role if (u_role is not None and u_role != "NONE") else "N/A"
                 csv_lane = u_lane if (u_lane is not None and u_lane != "NONE") else "N/A"
-                write_csv_entry(csv_file_name, str(datetime.fromtimestamp(match_start_ts)), str(datetime.fromtimestamp(match_stop_ts)), display_time(int(match_duration)), gamemode, u_victory, u_kills, u_deaths, u_assists, u_champion, csv_level, csv_role, csv_lane, team1_str, team2_str)
+                write_csv_entry(csv_file_name, str(datetime.fromtimestamp(match_start_ts)), str(datetime.fromtimestamp(match_stop_ts)), display_time(int(match_duration)), gamemode, u_victory, u_kills, u_deaths, u_assists, u_champion_display, csv_level, csv_role, csv_lane, team1_str, team2_str)
             except Exception as e:
                 print(f"* Error: {e}")
 
         if status_notification_flag:
-            teams_str = ""
-            for team in teams:
-                teams_str += f'{nl_ch}Team id {team["id"]}:{nl_ch}'
-                for member in team["members"]:
-                    teams_str += f"- {member}{nl_ch}"
+            teams_str = teams_detailed_str if teams_detailed_str else ""
 
             u_role_str = f"{nl_ch}Role: {u_role}" if u_role and u_role != "NONE" else ""
             u_lane_str = f"{nl_ch}Lane: {u_lane}" if u_lane and u_lane != "NONE" else ""
 
+            bans_email_section = f"\nBanned champions:\n\n{banned_champions_email_str}" if banned_champions_email_str else ""
+
             m_subject = f"LoL user {riotid_name} match summary ({get_range_of_dates_from_tss(match_start_ts, match_stop_ts, short=True)}, {display_time(int(match_duration), granularity=1)}, {u_victory})"
-            m_body = f"LoL user {riotid_name} last match summary\n\nMatch ID: {match_id}\nGame mode: {gamemode}\n\nMatch start-end date: {get_range_of_dates_from_tss(match_start_ts, match_stop_ts)}\nMatch creation: {get_date_from_ts(match_creation_ts)}\nMatch duration: {display_time(int(match_duration))}\n\nVictory: {u_victory}\nKills/deaths/assists: {u_kills}/{u_deaths}/{u_assists}\n\nChampion: {u_champion}\nLevel: {u_level}{u_role_str}{u_lane_str}\nTeams: {len(teams)}\n{teams_str}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+            m_body = (
+                f"LoL user {riotid_name} last match summary\n\n"
+                f"Match ID: {match_id}\nGame mode: {gamemode}\nQueue: {queue_desc}\nMap: {map_desc}\nGame type: {match_type}\nGame version: {game_version}\n\n"
+                f"Match start-end date: {get_range_of_dates_from_tss(match_start_ts, match_stop_ts)}\nMatch creation: {get_date_from_ts(match_creation_ts)}\nMatch duration: {display_time(int(match_duration))}\n\n"
+                f"Victory: {u_victory}\nKills/deaths/assists: {u_kills}/{u_deaths}/{u_assists}\n\n"
+                f"Champion: {u_champion_display}\nLevel: {u_level}{u_role_str}{u_lane_str}\nTeams: {len(teams)}\n\n"
+                f"{teams_str}{bans_email_section}"
+                f"{get_cur_ts(nl_ch + 'Timestamp: ')}"
+            )
             print(f"\nSending email notification to {RECEIVER_EMAIL}")
             send_email(m_subject, m_body, "", SMTP_SSL)
 
@@ -1459,7 +1765,8 @@ async def lol_monitor_user(riotid, region, csv_file_name):
             points = mastery.get("points", 0)
             # Format points with commas for readability
             points_str = f"{points:,}" if points > 0 else "0"
-            print(f"\t\t\t\t{i}. {champion_name}:\tLevel {level} ({points_str} points)")
+            name_label = f"{i}. {champion_name}:"
+            print(f"\t\t\t\t{name_label:<20} Level {level} ({points_str} points)")
 
     print("─" * HORIZONTAL_LINE)
 
