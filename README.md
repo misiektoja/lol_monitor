@@ -1,6 +1,6 @@
 # lol_monitor
 
-lol_monitor is a tool for real-time monitoring of **LoL (League of Legends) players' activities**. 
+lol_monitor is a tool for real-time monitoring of **LoL (League of Legends) players' activities**.
 
 <a id="features"></a>
 ## Features
@@ -46,6 +46,7 @@ lol_monitor is a tool for real-time monitoring of **LoL (League of Legends) play
    * [Check Intervals](#check-intervals)
    * [Signal Controls (macOS/Linux/Unix)](#signal-controls-macoslinuxunix)
    * [Coloring Log Output with GRC](#coloring-log-output-with-grc)
+   * [Utility Tools](#utility-tools)
 6. [Change Log](#change-log)
 7. [License](#license)
 
@@ -161,7 +162,7 @@ If you store the `RIOT_API_KEY` in a dotenv file you can update its value and se
 <a id="smtp-settings"></a>
 ### SMTP Settings
 
-If you want to use email notifications functionality, configure SMTP settings in the `lol_monitor.conf` file. 
+If you want to use email notifications functionality, configure SMTP settings in the `lol_monitor.conf` file.
 
 Verify your SMTP settings by using `--send-test-email` flag (the tool will try to send a test email notification):
 
@@ -190,7 +191,7 @@ RIOT_API_KEY="your_riot_api_key"
 SMTP_PASSWORD="your_smtp_password"
 ```
 
-By default the tool will auto-search for dotenv file named `.env` in current directory and then upward from it. 
+By default the tool will auto-search for dotenv file named `.env` in current directory and then upward from it.
 
 You can specify a custom file with `DOTENV_FILE` or `--env-file` flag:
 
@@ -224,7 +225,7 @@ If you have not set`RIOT_API_KEY` secret, you can use `-r` flag:
 lol_monitor <riot_id_name#tag> <region> -r "your_riot_api_key"
 ```
 
-LoL Riot ID consists of Riot ID game name (`riot_id_name` in the example above) and tag line (`#tag`). 
+LoL Riot ID consists of Riot ID game name (`riot_id_name` in the example above) and tag line (`#tag`).
 
 For the `region` you need to use the short form of it. You can find the list below:
 
@@ -246,9 +247,9 @@ For the `region` you need to use the short form of it. You can find the list bel
 | oc1 | Oceania (OC) |
 
 By default, the tool looks for a configuration file named `lol_monitor.conf` in:
- - current directory 
+ - current directory
  - home directory (`~`)
- - script directory 
+ - script directory
 
  If you generated a configuration file as described in [Configuration](#configuration), but saved it under a different name or in a different directory, you can specify its location using the `--config-file` flag:
 
@@ -322,6 +323,19 @@ lol_monitor <riot_id_name#tag> <region> -b lol_games_riot_id_name.csv
 
 The file will be automatically created if it does not exist.
 
+The CSV file includes the following columns:
+- `Match Start`, `Match Stop`, `Duration`
+- `Game Mode` - The game mode (e.g., "CLASSIC", "ARAM", "URF")
+- `Victory` - Win or loss
+- `Kills`, `Deaths`, `Assists`
+- `Champion` - Champion name
+- `Level` - Champion level achieved
+- `Role` - Player role (e.g., "DUO_CARRY", "JUNGLE")
+- `Lane` - Lane played (e.g., "TOP", "MIDDLE", "BOTTOM")
+- `Team 1`, `Team 2` - Team member lists
+
+If you have CSV files from older versions (v1.7.2 or earlier) that use the old format, you can convert them using the [CSV format conversion tool](#utility-tools).
+
 <a id="check-intervals"></a>
 ### Check Intervals
 
@@ -376,6 +390,52 @@ Example:
 ```sh
 grc tail -F -n 100 lol_monitor_<riot_id_name>.log
 ```
+
+<a id="utility-tools"></a>
+### Utility Tools
+
+The project includes utility scripts in the `tools/` directory for working with CSV match history files:
+
+#### CSV Format Converter
+
+The `lol_convert_csv_format.py` script converts CSV files from the old format (used by lol_monitor <=v1.7.2) to the new format (used by >=v1.8).
+
+**Old format columns:**
+`Match Start`, `Match Stop`, `Duration`, `Victory`, `Kills`, `Deaths`, `Assists`, `Champion`, `Team 1`, `Team 2`
+
+**New format columns:**
+`Match Start`, `Match Stop`, `Duration`, `Game Mode`, `Victory`, `Kills`, `Deaths`, `Assists`, `Champion`, `Level`, `Role`, `Lane`, `Team 1`, `Team 2`
+
+**Usage:**
+```sh
+python3 tools/lol_convert_csv_format.py input.csv [-o output.csv]
+```
+
+If `-o` is not specified, the input file will be overwritten with the converted format. Missing values are filled with "N/A".
+
+#### Match History Comparison Tool
+
+The `lol_compare_csvs.py` script compares two League of Legends match history CSV files and determines whether they likely belong to the same player. It analyzes multiple features including:
+
+- Champion pool similarity
+- KDA profile (mean and standard deviation)
+- Win rate similarity
+- Average match duration
+- Time-of-day playing patterns
+- Teammate overlap
+- Role and lane preferences
+- Average champion level
+- Game mode preferences
+- Temporal overlap detection
+
+**Usage:**
+```sh
+python3 tools/lol_compare_csvs.py file1.csv file2.csv [--limit N] [--json] [--pretty] [--no-overlap-check]
+```
+
+**Requirements:** `pandas` (install with `pip install pandas`)
+
+The script outputs a similarity score (0-100) with a verdict indicating the likelihood that both CSV files represent the same player. Use `--json` for programmatic output or `--pretty` for formatted JSON.
 
 <a id="change-log"></a>
 ## Change Log
