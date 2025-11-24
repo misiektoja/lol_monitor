@@ -279,6 +279,7 @@ import platform
 import re
 import ipaddress
 import asyncio
+import html
 try:
     from pulsefire.clients import RiotAPIClient
 except ModuleNotFoundError:
@@ -797,6 +798,68 @@ def format_banned_champions_output(bans_by_team: Dict[int, List[Tuple[Optional[i
     return lines, shared_pool
 
 
+# Formats team members for HTML email, bolding the monitored username
+def format_team_member_html(member_str: str, monitored_username: str) -> str:
+    if not member_str:
+        return ""
+
+    # Extract username (everything before the first "(" if present)
+    if " (" in member_str:
+        username, rest = member_str.split(" (", 1)
+        champion_part = f" ({rest}"
+    else:
+        username = member_str
+        champion_part = ""
+
+    # Bold the username if it matches the monitored user
+    if username == monitored_username:
+        username_html = f"<b>{html.escape(username)}</b>"
+    else:
+        username_html = html.escape(username)
+
+    return username_html + html.escape(champion_part) if champion_part else username_html
+
+
+# Formats team list for HTML email
+def format_teams_html(teams_lines: List[str], monitored_username: str) -> str:
+    if not teams_lines:
+        return ""
+
+    html_lines = []
+    for line in teams_lines:
+        if not line:
+            html_lines.append("<br>")
+        elif line.startswith("Team id "):
+            # Team header - convert to HTML
+            html_lines.append(f"<b>{html.escape(line)}</b><br>")
+        elif line.startswith("- "):
+            # Team member - bold username if it's the monitored user
+            member_str = line[2:]  # Remove "- " prefix
+            member_html = format_team_member_html(member_str, monitored_username)
+            html_lines.append(f"- {member_html}<br>")
+        else:
+            html_lines.append(f"{html.escape(line)}<br>")
+
+    return "".join(html_lines)
+
+
+# Formats banned champions for HTML email
+def format_banned_champions_html(ban_lines: List[str]) -> str:
+    if not ban_lines:
+        return ""
+
+    html_lines = []
+    for line in ban_lines:
+        if not line:
+            html_lines.append("<br>")
+        elif line.startswith("Team id "):
+            html_lines.append(f"<b>{html.escape(line)}</b><br>")
+        else:
+            html_lines.append(f"{html.escape(line)}<br>")
+
+    return "".join(html_lines)
+
+
 # Returns Riot game name & tag line for specified Riot ID
 def get_user_riot_name_tag(riotid: str):
 
@@ -1121,6 +1184,7 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
 
             banned_champions = current_match.get("bannedChampions") or []
             banned_champions_str = ""
+            ban_lines = []
             if banned_champions:
                 bans_by_team = {}
                 for ban in banned_champions:
@@ -1154,9 +1218,32 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
                 f"{get_cur_ts(nl_ch + 'Timestamp: ')}"
             )
 
+            # HTML version
+            bans_email_section_html = f"<br><b>Banned champions:</b><br><br>{format_banned_champions_html(ban_lines)}" if banned_champions_str else ""
+            current_teams_html = format_teams_html(current_teams_str_lines, riotid_name)
+            timespan_str = calculate_timespan(match_start_ts, int(last_match_stop_ts))
+            m_body_html = (
+                f"<html><head></head><body>"
+                f"LoL user <b>{html.escape(riotid_name)}</b> is in game now (after <b>{html.escape(timespan_str)}</b>)<br><br>"
+                f"User played last time: <b>{html.escape(get_range_of_dates_from_tss(last_match_start_ts, last_match_stop_ts))}</b><br><br>"
+                f"Match ID: {html.escape(str(match_id))}<br>"
+                f"Game mode: <b>{html.escape(gamemode)}</b><br>"
+                f"Queue: {html.escape(queue_desc)}<br>"
+                f"Map: {html.escape(map_desc)}<br>"
+                f"Game type: {html.escape(game_type)}<br>"
+                f"Game version: {html.escape(game_version)}<br><br>"
+                f"Match start date: <b>{html.escape(get_date_from_ts(match_start_ts))}</b><br>"
+                f"Match duration: {html.escape(current_match_duration)}<br><br>"
+                f"Champion: <b>{html.escape(champion_line)}</b><br>"
+                f"Teams: {current_teams_number}<br><br>"
+                f"{current_teams_html}{bans_email_section_html}"
+                f"{get_cur_ts('<br>Timestamp: ')}"
+                f"</body></html>"
+            )
+
             if status_notification_flag:
                 print(f"Sending email notification to {RECEIVER_EMAIL}")
-                send_email(m_subject, m_body, "", SMTP_SSL)
+                send_email(m_subject, m_body, m_body_html, SMTP_SSL)
 
             return match_start_ts
         else:
@@ -1277,8 +1364,15 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
                         if status_notification_flag:
                             m_subject = f"LoL user {riotid_name} new forbidden match detected"
                             m_body = (f"LoL user {riotid_name} finished a forbidden match whose details are protected (requires RSO token)\n\nMatch ID: {match_id}\n{get_cur_ts(nl_ch + 'Timestamp: ')}")
+                            m_body_html = (
+                                f"<html><head></head><body>"
+                                f"LoL user <b>{html.escape(riotid_name)}</b> finished a forbidden match whose details are protected (requires RSO token)<br><br>"
+                                f"Match ID: {html.escape(str(match_id))}<br>"
+                                f"{get_cur_ts('<br>Timestamp: ')}"
+                                f"</body></html>"
+                            )
                             print(f"\nSending email notification to {RECEIVER_EMAIL}")
-                            send_email(m_subject, m_body, "", SMTP_SSL)
+                            send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                     return 0, 0
                 else:
                     print(f"* An unexpected error occurred while processing match {match_id}: {e}")
@@ -1448,8 +1542,35 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
                 f"{teams_str}{bans_email_section}"
                 f"{get_cur_ts(nl_ch + 'Timestamp: ')}"
             )
+
+            # HTML version
+            u_role_str_html = f"<br>Role: {html.escape(u_role)}" if u_role and u_role != "NONE" else ""
+            u_lane_str_html = f"<br>Lane: {html.escape(u_lane)}" if u_lane and u_lane != "NONE" else ""
+            bans_email_section_html = f"<br><b>Banned champions:</b><br><br>{format_banned_champions_html(ban_lines)}" if banned_champions_email_str else ""
+            teams_html = format_teams_html(teams_lines, riotid_name)
+            m_body_html = (
+                f"<html><head></head><body>"
+                f"LoL user <b>{html.escape(riotid_name)}</b> last match summary<br><br>"
+                f"Match ID: {html.escape(str(match_id))}<br>"
+                f"Game mode: <b>{html.escape(gamemode)}</b><br>"
+                f"Queue: {html.escape(queue_desc)}<br>"
+                f"Map: {html.escape(map_desc)}<br>"
+                f"Game type: {html.escape(match_type)}<br>"
+                f"Game version: {html.escape(game_version)}<br><br>"
+                f"Match start-end date: <b>{html.escape(get_range_of_dates_from_tss(match_start_ts, match_stop_ts))}</b><br>"
+                f"Match creation: {html.escape(get_date_from_ts(match_creation_ts))}<br>"
+                f"Match duration: <b>{html.escape(display_time(int(match_duration)))}</b><br><br>"
+                f"Victory: <b>{html.escape(u_victory)}</b><br>"
+                f"Kills/deaths/assists: <b>{u_kills}/{u_deaths}/{u_assists}</b><br><br>"
+                f"Champion: <b>{html.escape(u_champion_display)}</b><br>"
+                f"Level: {html.escape(str(u_level))}{u_role_str_html}{u_lane_str_html}<br>"
+                f"Teams: {len(teams)}<br><br>"
+                f"{teams_html}{bans_email_section_html}"
+                f"{get_cur_ts('<br>Timestamp: ')}"
+                f"</body></html>"
+            )
             print(f"\nSending email notification to {RECEIVER_EMAIL}")
-            send_email(m_subject, m_body, "", SMTP_SSL)
+            send_email(m_subject, m_body, m_body_html, SMTP_SSL)
 
         return match_start_ts, match_stop_ts
 
@@ -1462,8 +1583,15 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
                     m_subject = f"LoL user {riotid_name} new forbidden match detected"
 
                     m_body = (f"LoL user {riotid_name} finished a forbidden match whose details are protected (requires RSO token)\n\nMatch ID: {match_id}\n{get_cur_ts(nl_ch + 'Timestamp: ')}")
+                    m_body_html = (
+                        f"<html><head></head><body>"
+                        f"LoL user <b>{html.escape(riotid_name)}</b> finished a forbidden match whose details are protected (requires RSO token)<br><br>"
+                        f"Match ID: <b>{html.escape(str(match_id))}</b><br>"
+                        f"{get_cur_ts('<br>Timestamp: ')}"
+                        f"</body></html>"
+                    )
                     print(f"\nSending email notification to {RECEIVER_EMAIL}")
-                    send_email(m_subject, m_body, "", SMTP_SSL)
+                    send_email(m_subject, m_body, m_body_html, SMTP_SSL)
         else:
             print(f"* An unexpected error occurred while processing match {match_id}: {e}")
 
@@ -1879,6 +2007,12 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                     print(f"*** LoL user {riotid_name} stopped playing !")
                     m_subject = f"LoL user {riotid_name} stopped playing"
                     m_body = f"LoL user {riotid_name} stopped playing{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                    m_body_html = (
+                        f"<html><head></head><body>"
+                        f"LoL user <b>{html.escape(riotid_name)}</b> stopped playing"
+                        f"{get_cur_ts('<br><br>Timestamp: ')}"
+                        f"</body></html>"
+                    )
 
                     game_finished_ts = int(time.time())
 
@@ -1895,7 +2029,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
 
                     if STATUS_NOTIFICATION:
                         print(f"Sending email notification to {RECEIVER_EMAIL}")
-                        send_email(m_subject, m_body, "", SMTP_SSL)
+                        send_email(m_subject, m_body, m_body_html, SMTP_SSL)
 
                     print_cur_ts("\nTimestamp:\t\t\t")
 
@@ -1939,8 +2073,14 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                 if ERROR_NOTIFICATION and not email_sent:
                     m_subject = f"lol_monitor: API key error! (user: {riotid_name})"
                     m_body = f"API key might not be valid anymore or new patch deployed: {e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                    m_body_html = (
+                        f"<html><head></head><body>"
+                        f"API key might not be valid anymore or new patch deployed: <b>{html.escape(str(e))}</b>"
+                        f"{get_cur_ts('<br><br>Timestamp: ')}"
+                        f"</body></html>"
+                    )
                     print(f"Sending email notification to {RECEIVER_EMAIL}")
-                    send_email(m_subject, m_body, "", SMTP_SSL)
+                    send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                     email_sent = True
             print_cur_ts("Timestamp:\t\t\t")
             time.sleep(LOL_CHECK_INTERVAL)
