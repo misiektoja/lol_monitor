@@ -40,6 +40,7 @@ from collections import Counter
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional
 
+import numpy as np
 import pandas as pd
 
 
@@ -308,13 +309,6 @@ MODE_DURATION_THRESHOLDS = {
 
 # Computes duration similarity using mode-specific thresholds
 def duration_similarity_by_mode(df1: pd.DataFrame, df2: pd.DataFrame) -> float:
-    """
-    Computes duration similarity by comparing durations within each game mode,
-    using mode-specific thresholds. This accounts for the fact that different
-    game modes have very different typical durations.
-    Handles N/A/unknown modes as a special category.
-    """
-    # Normalize game modes: treat N/A, empty, etc. as "Unknown"
     def normalize_mode(mode):
         if pd.isna(mode):
             return "Unknown"
@@ -520,10 +514,27 @@ def format_similarity(score: float, width: int = 20) -> str:
     bar = "█" * filled + "░" * (width - filled)
     return f"{pct:5.1f}% [{bar}]"
 
+# Safely extracts and sanitizes values from a pandas row
+def safe_get(row, col, default="N/A"):
+    try:
+        val = row[col]
+        if pd.isna(val):
+            return default
+        val_str = str(val).strip()
+        # Also check for string "nan" (case-insensitive) as pandas sometimes converts NaN to string "nan"
+        if val_str.lower() in ("nan", "none", ""):
+            return default
+        return val_str
+    except (KeyError, IndexError):
+        return default
+
 
 # Checks for temporal overlaps between matches from two dataframes
-def find_temporal_overlaps(df1: pd.DataFrame, df2: pd.DataFrame, verbose: bool = True) -> List[Dict]:
-    overlaps = []
+# Performs vectorized temporal overlap check using NumP
+def find_temporal_overlaps(
+    df1: pd.DataFrame, df2: pd.DataFrame, verbose: bool = True
+) -> List[Dict]:
+    overlaps: List[Dict] = []
 
     # Ensure we have start and stop columns
     if "start" not in df1.columns or "stop" not in df1.columns:
@@ -531,92 +542,100 @@ def find_temporal_overlaps(df1: pd.DataFrame, df2: pd.DataFrame, verbose: bool =
     if "start" not in df2.columns or "stop" not in df2.columns:
         return overlaps
 
-    if verbose:
-        print("Analyzing temporal overlaps between matches...", end="", flush=True)
-        total_comparisons = len(df1) * len(df2)
-        print(f" ({len(df1)} × {len(df2)} = {total_comparisons:,} comparisons)")
-
     # Convert to timestamps for comparison
     df1_start = pd.to_datetime(df1["start"], errors="coerce")
     df1_stop = pd.to_datetime(df1["stop"], errors="coerce")
     df2_start = pd.to_datetime(df2["start"], errors="coerce")
     df2_stop = pd.to_datetime(df2["stop"], errors="coerce")
 
-    # Check each match from df1 against each match from df2
-    last_progress = 0
-    for i1 in range(len(df1)):
-        # Show progress every 10% or every 100 matches, whichever is more frequent
-        if verbose and len(df1) > 10:
-            progress = int((i1 / len(df1)) * 100)
-            if progress >= last_progress + 10 or i1 % 100 == 0:
-                print(f"  Progress: {progress}% ({i1}/{len(df1)} matches from file 1 checked)", end="\r", flush=True)
-                last_progress = progress
-        start1 = df1_start.iloc[i1]
-        stop1 = df1_stop.iloc[i1]
-
-        if pd.isna(start1) or pd.isna(stop1):
-            continue
-
-        row1 = df1.iloc[i1]
-
-        for i2 in range(len(df2)):
-            start2 = df2_start.iloc[i2]
-            stop2 = df2_stop.iloc[i2]
-
-            if pd.isna(start2) or pd.isna(stop2):
-                continue
-
-            row2 = df2.iloc[i2]
-
-            # Check if time ranges overlap
-            # Two ranges overlap if: start1 <= stop2 AND stop1 >= start2
-            if start1 <= stop2 and stop1 >= start2:
-                # Calculate overlap duration
-                overlap_start = max(start1, start2)
-                overlap_stop = min(stop1, stop2)
-                overlap_duration = (overlap_stop - overlap_start).total_seconds() / 60.0  # in minutes
-
-                # Get additional match info if available
-                def safe_get(row, col, default="N/A"):
-                    try:
-                        val = row[col]
-                        if pd.isna(val):
-                            return default
-                        val_str = str(val).strip()
-                        # Also check for string "nan" (case-insensitive) as pandas sometimes converts NaN to string "nan"
-                        if val_str.lower() in ("nan", "none", ""):
-                            return default
-                        return val_str
-                    except (KeyError, IndexError):
-                        return default
-
-                champ1 = safe_get(row1, "champion")
-                champ2 = safe_get(row2, "champion")
-                mode1 = safe_get(row1, "game_mode")
-                mode2 = safe_get(row2, "game_mode")
-
-                overlaps.append({
-                    "file1_index": i1,
-                    "file1_start": start1,
-                    "file1_stop": stop1,
-                    "file1_champion": champ1,
-                    "file1_mode": mode1,
-                    "file2_index": i2,
-                    "file2_start": start2,
-                    "file2_stop": stop2,
-                    "file2_champion": champ2,
-                    "file2_mode": mode2,
-                    "overlap_start": overlap_start,
-                    "overlap_stop": overlap_stop,
-                    "overlap_duration_minutes": overlap_duration,
-                })
+    # Filter out rows with missing start/stop
+    valid1 = (~df1_start.isna()) & (~df1_stop.isna())
+    valid2 = (~df2_start.isna()) & (~df2_stop.isna())
 
     if verbose:
-        print(f"  Progress: 100% ({len(df1)}/{len(df1)} matches from file 1 checked)")
-        if overlaps:
-            print(f"  Found {len(overlaps)} overlapping match(es)")
-        else:
+        total_comparisons = int(valid1.sum()) * int(valid2.sum())
+        print(
+            "Analyzing temporal overlaps between matches...",
+            end="",
+            flush=True,
+        )
+        print(f" ({int(valid1.sum())} × {int(valid2.sum())} = {total_comparisons:,} comparisons)")
+
+    if valid1.sum() == 0 or valid2.sum() == 0:
+        if verbose:
+            print("  No valid start/stop timestamps to compare.")
+        return overlaps
+
+    # Indices of valid rows in original dataframes
+    idx1 = np.nonzero(valid1.to_numpy())[0]
+    idx2 = np.nonzero(valid2.to_numpy())[0]
+
+    # NumPy arrays of start/stop times for valid rows
+    s1 = df1_start.iloc[idx1].to_numpy()
+    e1 = df1_stop.iloc[idx1].to_numpy()
+    s2 = df2_start.iloc[idx2].to_numpy()
+    e2 = df2_stop.iloc[idx2].to_numpy()
+
+    # Broadcast to compute all pairwise overlaps:
+    # Two ranges overlap if: start1 <= stop2 AND stop1 >= start2
+    s1_2d = s1[:, None]
+    e1_2d = e1[:, None]
+    s2_2d = s2[None, :]
+    e2_2d = e2[None, :]
+
+    mask = (s1_2d <= e2_2d) & (e1_2d >= s2_2d)
+
+    # Get indices of overlapping pairs
+    i1_rel, i2_rel = np.where(mask)
+
+    if len(i1_rel) == 0:
+        if verbose:
             print("  No temporal overlaps found")
+        return overlaps
+
+    # Map back to original dataframe indices
+    i1_abs = idx1[i1_rel]
+    i2_abs = idx2[i2_rel]
+
+    # Build result list
+    for a, b in zip(i1_abs, i2_abs):
+        start1 = df1_start.iloc[a]
+        stop1 = df1_stop.iloc[a]
+        start2 = df2_start.iloc[b]
+        stop2 = df2_stop.iloc[b]
+
+        overlap_start = max(start1, start2)
+        overlap_stop = min(stop1, stop2)
+        overlap_duration = (overlap_stop - overlap_start).total_seconds() / 60.0  # minutes
+
+        row1 = df1.iloc[a]
+        row2 = df2.iloc[b]
+
+        champ1 = safe_get(row1, "champion")
+        champ2 = safe_get(row2, "champion")
+        mode1 = safe_get(row1, "game_mode")
+        mode2 = safe_get(row2, "game_mode")
+
+        overlaps.append(
+            {
+                "file1_index": int(a),
+                "file1_start": start1,
+                "file1_stop": stop1,
+                "file1_champion": champ1,
+                "file1_mode": mode1,
+                "file2_index": int(b),
+                "file2_start": start2,
+                "file2_stop": stop2,
+                "file2_champion": champ2,
+                "file2_mode": mode2,
+                "overlap_start": overlap_start,
+                "overlap_stop": overlap_stop,
+                "overlap_duration_minutes": overlap_duration,
+            }
+        )
+
+    if verbose:
+        print(f"  Found {len(overlaps)} overlapping match(es)")
 
     return overlaps
 
@@ -790,8 +809,8 @@ def main():
     parser.add_argument(
         "--max-overlaps",
         type=str,
-        default="20",
-        help="Maximum number of temporal overlaps to display (default: 20, use 'all' to show all)",
+        default="5",
+        help="Maximum number of temporal overlaps to display (default: 5, use 'all' to show all)",
     )
     args = parser.parse_args()
 
@@ -841,11 +860,15 @@ def main():
             result["temporal_overlap_check_performed"] = False
             result["temporal_overlap_skipped_reason"] = "same_player_high_similarity"
         else:
-            overlaps = find_temporal_overlaps(df1, df2, verbose=True)
-            print()
-            result["temporal_overlaps_count"] = len(overlaps)
-            result["has_temporal_overlap"] = len(overlaps) > 0
-            result["temporal_overlap_check_performed"] = True
+            try:
+                overlaps = find_temporal_overlaps(df1, df2, verbose=True)
+                print()
+                result["temporal_overlaps_count"] = len(overlaps)
+                result["has_temporal_overlap"] = len(overlaps) > 0
+                result["temporal_overlap_check_performed"] = True
+            except KeyboardInterrupt:
+                print("\n  Interrupted by user. Exiting...", flush=True)
+                sys.exit(130)  # Standard exit code for SIGINT
     else:
         print("Skipping temporal overlap analysis (--no-overlap-check specified)\n")
         result["temporal_overlaps_count"] = 0
