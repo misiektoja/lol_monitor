@@ -8,16 +8,20 @@ lol_monitor is a tool for real-time monitoring of **LoL (League of Legends) play
 - **Real-time tracking** of LoL users' gaming activity (including detection when a user starts or finishes a match)
 - **Most important statistics for finished matches**:
   - game mode
+  - queue and map name
+  - game type and version
   - victory or defeat
   - kills, deaths, assists
   - champion name
   - achieved level
   - role
   - lane
-  - team members
-- **Email notifications** for different events (player starts or finishes a match, match summary, errors)
-- **Saving all gaming activities** with timestamps to a **CSV file**
+  - team members (with star marker ⭐ indicating monitored user's team)
+- **Player profile information** including ranked statistics (Solo/Duo and Flex) and top champion mastery
+- **HTML-formatted email notifications** for different events (player starts or finishes a match, match summary, errors)
+- **Saving all gaming activities** with timestamps to a **CSV file** (including custom game matches)
 - Possibility to **control the running copy** of the script via signals
+- **Utility tools** for CSV format conversion and match history comparison
 - **Functional, procedural Python** (minimal OOP)
 
 <p align="center">
@@ -306,6 +310,8 @@ lol_monitor <riot_id_name#tag> <region> -e
 
 Make sure you defined your SMTP settings earlier (see [SMTP settings](#smtp-settings)).
 
+Email notifications are sent in both plain text and HTML formats for better readability. The HTML format includes enhanced formatting with bold text for important information and properly structured match details.
+
 Example email:
 
 <p align="center">
@@ -430,8 +436,15 @@ The `lol_compare_csvs.py` script compares two League of Legends match history CS
 
 **Usage:**
 ```sh
-python3 tools/lol_compare_csvs.py file1.csv file2.csv [--limit N] [--json] [--pretty] [--no-overlap-check]
+python3 tools/lol_compare_csvs.py file1.csv file2.csv [--limit N] [--json] [--pretty] [--no-overlap-check] [--max-overlaps N|all]
 ```
+
+**Options:**
+- `--limit N`: Limit number of matches analyzed from the top of each file
+- `--json`: Output results in JSON format
+- `--pretty`: Pretty-print JSON output
+- `--no-overlap-check`: Skip temporal overlap analysis (faster, but less comprehensive)
+- `--max-overlaps N|all`: Maximum number of temporal overlaps to display (default: 5, use 'all' to show all)
 
 **Requirements:** `pandas` (install with `pip install pandas`)
 
