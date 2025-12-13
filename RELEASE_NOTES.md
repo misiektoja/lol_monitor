@@ -1,6 +1,31 @@
 # lol_monitor release notes
 
-This is a high-level summary of the most important changes. 
+This is a high-level summary of the most important changes.
+
+# Changes in 1.8 (13 Dec 2025)
+
+**Features and Improvements**:
+
+- **NEW:** Implemented HTML formatting for email notifications for better readability
+- **NEW:** Added star marker (⭐) to indicate monitored user's team in match reports
+- **NEW:** Enhanced game information retrieval with comprehensive mappings for game queues, maps and game types
+- **NEW:** Expanded summoner details retrieval with ranked information (Solo/Duo and Flex) and champion mastery functions
+- **NEW:** Enhanced CSV logging with additional fields: Level, Role, Lane and Game Mode
+- **NEW:** Support for custom game snapshots with automatic CSV saving for matches that don't appear in match history
+- **NEW:** Fallback save mechanism for custom game matches if no completion appears within 5 minutes
+- **NEW:** Utility tool for converting old CSV format (v1.7.2 and earlier) to new format with additional fields
+- **NEW:** LoL Match History Comparison Tool for analyzing player similarities based on match data with multiple metrics
+- **IMPROVE:** Enhanced match processing with caching support and improved error handling for forbidden matches
+- **IMPROVE:** Optimized match history fetching by removing buffer and implementing incremental fetching for accessibility checks
+- **IMPROVE:** Implemented pagination for fetching match IDs and added total match count retrieval
+- **IMPROVE:** Refactored match handling to support any custom game snapshots
+
+**Bug fixes**:
+
+- **BUGFIX:** Use real match start timestamp from Spectator snapshot for custom game CSV entries
+- **BUGFIX:** Prevent false 'stopped playing' messages when start was never confirmed
+- **BUGFIX:** Update default values for kills, deaths and assists to 'N/A' in CSV match logging
+- **BUGFIX:** Removed fetching of summoner id and account id due to Riot API changes
 
 # Changes in 1.7.2 (13 Jun 2025)
 
