@@ -25,7 +25,7 @@ lol_monitor is a tool for real-time monitoring of **LoL (League of Legends) play
 - **Functional, procedural Python** (minimal OOP)
 
 <p align="center">
-   <img src="https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/assets/lol_monitor.png" alt="lol_monitor_screenshot" width="70%"/>
+   <img src="https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/assets/lol_monitor.png" alt="lol_monitor_screenshot" width="90%"/>
 </p>
 
 <a id="table-of-contents"></a>
