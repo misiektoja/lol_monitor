@@ -17,9 +17,11 @@ lol_monitor is a tool for real-time monitoring of **LoL (League of Legends) play
   - role
   - lane
   - team members (with star marker ⭐ indicating monitored user's team)
+  - banned champions (with pick turn information)
 - **Player profile information** including ranked statistics (Solo/Duo and Flex) and top champion mastery
 - **HTML-formatted email notifications** for different events (player starts or finishes a match, match summary, errors)
 - **Saving all gaming activities** with timestamps to a **CSV file** (including custom game matches)
+- **Flexible configuration** - support for config files, dotenv files, environment variables and command-line arguments
 - Possibility to **control the running copy** of the script via signals
 - **Utility tools** for CSV format conversion and match history comparison
 - **Functional, procedural Python** (minimal OOP)
