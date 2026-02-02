@@ -1,6 +1,25 @@
 # lol_monitor
 
-lol_monitor is a tool for real-time monitoring of **LoL (League of Legends) players' activities**.
+<p align="left">
+  <img src="https://img.shields.io/github/v/release/misiektoja/lol_monitor?style=flat-square&color=blue" alt="GitHub Release" />
+  <img src="https://img.shields.io/pypi/v/lol_monitor?style=flat-square&color=orange" alt="PyPI Version" />
+  <img src="https://img.shields.io/github/stars/misiektoja/lol_monitor?style=flat-square&color=yellow" alt="GitHub Stars" />
+  <img src="https://img.shields.io/github/last-commit/misiektoja/lol_monitor?style=flat-square&color=green" alt="Last Commit" />
+  <img src="https://img.shields.io/github/license/misiektoja/lol_monitor?style=flat-square&color=blue" alt="License" />
+  <img src="https://img.shields.io/pypi/pyversions/lol_monitor?style=flat-square&color=blueviolet" alt="Python Versions" />
+  <img src="https://img.shields.io/badge/maintenance-active-brightgreen?style=flat-square" alt="Maintenance" />
+</p>
+
+**lol_monitor** is a tool for real-time monitoring of **LoL (League of Legends) players' activities**.
+
+### 🚀 Quick Install
+```sh
+pip install lol_monitor
+```
+
+<p align="center">
+   <img src="https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/assets/lol_monitor.png" alt="lol_monitor_screenshot" width="90%"/>
+</p>
 
 <a id="features"></a>
 ## Features
@@ -25,10 +44,6 @@ lol_monitor is a tool for real-time monitoring of **LoL (League of Legends) play
 - Possibility to **control the running copy** of the script via signals
 - **Utility tools** for CSV format conversion and match history comparison
 - **Functional, procedural Python** (minimal OOP)
-
-<p align="center">
-   <img src="https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/assets/lol_monitor.png" alt="lol_monitor_screenshot" width="90%"/>
-</p>
 
 <a id="table-of-contents"></a>
 ## Table of Contents
