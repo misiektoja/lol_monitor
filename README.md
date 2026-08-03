@@ -292,6 +292,8 @@ You can monitor multiple LoL players by running multiple instances of the script
 
 The tool automatically saves its output to `lol_monitor_<riot_id_name>.log` file. It can be changed in the settings via `LOL_LOGFILE` configuration option or disabled completely via `DISABLE_LOGGING` / `-d` flag.
 
+Set `ASCII_LOG_SEPARATORS` to `"Auto"` (default) to use ASCII separator-only lines on Windows, `"On"` to use them on every operating system or `"Off"` to preserve Unicode separators in logs everywhere. Terminal separators stay Unicode. Log files and all other logged text remain UTF-8.
+
 <a id="listing-mode"></a>
 ### Listing Mode
 
