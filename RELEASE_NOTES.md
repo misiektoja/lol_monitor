@@ -4,13 +4,17 @@ This is a high-level summary of the most important changes.
 
 # Changes in 1.8.1 (TBD)
 
-Version **1.8.1** improves log and configuration portability while adding downloadable source archives to published releases.
+Version **1.8.1** improves log and configuration portability while adding downloadable source archives to published releases and resolving static type-checking issues.
 
 **Features and Improvements**:
 
 - **IMPROVE:** Expanded tabs to spaces in output log files to ensure **consistent alignment across different viewers**
 - **IMPROVE:** Enhanced `--generate-config` to write directly to a specified file as UTF-8 and documented the recommended Windows PowerShell usage to avoid UTF-16 redirection issues
 - **IMPROVE:** Added a GitHub Actions workflow that builds and attaches zip and tar.gz source archives to published releases
+
+**Bug fixes**:
+
+- **BUGFIX:** Resolved Pyright errors across the monitor and CSV comparison utility by handling optional API values and heterogeneous report data safely
 
 # Changes in 1.8 (13 Dec 2025)
 
