@@ -9,6 +9,7 @@ Version **1.8.1** improves log and configuration portability while adding downlo
 **Features and Improvements**:
 
 - **IMPROVE:** Expanded tabs to spaces in output log files to ensure **consistent alignment across different viewers**
+- **IMPROVE:** Added `ASCII_LOG_SEPARATORS` with `"Auto"`, `"On"` and `"Off"` modes. The default uses ASCII separator-only log lines on Windows while terminal separators stay Unicode and all log content stays UTF-8
 - **IMPROVE:** Enhanced `--generate-config` to write directly to a specified file as UTF-8 and documented the recommended Windows PowerShell usage to avoid UTF-16 redirection issues
 - **IMPROVE:** Added a GitHub Actions workflow that builds and attaches zip and tar.gz source archives to published releases
 
