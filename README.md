@@ -155,9 +155,16 @@ Most settings can be configured via command-line arguments.
 If you want to have it stored persistently, generate a default config template and save it to a file named `lol_monitor.conf`:
 
 ```sh
+# On macOS, Linux or Windows Command Prompt (cmd.exe)
 lol_monitor --generate-config > lol_monitor.conf
 
+# On Windows PowerShell (recommended to avoid encoding issues)
+lol_monitor --generate-config lol_monitor.conf
 ```
+
+> **IMPORTANT**: In Windows PowerShell, do not use `>` for this command. Some PowerShell versions write redirected text as UTF-16, which makes LoL Monitor report a "null bytes" error. Pass the filename to `--generate-config` so LoL Monitor writes a UTF-8 file itself.
+
+When you include the filename, LoL Monitor writes the template directly as UTF-8. This avoids PowerShell changing the file encoding during redirection.
 
 Edit the `lol_monitor.conf` file and change any desired configuration options (detailed comments are provided for each).
 
