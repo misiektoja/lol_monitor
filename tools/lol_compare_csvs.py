@@ -36,9 +36,10 @@ import json
 import math
 import os
 import re
+import sys
 from collections import Counter
 from datetime import datetime
-from typing import Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional
 
 import numpy as np
 import pandas as pd
@@ -172,7 +173,7 @@ def load_matches(path: str) -> pd.DataFrame:
 # Converts victory-like values to 1 or 0
 def normalize_victory(v) -> Optional[int]:
     if pd.isna(v):
-        return pd.NA
+        return None
     s = str(v).strip().lower()
     true_set = {"yes", "y", "true", "t", "1", "win", "won", "victory", "w"}
     false_set = {"no", "n", "false", "f", "0", "loss", "lost", "defeat", "l"}
@@ -181,7 +182,7 @@ def normalize_victory(v) -> Optional[int]:
     if s in false_set:
         return 0
     # Unknown token
-    return pd.NA
+    return None
 
 
 # Parses a duration string like "24 minutes, 27 seconds" to minutes as float
@@ -280,7 +281,7 @@ def jaccard_sim(set_a: set, set_b: set) -> float:
 
 
 # Converts absolute difference to similarity on [0,1] using a scale
-def scalar_similarity(a: float, b: float, scale: float) -> float:
+def scalar_similarity(a: Any, b: Any, scale: float) -> float:
     if any(pd.isna(x) for x in [a, b]):
         return 0.0
     diff = abs(float(a) - float(b))
@@ -399,7 +400,7 @@ def guess_player_name(df: pd.DataFrame) -> Tuple[str, float]:
 
 
 # Compares two match histories and return component similarities and an overall score
-def compare_profiles(df1: pd.DataFrame, df2: pd.DataFrame) -> Dict[str, float]:
+def compare_profiles(df1: pd.DataFrame, df2: pd.DataFrame) -> Dict[str, Any]:
 
     # Feature 1: champion pool similarity (cosine on frequency)
     champ_sim = cosine_sim(champion_distribution(df1), champion_distribution(df2))
@@ -529,12 +530,9 @@ def safe_get(row, col, default="N/A"):
         return default
 
 
-# Checks for temporal overlaps between matches from two dataframes
-# Performs vectorized temporal overlap check using NumP
-def find_temporal_overlaps(
-    df1: pd.DataFrame, df2: pd.DataFrame, verbose: bool = True
-) -> List[Dict]:
-    overlaps: List[Dict] = []
+# Finds temporal overlaps between matches using vectorized NumPy comparisons
+def find_temporal_overlaps(df1: pd.DataFrame, df2: pd.DataFrame, verbose: bool = True) -> List[Dict[str, Any]]:
+    overlaps: List[Dict[str, Any]] = []
 
     # Ensure we have start and stop columns
     if "start" not in df1.columns or "stop" not in df1.columns:
@@ -641,7 +639,7 @@ def find_temporal_overlaps(
 
 
 # Prints human-readable comparison report
-def print_readable_report(result: Dict, file1: str, file2: str, df1: pd.DataFrame = None, df2: pd.DataFrame = None, overlaps: List[Dict] = None, max_overlaps: int = None) -> None:
+def print_readable_report(result: Dict[str, Any], file1: str, file2: str, df1: Optional[pd.DataFrame] = None, df2: Optional[pd.DataFrame] = None, overlaps: Optional[List[Dict[str, Any]]] = None, max_overlaps: Optional[int] = None) -> None:
     print("=" * 80)
     print(" LoL Match History Comparison Report")
     print("=" * 80)
@@ -778,7 +776,8 @@ def print_readable_report(result: Dict, file1: str, file2: str, df1: pd.DataFram
                 print("\n" + "=" * 80)
 
 
-def main():
+# Runs the command-line comparison workflow
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Compare two LoL match CSVs and assess if the same person played"
     )
@@ -924,6 +923,8 @@ def main():
             print("JSON Output (for programmatic use):")
             print("-" * 80)
             print(json.dumps(result, indent=2))
+
+    return 0
 
 
 if __name__ == "__main__":
