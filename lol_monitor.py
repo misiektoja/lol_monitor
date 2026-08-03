@@ -286,7 +286,20 @@ except ModuleNotFoundError:
     raise SystemExit("Error: Couldn't find the Pulsefire library !\n\nTo install it, run:\n    pip3 install pulsefire\n\nOnce installed, re-run this tool. For more help, visit:\nhttps://pulsefire.iann838.com/usage/basic/installation/")
 import shutil
 from pathlib import Path
-from typing import Optional, Any, Dict, List, Tuple
+from typing import Optional, Any, Dict, List, Mapping, Tuple, TypedDict
+
+
+class RankedQueueInfo(TypedDict):
+    tier: str
+    rank: str
+    lp: str
+    wins: int
+    losses: int
+
+
+class RankedInfo(TypedDict):
+    solo_duo: RankedQueueInfo
+    flex: RankedQueueInfo
 
 
 # Logger class to output messages to stdout and log file
@@ -736,7 +749,7 @@ def format_game_version_label(game_version: Optional[str]) -> str:
 
 
 # Returns the best available Riot name for a participant
-def get_participant_display_name(participant: dict) -> str:
+def get_participant_display_name(participant: Mapping[str, Any]) -> str:
     if not participant:
         return "unknown"
 
@@ -918,8 +931,8 @@ async def get_summoner_details(puuid: str, region: str):
 
 
 # Gets ranked information
-async def get_ranked_info(puuid: str, region: str):
-    ranked_info = {
+async def get_ranked_info(puuid: str, region: str) -> RankedInfo:
+    ranked_info: RankedInfo = {
         "solo_duo": {"tier": "N/A", "rank": "N/A", "lp": "N/A", "wins": 0, "losses": 0},
         "flex": {"tier": "N/A", "rank": "N/A", "lp": "N/A", "wins": 0, "losses": 0}
     }
@@ -936,17 +949,17 @@ async def get_ranked_info(puuid: str, region: str):
 
             for entry in league_entries:
                 queue_type = entry.get("queueType", "")
-                tier = entry.get("tier", "UNRANKED")
-                rank = entry.get("rank", "")
-                lp = entry.get("leaguePoints", 0)
-                wins = entry.get("wins", 0)
-                losses = entry.get("losses", 0)
+                tier = str(entry.get("tier", "UNRANKED"))
+                rank = str(entry.get("rank", ""))
+                lp = str(entry.get("leaguePoints", 0))
+                wins = int(entry.get("wins", 0))
+                losses = int(entry.get("losses", 0))
 
                 if queue_type == "RANKED_SOLO_5x5":
                     ranked_info["solo_duo"] = {
                         "tier": tier,
                         "rank": rank,
-                        "lp": str(lp),
+                        "lp": lp,
                         "wins": wins,
                         "losses": losses
                     }
@@ -954,7 +967,7 @@ async def get_ranked_info(puuid: str, region: str):
                     ranked_info["flex"] = {
                         "tier": tier,
                         "rank": rank,
-                        "lp": str(lp),
+                        "lp": lp,
                         "wins": wins,
                         "losses": losses
                     }
@@ -1078,16 +1091,14 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
             match_start_ts = int((current_match.get("gameStartTime", 0)) / 1000)
             match_duration = current_match.get("gameLength", 0)
 
-            gamemode = current_match.get("gameMode")
+            gamemode_raw = current_match.get("gameMode")
+            gamemode = game_modes_mapping.get(gamemode_raw, gamemode_raw or "Unknown")
             queue_id = current_match.get("gameQueueConfigId")
             map_id = current_match.get("mapId")
             game_type_raw = current_match.get("gameType")
             game_type = humanize_game_type(game_type_raw)
             game_version_raw = current_match.get("gameVersion")
             game_version = format_game_version_label(game_version_raw)
-
-            if game_modes_mapping.get(gamemode):
-                gamemode = game_modes_mapping.get(gamemode)
 
             if queue_id is not None:
                 queue_desc = format_named_value(game_queue_mapping.get(queue_id), queue_id)
@@ -1487,6 +1498,7 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
         teams_detailed_str = "\n".join(teams_lines) + "\n" if teams_lines else ""
 
         banned_champions_email_str = ""
+        ban_lines = []
         match_team_data = match_info.get("teams", [])
         if match_team_data:
             team_bans_dict = {}
@@ -1847,7 +1859,10 @@ async def lol_monitor_user(riotid, region, csv_file_name):
     riotid_name, riotid_tag = get_user_riot_name_tag(riotid)
 
     summoner_info = {}
-    ranked_info = {}
+    ranked_info: RankedInfo = {
+        "solo_duo": {"tier": "N/A", "rank": "N/A", "lp": "N/A", "wins": 0, "losses": 0},
+        "flex": {"tier": "N/A", "rank": "N/A", "lp": "N/A", "wins": 0, "losses": 0},
+    }
     mastery_info = []
 
     try:
@@ -1860,7 +1875,10 @@ async def lol_monitor_user(riotid, region, csv_file_name):
         ranked_info = await get_ranked_info(puuid, region)
     except Exception as e:
         print(f"* Warning: Could not fetch ranked information: {e}")
-        ranked_info = {"solo_duo": {"tier": "N/A", "rank": "N/A", "lp": "N/A"}, "flex": {"tier": "N/A", "rank": "N/A", "lp": "N/A"}}
+        ranked_info = {
+            "solo_duo": {"tier": "N/A", "rank": "N/A", "lp": "N/A", "wins": 0, "losses": 0},
+            "flex": {"tier": "N/A", "rank": "N/A", "lp": "N/A", "wins": 0, "losses": 0},
+        }
 
     try:
         mastery_info = await get_champion_mastery(puuid, region, top_n=3)
@@ -1997,8 +2015,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                             # Check if it's a custom game: gameType is CUSTOM_GAME or gameMode is unknown
                             game_type = snap.get('game_type')
                             mode_raw = snap.get('mode_raw')
-                            is_custom = (game_type == "CUSTOM_GAME" or
-                                       (mode_raw and mode_raw not in game_modes_mapping))
+                            is_custom = (game_type == "CUSTOM_GAME" or (mode_raw and mode_raw not in game_modes_mapping))
 
                             if is_custom:
                                 current_custom_snapshot = snap
