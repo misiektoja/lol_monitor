@@ -2,6 +2,21 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 1.8.1 (04 Aug 2026)
+
+Version **1.8.1** makes logs and configuration files more portable, adds downloadable release archives and handles incomplete Riot and comparison data more safely.
+
+**Features and Improvements**:
+
+- **IMPROVE:** **Consistent log alignment** - Tabs are expanded to spaces when saved to log files so columns stay aligned in viewers that render tabs differently. Terminal output is unchanged
+- **IMPROVE:** **Portable log separators** - The new `ASCII_LOG_SEPARATORS` setting controls whether separator-only lines saved to log files use ASCII hyphens. `"Auto"` enables them on Windows by default, `"On"` enables them on every operating system and `"Off"` preserves Unicode separators. Terminal separators stay Unicode. Log files and all other logged text remain UTF-8.
+- **IMPROVE:** **UTF-8 configuration generation** - `lol_monitor --generate-config FILENAME` now writes the template directly to the specified file as UTF-8. In Windows PowerShell, it should be used instead of output redirection to avoid UTF-16 files and `null bytes` errors
+- **IMPROVE:** **Downloadable release archives** - Published GitHub Releases now receive automatically built zip and tar.gz source archives
+
+**Bug fixes**:
+
+- **BUGFIX:** **Safer Riot and CSV data handling** - Missing game modes and ranked fields now use stable fallback values while the CSV comparison utility handles missing or mixed report values consistently
+
 # Changes in 1.8 (13 Dec 2025)
 
 **Features and Improvements**:

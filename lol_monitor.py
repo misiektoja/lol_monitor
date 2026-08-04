@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.8
+v1.8.1
 
 Tool implementing real-time tracking of LoL (League of Legends) players activities:
 https://github.com/misiektoja/lol_monitor/
@@ -14,7 +14,7 @@ python-dateutil
 python-dotenv (optional)
 """
 
-VERSION = "1.8"
+VERSION = "1.8.1"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -99,6 +99,12 @@ LOL_LOGFILE = "lol_monitor"
 # Whether to disable logging to lol_monitor_<riot_id_name>.log
 # Can also be disabled via the -d flag
 DISABLE_LOGGING = False
+
+# Controls conversion of separator-only log lines to ASCII:
+#   "Auto" - enable on Windows only (default)
+#   "On"   - enable on every operating system
+#   "Off"  - preserve Unicode separators in logs
+ASCII_LOG_SEPARATORS = "Auto"
 
 # Width of horizontal line
 HORIZONTAL_LINE = 113
@@ -230,6 +236,7 @@ CSV_FILE = ""
 DOTENV_FILE = ""
 LOL_LOGFILE = ""
 DISABLE_LOGGING = False
+ASCII_LOG_SEPARATORS = "Auto"
 HORIZONTAL_LINE = 0
 CLEAR_SCREEN = False
 LOL_ACTIVE_CHECK_SIGNAL_VALUE = 0
@@ -286,7 +293,35 @@ except ModuleNotFoundError:
     raise SystemExit("Error: Couldn't find the Pulsefire library !\n\nTo install it, run:\n    pip3 install pulsefire\n\nOnce installed, re-run this tool. For more help, visit:\nhttps://pulsefire.iann838.com/usage/basic/installation/")
 import shutil
 from pathlib import Path
-from typing import Optional, Any, Dict, List, Tuple
+from typing import Optional, Any, Dict, List, Mapping, Tuple, TypedDict
+
+
+class RankedQueueInfo(TypedDict):
+    tier: str
+    rank: str
+    lp: str
+    wins: int
+    losses: int
+
+
+class RankedInfo(TypedDict):
+    solo_duo: RankedQueueInfo
+    flex: RankedQueueInfo
+
+
+# Reports whether separator-only log lines should use ASCII on this system
+def ascii_log_separators_enabled():
+    mode = str(ASCII_LOG_SEPARATORS).strip().lower()
+    if mode not in {"auto", "on", "off"}:
+        raise ValueError("ASCII_LOG_SEPARATORS must be 'Auto', 'On' or 'Off'")
+    return mode == "on" or (mode == "auto" and platform.system() == "Windows")
+
+
+# Converts Unicode-only horizontal separator lines to ASCII when configured
+def normalize_log_separators(message):
+    if not ascii_log_separators_enabled():
+        return message
+    return re.sub(r"(?m)^─+$", lambda match: match.group(0).replace("─", "-"), message)
 
 
 # Logger class to output messages to stdout and log file
@@ -297,7 +332,7 @@ class Logger(object):
 
     def write(self, message):
         self.terminal.write(message)
-        self.logfile.write(message)
+        self.logfile.write(normalize_log_separators(message.expandtabs(8)))
         self.terminal.flush()
         self.logfile.flush()
 
@@ -736,7 +771,7 @@ def format_game_version_label(game_version: Optional[str]) -> str:
 
 
 # Returns the best available Riot name for a participant
-def get_participant_display_name(participant: dict) -> str:
+def get_participant_display_name(participant: Mapping[str, Any]) -> str:
     if not participant:
         return "unknown"
 
@@ -918,8 +953,8 @@ async def get_summoner_details(puuid: str, region: str):
 
 
 # Gets ranked information
-async def get_ranked_info(puuid: str, region: str):
-    ranked_info = {
+async def get_ranked_info(puuid: str, region: str) -> RankedInfo:
+    ranked_info: RankedInfo = {
         "solo_duo": {"tier": "N/A", "rank": "N/A", "lp": "N/A", "wins": 0, "losses": 0},
         "flex": {"tier": "N/A", "rank": "N/A", "lp": "N/A", "wins": 0, "losses": 0}
     }
@@ -936,17 +971,17 @@ async def get_ranked_info(puuid: str, region: str):
 
             for entry in league_entries:
                 queue_type = entry.get("queueType", "")
-                tier = entry.get("tier", "UNRANKED")
-                rank = entry.get("rank", "")
-                lp = entry.get("leaguePoints", 0)
-                wins = entry.get("wins", 0)
-                losses = entry.get("losses", 0)
+                tier = str(entry.get("tier", "UNRANKED"))
+                rank = str(entry.get("rank", ""))
+                lp = str(entry.get("leaguePoints", 0))
+                wins = int(entry.get("wins", 0))
+                losses = int(entry.get("losses", 0))
 
                 if queue_type == "RANKED_SOLO_5x5":
                     ranked_info["solo_duo"] = {
                         "tier": tier,
                         "rank": rank,
-                        "lp": str(lp),
+                        "lp": lp,
                         "wins": wins,
                         "losses": losses
                     }
@@ -954,7 +989,7 @@ async def get_ranked_info(puuid: str, region: str):
                     ranked_info["flex"] = {
                         "tier": tier,
                         "rank": rank,
-                        "lp": str(lp),
+                        "lp": lp,
                         "wins": wins,
                         "losses": losses
                     }
@@ -1078,16 +1113,14 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
             match_start_ts = int((current_match.get("gameStartTime", 0)) / 1000)
             match_duration = current_match.get("gameLength", 0)
 
-            gamemode = current_match.get("gameMode")
+            gamemode_raw = current_match.get("gameMode")
+            gamemode = game_modes_mapping.get(gamemode_raw, gamemode_raw or "Unknown")
             queue_id = current_match.get("gameQueueConfigId")
             map_id = current_match.get("mapId")
             game_type_raw = current_match.get("gameType")
             game_type = humanize_game_type(game_type_raw)
             game_version_raw = current_match.get("gameVersion")
             game_version = format_game_version_label(game_version_raw)
-
-            if game_modes_mapping.get(gamemode):
-                gamemode = game_modes_mapping.get(gamemode)
 
             if queue_id is not None:
                 queue_desc = format_named_value(game_queue_mapping.get(queue_id), queue_id)
@@ -1487,6 +1520,7 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
         teams_detailed_str = "\n".join(teams_lines) + "\n" if teams_lines else ""
 
         banned_champions_email_str = ""
+        ban_lines = []
         match_team_data = match_info.get("teams", [])
         if match_team_data:
             team_bans_dict = {}
@@ -1847,7 +1881,10 @@ async def lol_monitor_user(riotid, region, csv_file_name):
     riotid_name, riotid_tag = get_user_riot_name_tag(riotid)
 
     summoner_info = {}
-    ranked_info = {}
+    ranked_info: RankedInfo = {
+        "solo_duo": {"tier": "N/A", "rank": "N/A", "lp": "N/A", "wins": 0, "losses": 0},
+        "flex": {"tier": "N/A", "rank": "N/A", "lp": "N/A", "wins": 0, "losses": 0},
+    }
     mastery_info = []
 
     try:
@@ -1860,7 +1897,10 @@ async def lol_monitor_user(riotid, region, csv_file_name):
         ranked_info = await get_ranked_info(puuid, region)
     except Exception as e:
         print(f"* Warning: Could not fetch ranked information: {e}")
-        ranked_info = {"solo_duo": {"tier": "N/A", "rank": "N/A", "lp": "N/A"}, "flex": {"tier": "N/A", "rank": "N/A", "lp": "N/A"}}
+        ranked_info = {
+            "solo_duo": {"tier": "N/A", "rank": "N/A", "lp": "N/A", "wins": 0, "losses": 0},
+            "flex": {"tier": "N/A", "rank": "N/A", "lp": "N/A", "wins": 0, "losses": 0},
+        }
 
     try:
         mastery_info = await get_champion_mastery(puuid, region, top_n=3)
@@ -1997,8 +2037,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                             # Check if it's a custom game: gameType is CUSTOM_GAME or gameMode is unknown
                             game_type = snap.get('game_type')
                             mode_raw = snap.get('mode_raw')
-                            is_custom = (game_type == "CUSTOM_GAME" or
-                                       (mode_raw and mode_raw not in game_modes_mapping))
+                            is_custom = (game_type == "CUSTOM_GAME" or (mode_raw and mode_raw not in game_modes_mapping))
 
                             if is_custom:
                                 current_custom_snapshot = snap
@@ -2105,7 +2144,19 @@ def main():
     global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT, INCLUDE_FORBIDDEN_MATCHES
 
     if "--generate-config" in sys.argv:
-        print(CONFIG_BLOCK.strip("\n"))
+        config_content = CONFIG_BLOCK.strip("\n") + "\n"
+        try:
+            idx = sys.argv.index("--generate-config")
+            if idx + 1 < len(sys.argv) and not sys.argv[idx + 1].startswith("-"):
+                output_file = sys.argv[idx + 1]
+                with open(output_file, "w", encoding="utf-8") as f:
+                    f.write(config_content)
+                print(f"Config written to: {output_file}")
+                sys.exit(0)
+        except (ValueError, IndexError):
+            pass
+        sys.stdout.buffer.write(config_content.encode("utf-8"))
+        sys.stdout.buffer.flush()
         sys.exit(0)
 
     if "--version" in sys.argv:
@@ -2159,8 +2210,10 @@ def main():
     )
     conf.add_argument(
         "--generate-config",
-        action="store_true",
-        help="Print default config template and exit",
+        nargs="?",
+        const=True,
+        metavar="FILENAME",
+        help="Print default config template and exit (on Windows PowerShell, specify a filename to avoid redirect encoding issues)",
     )
     conf.add_argument(
         "--env-file",
@@ -2442,6 +2495,12 @@ def main():
     if not riotid_name or not riotid_tag:
         sys.exit(1)
 
+    try:
+        ascii_log_separators_enabled()
+    except ValueError as e:
+        print(f"* Error: {e}")
+        sys.exit(1)
+
     if args.disable_logging is True:
         DISABLE_LOGGING = True
 
@@ -2475,6 +2534,7 @@ def main():
     print(f"* Liveness check:\t\t{bool(LIVENESS_CHECK_INTERVAL)}" + (f" ({display_time(LIVENESS_CHECK_INTERVAL)})" if LIVENESS_CHECK_INTERVAL else ""))
     print(f"* CSV logging enabled:\t\t{bool(CSV_FILE)}" + (f" ({CSV_FILE})" if CSV_FILE else ""))
     print(f"* Output logging enabled:\t{not DISABLE_LOGGING}" + (f" ({FINAL_LOG_PATH})" if not DISABLE_LOGGING else ""))
+    print(f"* ASCII log separators:\t{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})")
     print(f"* Configuration file:\t\t{cfg_path}")
     print(f"* Dotenv file:\t\t\t{env_path or 'None'}\n")
 

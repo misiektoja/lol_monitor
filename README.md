@@ -155,9 +155,16 @@ Most settings can be configured via command-line arguments.
 If you want to have it stored persistently, generate a default config template and save it to a file named `lol_monitor.conf`:
 
 ```sh
+# On macOS, Linux or Windows Command Prompt (cmd.exe)
 lol_monitor --generate-config > lol_monitor.conf
 
+# On Windows PowerShell (recommended to avoid encoding issues)
+lol_monitor --generate-config lol_monitor.conf
 ```
+
+> **IMPORTANT**: In Windows PowerShell, do not use `>` for this command. Some PowerShell versions write redirected text as UTF-16, which makes LoL Monitor report a "null bytes" error. Pass the filename to `--generate-config` so LoL Monitor writes a UTF-8 file itself.
+
+When you include the filename, LoL Monitor writes the template directly as UTF-8. This avoids PowerShell changing the file encoding during redirection.
 
 Edit the `lol_monitor.conf` file and change any desired configuration options (detailed comments are provided for each).
 
@@ -284,6 +291,8 @@ The tool runs until interrupted (`Ctrl+C`). Use `tmux` or `screen` for persisten
 You can monitor multiple LoL players by running multiple instances of the script.
 
 The tool automatically saves its output to `lol_monitor_<riot_id_name>.log` file. It can be changed in the settings via `LOL_LOGFILE` configuration option or disabled completely via `DISABLE_LOGGING` / `-d` flag.
+
+Set `ASCII_LOG_SEPARATORS` to `"Auto"` (default) to use ASCII separator-only lines on Windows, `"On"` to use them on every operating system or `"Off"` to preserve Unicode separators in logs everywhere. Terminal separators stay Unicode. Log files and all other logged text remain UTF-8.
 
 <a id="listing-mode"></a>
 ### Listing Mode
