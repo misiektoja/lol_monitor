@@ -2,6 +2,12 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 1.8.2 (04 Aug 2026)
+
+**Bug fixes**:
+
+- **BUGFIX:** Fixed indentation of ASCII log separators in summary screen
+
 # Changes in 1.8.1 (04 Aug 2026)
 
 Version **1.8.1** makes logs and configuration files more portable, adds downloadable release archives and handles incomplete Riot and comparison data more safely.
