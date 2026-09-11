@@ -243,6 +243,8 @@ def deterministic_globals(monkeypatch):
     monkeypatch.setattr(lm, "DOTENV_FILE", "", raising=False)
     monkeypatch.setattr(lm, "DISABLE_LOGGING", True, raising=False)
     monkeypatch.setattr(lm, "CLEAR_SCREEN", False, raising=False)
+    monkeypatch.setattr(lm, "VERBOSE_MODE", False, raising=False)
+    monkeypatch.setattr(lm, "DEBUG_MODE", False, raising=False)
     # Champion names come from Data Dragon over the network, so start from a known cache in every test
     monkeypatch.setattr(lm, "_champion_id_to_name_cache", {}, raising=False)
     yield

@@ -111,6 +111,17 @@ LOL_LOGFILE = "lol_monitor"
 # Can also be disabled via the -d flag
 DISABLE_LOGGING = False
 
+# Whether to print extra startup and runtime detail
+# Independent of DEBUG_MODE, so enable both to see everything
+# Can also be enabled via the --verbose flag, which turns it on regardless of this setting
+VERBOSE_MODE = False
+
+# Whether to print timestamped diagnostic detail, including every outbound call,
+# each notification delivery attempt and the technical cause of failures
+# Independent of VERBOSE_MODE, so enable both to see everything
+# Can also be enabled via the --debug flag, which turns it on regardless of this setting
+DEBUG_MODE = False
+
 # Controls conversion of separator-only log lines to ASCII:
 #   "Auto" - enable on Windows only (default)
 #   "On"   - enable on every operating system
@@ -250,6 +261,8 @@ CSV_FILE = ""
 DOTENV_FILE = ""
 LOL_LOGFILE = ""
 DISABLE_LOGGING = False
+VERBOSE_MODE = False
+DEBUG_MODE = False
 ASCII_LOG_SEPARATORS = "Auto"
 HORIZONTAL_LINE = 0
 CLEAR_SCREEN = False
@@ -503,6 +516,7 @@ def reload_dotenv_secrets(env_path, exported_keys=None):
         value = values.get(secret)
         if secret not in protected_keys and value is not None:
             os.environ[secret] = value
+            debug_print("Secret reloaded", name=secret, source=str(env_path), value=secret_fingerprint(value, secret))
 
 
 # Copies exported secrets into module globals and returns the applied names paired with whether the value changed
@@ -515,6 +529,7 @@ def load_secrets_from_environment(namespace=None):
             continue
         applied.append((secret, selected_namespace.get(secret) != value))
         selected_namespace[secret] = value
+        debug_print("Secret resolved", name=secret, source="environment", value=secret_fingerprint(value, secret))
     return applied
 
 
@@ -550,6 +565,42 @@ def describe_secret_sources(env_path=None):
 
 # Matches every ANSI escape sequence, so third-party text cannot move the cursor or repaint the terminal
 ANSI_ESCAPE_RE = re.compile(r"\x1B[@-_][0-?]*[ -/]*[@-~]")
+
+
+# Renders one diagnostic line as an operation followed by comma-separated key=value fields, dropping unset ones
+def format_diagnostic_line(operation, fields):
+    rendered = ", ".join(f"{key}={value}" for key, value in fields.items() if value is not None)
+    return f"{operation}: {rendered}" if rendered else str(operation)
+
+
+# Prints one timestamped and sanitized diagnostic line only when debug mode is enabled
+def debug_print(_operation, **fields):
+    if DEBUG_MODE:
+        # Sanitized here rather than at each call site, since one caller interpolating a secret is enough to leak it
+        message = format_diagnostic_line(_operation, fields)
+        # The scanner does not treat the sanitizer as a barrier, so it reports the masked line as a leak
+        # codeql[py/clear-text-logging-sensitive-data]
+        print(f"[DEBUG {datetime.now().strftime('%H:%M:%S')}] {sanitize_error_text(message)}")
+
+
+# Prints one sanitized operational detail only when verbose mode is enabled
+def verbose_print(message):
+    if VERBOSE_MODE:
+        print(f"* {sanitize_error_text(message)}")
+
+
+# Records a swallowed exception in debug output so a silently degraded feature can still be diagnosed
+def debug_swallowed_exception(context, exc):
+    debug_print(context, outcome="failed", error=f"{type(exc).__name__}: {exc}")
+
+
+# Applies only the explicitly supplied --verbose and --debug flags so the command line always wins over the config file
+def apply_diagnostic_cli_flags(args):
+    global VERBOSE_MODE, DEBUG_MODE
+    if getattr(args, "verbose", None):
+        VERBOSE_MODE = True
+    if getattr(args, "debug", None):
+        DEBUG_MODE = True
 
 
 # Strips terminal control sequences and other C0/C1 characters from third-party text before it reaches a console or a log
@@ -725,17 +776,19 @@ def classify_recovery_error(error=None, context="runtime", detail=""):
 
 
 # Renders one structured failure as the shared Error, To fix and optional Technical detail block
-def render_recovery_error(error=None, context="runtime", debug=False, detail=""):
+def render_recovery_error(error=None, context="runtime", debug=None, detail=""):
     advice = classify_recovery_error(error, context, detail)
+    # Resolved here rather than at each call site, so one flag decides whether the technical line is printed
+    show_debug = DEBUG_MODE if debug is None else debug
     lines = [f"* Error: {advice.summary}", f"To fix: {advice.fix}"]
     # A detail that only repeats the summary spends a line saying nothing, which is section 15.52's rule for rows
-    if debug and advice.detail and advice.detail != advice.summary:
+    if show_debug and advice.detail and advice.detail != advice.summary:
         lines.append(f"Technical detail: {sanitize_error_text(advice.detail)}")
     return "\n".join(lines)
 
 
 # Prints one structured recovery error and returns its stable advice
-def print_recovery_error(error=None, context="runtime", debug=False, detail=""):
+def print_recovery_error(error=None, context="runtime", debug=None, detail=""):
     advice = classify_recovery_error(error, context, detail)
     print(render_recovery_error(RecoveryError(advice), debug=debug))
     return advice
@@ -831,6 +884,7 @@ def write_config_file(destination, content):
     finally:
         if temporary_path is not None and temporary_path.exists():
             temporary_path.unlink()
+    debug_print("Config file written", path=str(destination_path), backup=backup_path, outcome="OK")
     return {"path": str(destination_path), "backup_path": backup_path}
 
 
@@ -880,6 +934,7 @@ async def riot_api_client():
         if not VERIFY_SSL:
             # pulsefire builds its own session on entry, so an unverified connector can only be applied by replacing it
             entered_session = getattr(client, "session", None)
+            debug_print("TLS verification", target="Riot API session", outcome="OK" if entered_session is not None else "degraded")
             if entered_session is None:
                 # A release that moves the session should still run, verifying, rather than fail on a missing attribute
                 print("* Warning: TLS verification stays on for the Riot API session, which this pulsefire release does not expose")
@@ -950,15 +1005,18 @@ def check_internet(url=None, timeout=None, quiet=False):
     # Read at call time, since a default bound at import would ignore whatever the config file set
     selected_url = CHECK_INTERNET_URL if url is None else url
     selected_timeout = CHECK_INTERNET_TIMEOUT if timeout is None else timeout
+    debug_print("Connectivity check", url=selected_url, timeout=f"{selected_timeout}s", verify_ssl=VERIFY_SSL)
     try:
         _ = req.get(selected_url, timeout=selected_timeout, verify=VERIFY_SSL)
         LAST_CONNECTIVITY_ERROR = None
+        debug_print("Connectivity check", url=selected_url, outcome="OK")
         return True
     except req.RequestException as e:
         # A quiet caller renders the failure itself, which the doctor needs so nothing lands on its progress line
         LAST_CONNECTIVITY_ERROR = e
+        debug_print("Connectivity check", url=selected_url, outcome="failed", error=f"{type(e).__name__}: {e}")
         if not quiet:
-            print_recovery_error(e, context="connectivity", debug=True)
+            print_recovery_error(e, context="connectivity")
         return False
 
 
@@ -1139,9 +1197,12 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
 
         smtpObj.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, email_msg.as_string())
         smtpObj.quit()
+        debug_print("Email delivery", recipient=RECEIVER_EMAIL, outcome="OK")
     except Exception as e:
-        print_recovery_error(e, context="email", debug=True)
+        debug_print("Email delivery", recipient=RECEIVER_EMAIL, outcome="failed", error=f"{type(e).__name__}: {e}")
+        print_recovery_error(e, context="email")
         return 1
+    verbose_print(f"Email delivered to {RECEIVER_EMAIL}")
     return 0
 
 
@@ -1152,7 +1213,9 @@ def init_csv_file(csv_file_name):
             with open(csv_file_name, 'a', newline='', buffering=1, encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
                 writer.writeheader()
+            debug_print("CSV file initialized", path=csv_file_name, outcome="OK")
     except Exception as e:
+        debug_print("CSV file initialized", path=csv_file_name, outcome="failed", error=f"{type(e).__name__}: {e}")
         raise RuntimeError(f"Could not initialize CSV file '{csv_file_name}': {e}")
 
 
@@ -1164,7 +1227,9 @@ def write_csv_entry(csv_file_name, start_date_ts, stop_date_ts, duration_ts, gam
             csvwriter = csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
             csvwriter.writerow({'Match Start': start_date_ts, 'Match Stop': stop_date_ts, 'Duration': duration_ts, 'Game Mode': game_mode, 'Victory': victory, 'Kills': kills, 'Deaths': deaths, 'Assists': assists, 'Champion': champion, 'Level': level, 'Role': role, 'Lane': lane, 'Team 1': team1, 'Team 2': team2})
 
+        debug_print("CSV row written", path=csv_file_name, outcome="OK")
     except Exception as e:
+        debug_print("CSV row written", path=csv_file_name, outcome="failed", error=f"{type(e).__name__}: {e}")
         raise RuntimeError(f"Failed to write to CSV file '{csv_file_name}': {e}")
 
 
@@ -1565,12 +1630,15 @@ async def get_user_puuid(riotid: str, region: str) -> Optional[str]:
 
     riotid_name, riotid_tag = get_user_riot_name_tag(riotid)
 
+    debug_print("Riot account lookup", riot_id=riotid, region=region)
     async with riot_api_client() as client:
         try:
             account = await client.get_account_v1_by_riot_id(region=region_continent(region), game_name=riotid_name, tag_line=riotid_tag)
             puuid = account["puuid"]
+            debug_print("Riot account lookup", riot_id=riotid, outcome="OK")
         except Exception as e:
-            print_recovery_error(e, context="target", debug=True)
+            debug_swallowed_exception("Riot account lookup", e)
+            print_recovery_error(e, context="target")
             puuid = None
 
     return puuid
@@ -1584,6 +1652,7 @@ async def get_summoner_details(puuid: str, region: str):
         "revision_date": "N/A"
     }
 
+    debug_print("Summoner details", region=region)
     async with riot_api_client() as client:
         try:
             summoner = await client.get_lol_summoner_v4_by_puuid(region=region, puuid=puuid)
@@ -1596,7 +1665,10 @@ async def get_summoner_details(puuid: str, region: str):
                 revision_date = datetime.fromtimestamp(revision_date_ts / 1000)
                 summoner_info["revision_date"] = get_date_from_ts(revision_date)
 
+            debug_print("Summoner details", region=region, outcome="OK", level=summoner_info["summoner_level"])
+
         except Exception as e:
+            debug_swallowed_exception("Summoner details", e)
             print(f"* Error while getting summoner details: {e}")
 
     return summoner_info
@@ -1612,6 +1684,7 @@ async def get_ranked_info(puuid: str, region: str) -> RankedInfo:
     if not puuid or puuid == "N/A":
         return ranked_info
 
+    debug_print("Ranked information", region=region)
     async with riot_api_client() as client:
         try:
             league_entries = await client.get_lol_league_v4_entries_by_puuid(region=region, puuid=puuid)
@@ -1643,9 +1716,10 @@ async def get_ranked_info(puuid: str, region: str) -> RankedInfo:
                         "wins": wins,
                         "losses": losses
                     }
-        except Exception:
+            debug_print("Ranked information", region=region, outcome="OK", queues=len(league_entries))
+        except Exception as e:
             # Player might not be ranked, this is not an error
-            pass
+            debug_swallowed_exception("Ranked information", e)
 
     return ranked_info
 
@@ -1676,9 +1750,13 @@ def get_champion_name(champion_id: int) -> Optional[str]:
                         champ_id = int(champion_info.get("key", 0))
                         if champ_id:
                             _champion_id_to_name_cache[champ_id] = sanitize_untrusted_text(champion_name, max_length=64)
-        except Exception:
+                # An empty cache means champion names stay numeric for the rest of the run, which is worth telling apart from a clean fetch
+                debug_print("Data Dragon champion data", version=latest_version, outcome="OK" if _champion_id_to_name_cache else "degraded", champions=len(_champion_id_to_name_cache))
+            else:
+                debug_print("Data Dragon champion data", status=versions_response.status_code, outcome="degraded")
+        except Exception as e:
             # If Data Dragon fails, this will return None
-            pass
+            debug_swallowed_exception("Data Dragon champion data", e)
 
     if not champion_id:
         return None
@@ -1727,9 +1805,10 @@ async def get_champion_mastery(puuid: str, region: str, top_n: int = 3):
                     "level": champion_level,
                     "points": champion_points
                 })
-        except Exception:
+            debug_print("Champion mastery", region=region, outcome="OK", champions=len(mastery_info))
+        except Exception as e:
             # Champion mastery might not be available, this is not an error
-            pass
+            debug_swallowed_exception("Champion mastery", e)
 
     return mastery_info
 
@@ -1741,9 +1820,12 @@ async def is_user_in_match(puuid: str, region: str):
 
         try:
             current_match = await client.get_lol_spectator_v5_active_game_by_summoner(region=region, puuid=puuid)
-            if current_match:
-                return True
-        except Exception:
+            debug_print("In-game check", region=region, outcome="OK", in_game=bool(current_match))
+            return bool(current_match)
+        except Exception as e:
+            # Riot answers a player who is not in a game with a 404, so that is the ordinary path and anything
+            # else is a check the run could not make but still treats as not in game
+            debug_print("In-game check", region=region, outcome="OK" if recovery_http_status(e) == 404 else "degraded", in_game=False, error=f"{type(e).__name__}: {e}")
             return False
 
 
@@ -1754,7 +1836,9 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
 
         try:
             current_match = await client.get_lol_spectator_v5_active_game_by_summoner(region=region, puuid=puuid)
-        except Exception:
+            debug_print("Live match details", region=region, outcome="OK")
+        except Exception as e:
+            debug_swallowed_exception("Live match details", e)
             current_match = False
 
         if current_match:
@@ -1950,6 +2034,7 @@ async def get_latest_match_ids(puuid: str, region: str, count: int = 10, start: 
     MAX_MATCHES_PER_REQUEST = 100
     all_matches = []
 
+    debug_print("Match ID fetch", region=region, start=start, count=count)
     try:
         async with riot_api_client() as client:
             # If count <= 100, make a single request
@@ -1959,6 +2044,7 @@ async def get_latest_match_ids(puuid: str, region: str, count: int = 10, start: 
                     puuid=puuid,
                     queries={'start': start, 'count': count}
                 )
+                debug_print("Match ID fetch", region=region, outcome="OK", matches=len(matches or []))
                 return matches if matches else []
 
             # For counts > 100, paginate with multiple requests
@@ -1988,9 +2074,11 @@ async def get_latest_match_ids(puuid: str, region: str, count: int = 10, start: 
                 current_start += len(matches)
                 remaining -= len(matches)
 
+            debug_print("Match ID fetch", region=region, outcome="OK", matches=len(all_matches[:count]), pages=True)
             return all_matches[:count]  # Return exactly the requested count (or less if not available)
 
     except Exception as e:
+        debug_swallowed_exception("Match ID fetch", e)
         print(f"* Error: Cannot fetch latest match IDs: {e}")
         print_cur_ts("Timestamp:\t\t\t")
         return []
@@ -2002,6 +2090,7 @@ async def get_total_match_count(puuid: str, region: str) -> int:
     all_matches = []
     start = 0
 
+    debug_print("Total match count", region=region)
     try:
         async with riot_api_client() as client:
             while True:
@@ -2022,9 +2111,11 @@ async def get_total_match_count(puuid: str, region: str) -> int:
 
                 start += len(matches)
 
+            debug_print("Total match count", region=region, outcome="OK", matches=len(all_matches))
             return len(all_matches)
 
     except Exception as e:
+        debug_swallowed_exception("Total match count", e)
         print(f"* Error: Cannot determine total match count: {e}")
         return 0
 
@@ -2036,11 +2127,14 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
     if cached_match_data:
         match = cached_match_data
     else:
+        debug_print("Match details", match=match_id, region=region)
         async with riot_api_client() as client:
             try:
                 match = await client.get_lol_match_v5_match(region=region_continent(region), id=match_id)
+                debug_print("Match details", match=match_id, outcome="OK")
             except Exception as e:
                 if getattr(e, 'status', None) == 403:
+                    debug_print("Match details", match=match_id, outcome="skipped", reason="requires an RSO token")
                     if INCLUDE_FORBIDDEN_MATCHES:
                         print(f"Match ID:\t\t\t{match_id}")
                         print(f"Match details require RSO token")
@@ -2058,6 +2152,7 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
                             send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                     return 0, 0
                 else:
+                    debug_swallowed_exception("Match details", e)
                     print(f"* An unexpected error occurred while processing match {match_id}: {e}")
                     return 0, 0
 
@@ -2370,7 +2465,7 @@ async def print_save_recent_matches(riotid: str, region: str, matches_min: int, 
         if csv_file_name:
             init_csv_file(csv_file_name)
     except Exception as e:
-        print_recovery_error(e, context="file", debug=True)
+        print_recovery_error(e, context="file")
 
     puuid = await get_user_puuid(riotid, region)
     riotid_name, riotid_tag = get_user_riot_name_tag(riotid)
@@ -2505,7 +2600,9 @@ async def get_current_match_details(puuid: str, region: str) -> dict:
     async with riot_api_client() as client:
         try:
             current_match = await client.get_lol_spectator_v5_active_game_by_summoner(region=region, puuid=puuid)
-        except Exception:
+            debug_print("Live match snapshot", region=region, outcome="OK")
+        except Exception as e:
+            debug_swallowed_exception("Live match snapshot", e)
             return {}
 
     if not current_match:
@@ -2604,7 +2701,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
         if csv_file_name:
             init_csv_file(csv_file_name)
     except Exception as e:
-        print_recovery_error(e, context="file", debug=True)
+        print_recovery_error(e, context="file")
 
     puuid = await get_user_puuid(riotid, region)
 
@@ -2714,11 +2811,15 @@ async def lol_monitor_user(riotid, region, csv_file_name):
 
     print_cur_ts("\nTimestamp:\t\t\t")
 
+    check_count = 0
+
     while True:
 
         try:
 
             processed_new_match_in_this_cycle = False
+            check_count += 1
+            debug_print("Monitoring check", check=f"#{check_count}", user=riotid, in_game=ingame)
 
             latest_match_ids = await get_latest_match_ids(puuid, region, count=10)
 
@@ -2848,18 +2949,18 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                 print_cur_ts("Liveness check, timestamp:\t")
                 alive_counter = 0
 
-            if ingame or (game_finished_ts and (int(time.time()) - game_finished_ts) <= LOL_CHECK_INTERVAL):
-                time.sleep(LOL_ACTIVE_CHECK_INTERVAL)
-            else:
-                time.sleep(LOL_CHECK_INTERVAL)
+            wait_seconds = LOL_ACTIVE_CHECK_INTERVAL if (ingame or (game_finished_ts and (int(time.time()) - game_finished_ts) <= LOL_CHECK_INTERVAL)) else LOL_CHECK_INTERVAL
+            debug_print("Monitoring check", check=f"#{check_count}", user=riotid, outcome="OK", in_game=ingame, next_check=f"{wait_seconds}s")
+            time.sleep(wait_seconds)
 
         except Exception as e:
             advice = classify_recovery_error(e)
             # The detail carries the failing request, which is how one Riot failure is told from another
             if hint_tracker.should_render(advice):
-                print(render_recovery_error(RecoveryError(advice), debug=True))
+                print(render_recovery_error(RecoveryError(advice)))
             else:
                 print(f"* Error: {advice.summary}")
+            debug_print("Monitoring check", check=f"#{check_count}", outcome="failed", code=advice.code, error=f"{type(e).__name__}: {e}")
             print(f"* Retrying in {display_time(LOL_CHECK_INTERVAL)}")
             if advice.code == "auth.api_key_invalid":
                 if ERROR_NOTIFICATION and not email_sent:
@@ -2875,6 +2976,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                     send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                     email_sent = True
             print_cur_ts("Timestamp:\t\t\t")
+            debug_print("Retry wait", check=f"#{check_count}", next_check=f"{LOL_CHECK_INTERVAL}s")
             time.sleep(LOL_CHECK_INTERVAL)
             continue
 
@@ -3133,9 +3235,12 @@ def doctor_check_authentication(report, region=None):
     if not REGION_TO_CONTINENT.get(region):
         report.target_skip_reason = "The region is not one this tool knows"
         return [make_doctor_check("Authentication", "SKIP", "The Riot API key was not checked", "The region is not one this tool knows, so no request was attempted")]
+    debug_print("Riot API key check", region=region)
     try:
         asyncio.run(riot_api_key_probe(region))
+        debug_print("Riot API key check", region=region, outcome="OK")
     except Exception as exc:
+        debug_print("Riot API key check", region=region, outcome="failed", error=f"{type(exc).__name__}: {exc}")
         report.target_skip_reason = "The Riot API key did not validate"
         advice = classify_recovery_error(exc, context="target")
         return [make_doctor_check("Authentication", "FAIL", advice.summary, advice.detail, advice)]
@@ -3156,9 +3261,12 @@ def doctor_check_target(report, riot_id=None, region=None, target_error=None):
         return [make_doctor_check("Target", "FAIL", advice.summary, "Nothing can be monitored until both are given", advice)]
     if not report.api_key_valid:
         return [make_doctor_check("Target", "SKIP", "The monitored account was not checked", f"{report.target_skip_reason or 'The Riot API key did not validate'}, so no lookup was attempted")]
+    debug_print("Monitored account check", region=region)
     try:
         account = asyncio.run(riot_account_probe(riot_id, region))
+        debug_print("Monitored account check", region=region, outcome="OK")
     except Exception as exc:
+        debug_print("Monitored account check", region=region, outcome="failed", error=f"{type(exc).__name__}: {exc}")
         advice = classify_recovery_error(exc, context="target")
         return [make_doctor_check("Target", "FAIL", advice.summary, advice.detail, advice)]
     report.account = account
@@ -3187,17 +3295,20 @@ def doctor_check_email_notifications(report):
         advice = make_recovery_advice("smtp.invalid", "Email is configured but no alert types are selected", recovery_fix_with_guide("Turn on at least one email alert in the configuration file", SMTP_GUIDE_URL), False)
         return [make_doctor_check("Notifications", "WARN", advice.summary, "Nothing would ever be emailed", advice)]
     smtp_object = None
+    debug_print("SMTP sign-in check", host=SMTP_HOST, port=SMTP_PORT, use_ssl=SMTP_SSL)
     try:
         smtp_object = smtp_connect_and_login(SMTP_SSL, smtp_timeout=DOCTOR_PASSIVE_TIMEOUT)
+        debug_print("SMTP sign-in check", host=SMTP_HOST, outcome="OK")
     except Exception as exc:
+        debug_print("SMTP sign-in check", host=SMTP_HOST, outcome="failed", error=f"{type(exc).__name__}: {exc}")
         advice = classify_recovery_error(exc, "email")
         return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
     finally:
         if smtp_object is not None:
             try:
                 smtp_object.quit()
-            except Exception:
-                pass
+            except Exception as exc:
+                debug_swallowed_exception("SMTP session close", exc)
     report.email_ready = True
     return [make_doctor_check("Notifications", "PASS", SMTP_READY_CHECK_LABEL, f"Alerts: {', '.join(enabled_categories)}. No email was sent during this passive check")]
 
@@ -3325,7 +3436,9 @@ def doctor_offer_notification_tests(report, input_func=input, interactive=None):
     print("\n" + DOCTOR_DELIVERY_SECTION + "\n")
     print("Doctor will not write files. Each approved test sends one real message.\n")
     if doctor_ask_yes_no("Send one test email now? This will deliver a real message", input_func=input_func):
+        debug_print("Doctor test email", recipient=RECEIVER_EMAIL)
         delivered = send_email("lol_monitor: doctor test email", "This test email was sent after approval in --doctor. Your SMTP delivery settings work.", "", SMTP_SSL, smtp_timeout=DOCTOR_PASSIVE_TIMEOUT) == 0
+        debug_print("Doctor test email", recipient=RECEIVER_EMAIL, outcome="OK" if delivered else "failed")
         if delivered:
             check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS", "Doctor test email delivered", "One real test email was sent after confirmation")
         else:
@@ -3395,7 +3508,7 @@ def print_doctor_next_steps(riot_id=None, region=None, riot_id_saved=False, regi
 
 
 def main():
-    global CLI_CONFIG_PATH, CONFIG_DISCOVERY_DISABLED, COMMAND_LINE_SECRET_KEYS, EXPORTED_SECRET_KEYS, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT, INCLUDE_FORBIDDEN_MATCHES
+    global CLI_CONFIG_PATH, CONFIG_DISCOVERY_DISABLED, COMMAND_LINE_SECRET_KEYS, EXPORTED_SECRET_KEYS, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT, INCLUDE_FORBIDDEN_MATCHES, DEBUG_MODE
 
     if "--generate-config" in sys.argv:
         config_content = CONFIG_BLOCK.strip("\n") + "\n"
@@ -3418,7 +3531,7 @@ def main():
             print_recovery_error(exc, context="file.exists", detail=str(exc))
             sys.exit(1)
         except OSError as exc:
-            print_recovery_error(exc, context="file", debug=True, detail=f"The config file could not be written: {exc}")
+            print_recovery_error(exc, context="file", detail=f"The config file could not be written: {exc}")
             sys.exit(1)
         sys.stdout.buffer.write(config_content.encode("utf-8"))
         sys.stdout.buffer.flush()
@@ -3602,8 +3715,25 @@ def main():
         default=None,
         help="Disable logging to lol_monitor_<riot_id_name>.log"
     )
+    opts.add_argument(
+        "--verbose",
+        dest="verbose",
+        action="store_true",
+        default=None,
+        help="Print extra startup and runtime detail (overrides VERBOSE_MODE)"
+    )
+    opts.add_argument(
+        "--debug",
+        dest="debug",
+        action="store_true",
+        default=None,
+        help="Print timestamped diagnostic detail including outbound calls and failure causes (overrides DEBUG_MODE)"
+    )
 
     args = parser.parse_args()
+
+    # Applied here so config-load failures and startup checks can already print diagnostics
+    apply_diagnostic_cli_flags(args)
 
     CONFIG_DISCOVERY_DISABLED = args.config_file is not None and str(args.config_file).casefold() == "none"
     if CONFIG_DISCOVERY_DISABLED:
@@ -3618,8 +3748,14 @@ def main():
         sys.exit(1)
 
     if cfg_path:
+        debug_print("Loading configuration file", path=cfg_path)
         if not load_config_file(cfg_path):
             sys.exit(1)
+    else:
+        debug_print("No configuration file found, using built-in defaults")
+
+    # Reapplied because the config file may carry VERBOSE_MODE or DEBUG_MODE values that must not beat an explicit flag
+    apply_diagnostic_cli_flags(args)
 
     # Resolved right after the config file is read, so every later message sees the target this run will actually use
     riot_id_saved = not args.riot_id and bool(RIOT_ID)
@@ -3658,13 +3794,18 @@ def main():
             if DOTENV_FILE:
                 env_path = DOTENV_FILE
                 if not os.path.isfile(env_path):
+                    debug_print("Dotenv file", path=env_path, outcome="skipped", reason="the file does not exist")
                     print(f"* Warning: dotenv file '{env_path}' does not exist\n")
                 else:
                     load_dotenv(env_path, override=False)
+                    debug_print("Dotenv file", path=env_path, outcome="OK")
             else:
                 env_path = find_dotenv() or None
                 if env_path:
                     load_dotenv(env_path, override=False)
+                    debug_print("Dotenv file", path=env_path, outcome="OK", source="search")
+                else:
+                    debug_print("Dotenv file", outcome="skipped", reason="the search found no file")
         except ImportError:
             env_path = DOTENV_FILE if DOTENV_FILE else None
             if env_path:
@@ -3756,7 +3897,7 @@ def main():
             with open(CSV_FILE, 'a', newline='', buffering=1, encoding="utf-8") as _:
                 pass
         except Exception as e:
-            print_recovery_error(e, context="file", debug=True, detail=f"CSV file '{CSV_FILE}' cannot be opened for writing")
+            print_recovery_error(e, context="file", detail=f"CSV file '{CSV_FILE}' cannot be opened for writing")
             sys.exit(1)
 
     if args.list_recent_matches:
@@ -3783,7 +3924,7 @@ def main():
                         print("* Error: Could not determine total match count")
                     sys.exit(1)
             except Exception as e:
-                print_recovery_error(e, debug=True)
+                print_recovery_error(e)
                 sys.exit(1)
         else:
             if args.recent_matches_count and args.recent_matches_count > 0:
@@ -3811,7 +3952,7 @@ def main():
         try:
             asyncio.run(print_save_recent_matches(args.riot_id, args.region, matches_min, matches_num, CSV_FILE))
         except Exception as e:
-            print_recovery_error(e, debug=True)
+            print_recovery_error(e)
         sys.exit(0)
 
     riotid_name, riotid_tag = get_user_riot_name_tag(args.riot_id)
@@ -3830,14 +3971,13 @@ def main():
         log_path.parent.mkdir(parents=True, exist_ok=True)
         FINAL_LOG_PATH = str(log_path)
         sys.stdout = Logger(FINAL_LOG_PATH)
+        debug_print("Log file opened", path=FINAL_LOG_PATH, outcome="OK")
     else:
         FINAL_LOG_PATH = None
 
     unset_email = unset_email_settings()
     if unset_email:
-        # Silent for a run that never asked for email, since untouched placeholders are not a mistake on their own
-        if STATUS_NOTIFICATION or len(unset_email) < len(EMAIL_DELIVERY_SETTINGS):
-            print(f"* Email notifications are off because {', '.join(unset_email)} {'is' if len(unset_email) == 1 else 'are'} not set\n")
+        verbose_print(f"Email notifications are off because {', '.join(unset_email)} {'is' if len(unset_email) == 1 else 'are'} not set")
         STATUS_NOTIFICATION = False
         ERROR_NOTIFICATION = False
 

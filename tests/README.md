@@ -43,6 +43,7 @@ and again before anything is published to PyPI.
 | `test_config_writing.py` | Backups, atomic replacement and the prompt guarding a generated configuration file |
 | `test_csv_output.py` | The CSV match history, its columns and the custom game rows saved from a live snapshot |
 | `test_doctor_report.py` | The `--doctor` preflight: every check branch, the rendered report, the delivery offer and the exit code |
+| `test_diagnostics.py` | The `--verbose` and `--debug` printers, the trace grammar and what each mode is allowed to print |
 | `test_documentation.py` | The documentation site: navigation, links into and out of it, page structure and claims about flags and tooling |
 | `test_email_html.py` | The HTML notification body and escaping of names taken from Riot |
 | `test_email_notifications.py` | SMTP validation, the delivered message and failure handling |

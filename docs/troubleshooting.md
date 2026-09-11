@@ -44,6 +44,37 @@ lol_monitor --doctor <riot_id> <region> && echo "ready"
 
 Running doctor without a target checks everything except the monitored account. An explicitly selected dotenv path that does not exist is reported as a warning with the path and the recovery command.
 
+## Verbose and Debug Output
+
+Two flags control how much the tool explains about itself.
+
+`--verbose` reports what the tool is doing in plain `* ` lines: which notification categories were switched off and why, and each message that was delivered. During monitoring it stays quiet, so a run that finds nothing prints nothing. Use `--debug` when you want a line per completed check.
+
+```sh
+lol_monitor <riot_id> <region> --verbose
+```
+
+`--debug` traces the whole run in timestamped `[DEBUG HH:MM:SS]` lines. Each line names the operation, then lists its details as comma-separated `key=value` fields, so a long trace stays scannable:
+
+```
+[DEBUG 23:47:21] Riot account lookup: riot_id=Faker#KR1, region=kr, continent=asia
+[DEBUG 23:47:21] Riot account lookup: riot_id=Faker#KR1, outcome=OK
+```
+
+Traced operations include configuration and secret resolution, the connectivity probe, every Riot API and Data Dragon call, SMTP delivery, the log and CSV files being opened and written, each retry with the wait it chose, and every completed check with the interval before the next one. Every operation that makes an outbound call reports its result as `outcome=OK`, `outcome=failed` with an `error=` field, `outcome=degraded` or `outcome=skipped`, so a trace never stops at what was attempted:
+
+```sh
+lol_monitor <riot_id> <region> --debug
+```
+
+`--debug` also appends the `Technical detail:` line to every error block, which carries the underlying exception for a bug report.
+
+The two modes are independent, so pass both to see everything. Either can also be turned on permanently with the `VERBOSE_MODE` and `DEBUG_MODE` configuration settings. A flag on the command line always wins, so `--debug` still applies when the configuration file sets `DEBUG_MODE = False`.
+
+Debug mode is the fastest way to find out why part of a report is missing. Ranked information, champion mastery and champion name lookups each degrade quietly when Riot refuses them, and debug names the call that failed.
+
+Secret values are never printed by either mode. Redaction happens inside both printers rather than at each call site, so a known secret is replaced with `<redacted>` no matter which line interpolates it.
+
 ## When Something Goes Wrong
 
 ### `No Riot API key reached the tool`
@@ -118,7 +149,7 @@ Send one real message and read what happens:
 lol_monitor --send-test-email
 ```
 
-If any SMTP setting is still a shipped placeholder, email is switched off at startup and no message is attempted. Startup names the missing settings whenever the rest of the block is filled in or you asked for status emails. See [SMTP Settings](configuration.md#smtp-settings).
+If any SMTP setting is still a shipped placeholder, email is switched off at startup and no message is attempted. Run with `--verbose` to have startup name the settings that are missing, or use `--doctor`, which reports the same thing in its Notifications section. See [SMTP Settings](configuration.md#smtp-settings).
 
 ### A match is missing from the output
 

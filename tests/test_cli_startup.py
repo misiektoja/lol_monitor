@@ -255,19 +255,29 @@ def test_unconfigured_smtp_disables_every_notification(lm_module, monkeypatch, m
 def test_a_requested_notification_names_the_setting_that_disabled_it(lm_module, monkeypatch, monitor_calls, capsys):
     monkeypatch.setattr(lm_module, "SENDER_EMAIL", "your_sender_email")
 
-    assert run_main(lm_module, monkeypatch, ["-s", RIOT_ID, REGION]) == 0
+    assert run_main(lm_module, monkeypatch, ["--verbose", "-s", RIOT_ID, REGION]) == 0
 
     assert "* Email notifications are off because SENDER_EMAIL is not set" in capsys.readouterr().out
 
 
-# Verifies a half-configured SMTP block always says so, since somebody who started configuring email meant to finish
+# Verifies a half-configured SMTP block names every setting that is missing rather than only the first
 def test_partly_configured_email_always_names_what_is_missing(lm_module, monkeypatch, monitor_calls, capsys):
     monkeypatch.setattr(lm_module, "SENDER_EMAIL", "your_sender_email")
     monkeypatch.setattr(lm_module, "RECEIVER_EMAIL", "")
 
-    assert run_main(lm_module, monkeypatch, [RIOT_ID, REGION]) == 0
+    assert run_main(lm_module, monkeypatch, ["--verbose", RIOT_ID, REGION]) == 0
 
     assert "* Email notifications are off because SENDER_EMAIL, RECEIVER_EMAIL are not set" in capsys.readouterr().out
+
+
+# Verifies the reason is a verbose notice rather than default output, matching where the siblings print it
+def test_the_email_gate_reason_is_verbose_only(lm_module, monkeypatch, monitor_calls, capsys):
+    monkeypatch.setattr(lm_module, "SENDER_EMAIL", "your_sender_email")
+
+    assert run_main(lm_module, monkeypatch, ["-s", RIOT_ID, REGION]) == 0
+
+    assert "Email notifications are off" not in capsys.readouterr().out
+    assert lm_module.STATUS_NOTIFICATION is False
 
 
 # Verifies a run that never asked for email and never configured it stays quiet, since untouched placeholders are not a mistake

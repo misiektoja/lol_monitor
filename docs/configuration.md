@@ -185,6 +185,15 @@ The startup summary reports the state on every run, as `TLS verification: On` or
 | `LOL_ACTIVE_CHECK_SIGNAL_VALUE` | | Seconds each `TRAP` or `ABRT` signal adds to or removes from the in-game interval |
 | `REGION_TO_CONTINENT` | | Maps each region code to its routing continent |
 
+## Diagnostics
+
+| Setting | Flag | Meaning |
+| --- | --- | --- |
+| `VERBOSE_MODE` | `--verbose` | Extra startup and runtime detail in plain `* ` lines |
+| `DEBUG_MODE` | `--debug` | Timestamped `[DEBUG]` trace of every outbound call, delivery and completed check |
+
+The two are independent, so enable both to see everything. A flag always wins over the configuration file, and neither ever prints a secret value. What each mode reports is described in [Verbose and Debug Output](troubleshooting.md#verbose-and-debug-output).
+
 ## Install Method
 
 The tool works out whether it is running as the `lol_monitor` console script from PyPI or as a downloaded `lol_monitor.py`, and prints every command in the form that works for that install. The startup summary reports what it detected.

@@ -165,12 +165,12 @@ def test_unavailable_mastery_is_not_an_error(lm_module, riot_api, capsys):
     assert capsys.readouterr().out == ""
 
 
-# Verifies an active game means the player is in a match, and no active game means they are not
+# Verifies an active game means the player is in a match, and that every other answer reports False rather than nothing
 def test_in_game_detection(lm_module, riot_api):
     riot_api.script("get_lol_spectator_v5_active_game_by_summoner", Replies([{"gameId": 1}, {}, RuntimeError("404 Not Found")]))
 
     assert asyncio.run(lm_module.is_user_in_match(PUUID, "eun1")) is True
-    assert asyncio.run(lm_module.is_user_in_match(PUUID, "eun1")) is None
+    assert asyncio.run(lm_module.is_user_in_match(PUUID, "eun1")) is False
     assert asyncio.run(lm_module.is_user_in_match(PUUID, "eun1")) is False
 
 
