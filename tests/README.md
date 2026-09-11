@@ -37,6 +37,7 @@ and again before anything is published to PyPI.
 
 | File | Area under test |
 | --- | --- |
+| `test_dotenv_quoted_keys.py` | Quoted dotenv keys, export prefixes, multiline values and duplicate removal |
 | `test_documentation_layout.py` | Unique anchors, main screenshot placement and matching entry-page feature summaries |
 | `data/config_templates/` | One configuration template per released shape, replayed through the current parser |
 | `conftest.py` | Import setup, deterministic globals and the Riot API, SMTP, webhook and clock test doubles |
