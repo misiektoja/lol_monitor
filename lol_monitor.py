@@ -471,6 +471,8 @@ MIN_REDACTABLE_SECRET_LENGTH = 12
 
 # One short retry absorbs a transient failure without waiting a whole polling interval
 TRANSIENT_RETRY_SECONDS = 5
+# How long a failure the tool can retry away must last before it is alerted, a failure it cannot is alerted at once
+ERROR_ALERT_AFTER_SECONDS = 300  # 5 minutes
 
 # Riot names its own wait on a rate limit, but a header the tool cannot vouch for is not allowed to stall a run
 RIOT_MAX_RETRY_AFTER_SECONDS = 3600.0
@@ -4783,7 +4785,9 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                 f"{get_cur_ts('<br><br>Timestamp: ')}"
                 f"</body></html>"
             )
-            if (ERROR_NOTIFICATION and not error_email_sent) or (webhook_event_enabled("error") and not error_webhook_sent):
+            # A failure the tool can retry away is alerted once the outage has lasted ERROR_ALERT_AFTER_SECONDS, one it cannot at once
+            alert_due = not advice.retryable or int(time.time()) - outage.since >= ERROR_ALERT_AFTER_SECONDS
+            if alert_due and ((ERROR_NOTIFICATION and not error_email_sent) or (webhook_event_enabled("error") and not error_webhook_sent)):
                 email_delivered, webhook_delivered = send_notification_channels("error", m_subject, m_body, m_body_html, email_enabled=ERROR_NOTIFICATION and not error_email_sent, webhook_enabled=webhook_event_enabled("error") and not error_webhook_sent, ntfy_priority=5, ntfy_tags="warning")
                 error_email_sent = error_email_sent or email_delivered
                 error_webhook_sent = error_webhook_sent or webhook_delivered
