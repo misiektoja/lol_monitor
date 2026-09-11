@@ -159,18 +159,18 @@ Monitoring is quiet by design: a check that finds no new match and no change in 
 Liveness check, timestamp:	Thu 01 Jan 2026, 00:50:00
 ```
 
-A failure that lasts is reported once and then carried on the same cadence, and it says when it started:
+A failure that lasts is reported once the short retry has failed too, then reminded once an hour with a count of the failed checks, and it says when it started:
 
 ```
-* Error: The Riot API is temporarily unavailable (retrying in 5 seconds)
+* Error: The Riot API is temporarily unavailable (retrying in 2 minutes, 30 seconds)
 To fix: This is usually a Riot outage. The tool will keep retrying
-Timestamp:			Thu 01 Jan 2026, 00:20:00
+Timestamp:			Thu 01 Jan 2026, 00:20:05
 
-* Monitoring degraded for Faker#KR1. The Riot API is temporarily unavailable since Thu 01 Jan 2026, 00:20:00
-Liveness check, timestamp:	Thu 01 Jan 2026, 00:50:05
+* Monitoring degraded for Faker#KR1. The Riot API is temporarily unavailable since Thu 01 Jan 2026, 00:20:00, 26 failed checks
+Liveness check, timestamp:	Thu 01 Jan 2026, 01:20:05
 
-* Monitoring recovered for Faker#KR1 after 1 hour, 5 seconds
-Timestamp:			Thu 01 Jan 2026, 01:20:05
+* Monitoring recovered for Faker#KR1 after 1 hour, 10 minutes
+Timestamp:			Thu 01 Jan 2026, 01:30:05
 ```
 
 Each block closes with its timestamp and a horizontal rule, so no line is left looking like a run that stopped there.
