@@ -1519,12 +1519,14 @@ _STYLE_CODES = {
     "bright_white": "97",
 }
 
-# Output labels whose value is coloured with one theme style, longest label first so a prefix cannot win
+# Output labels whose value is coloured with one theme style, longest label first so a prefix cannot win. Of the
+# four rows that describe a match, only the game mode is coloured: the queue, map and game type sit right under
+# it and painting all four the same turned the block into a wall of one colour that marked nothing
 _LABEL_STYLES = (
     (("Riot ID (name#tag):", "Summoner name:", "Target:"), "username"),
     (("Riot PUUID:", "Match ID:"), "id"),
     (("Champion:",), "champion"),
-    (("Game mode:", "Game type:", "Queue:", "Map:"), "game_mode"),
+    (("Game mode:",), "game_mode"),
     (("Match duration:", "Match finished:"), "duration"),
 )
 

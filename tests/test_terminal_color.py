@@ -174,9 +174,6 @@ def test_a_part_with_no_style_is_left_plain(colored):
     ("Match ID:\t\t\tEUN1_0", "id", "EUN1_0"),
     ("Champion:\t\t\tAhri", "champion", "Ahri"),
     ("Game mode:\t\t\tSummoner's Rift", "game_mode", "Summoner's Rift"),
-    ("Queue:\t\t\t\tRanked Solo/Duo", "game_mode", "Ranked Solo/Duo"),
-    ("Map:\t\t\t\tSummoner's Rift", "game_mode", "Summoner's Rift"),
-    ("Game type:\t\t\tMatched", "game_mode", "Matched"),
     ("Match duration:\t\t\t30 minutes", "duration", "30 minutes"),
     ("* Target:                       misiektoja#EUNE (eun1)", "username", "misiektoja#EUNE (eun1)"),
 ])
@@ -185,6 +182,12 @@ def test_a_labelled_row_colours_its_value(colored, line, part, value):
 
     assert f"{colored[part]}{value}{monitor.ANSI_RESET}" in rendered
     assert rendered.startswith(line.split(":", 1)[0])
+
+
+# Verifies the rows under the game mode stay plain, since four rows in one colour marked nothing
+@pytest.mark.parametrize("line", ["Queue:\t\t\t\tRanked Solo/Duo", "Map:\t\t\t\tSummoner's Rift", "Game type:\t\t\tMatched"])
+def test_the_rows_under_the_game_mode_stay_plain(colored, line):
+    assert monitor._colorize_line(line) == line
 
 
 # Verifies the target row and the account row agree, since a reader has to see them as the same player
