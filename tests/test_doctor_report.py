@@ -530,7 +530,7 @@ def test_a_refused_sign_in_fails_the_email_row(lm_module, monkeypatch, smtp_doub
 # Verifies every row of a rendered report sits in one block, with the detail and action lines indented under it
 def test_one_row_renders_as_one_indented_block(lm_module):
     report = lm_module.DoctorReport()
-    advice = lm_module.make_recovery_advice("config.invalid", "Something is wrong", lm_module.recovery_fix_with_guide("Correct the setting", lm_module.CONFIG_FILE_GUIDE_URL), False)
+    advice = lm_module.make_recovery_advice("config.invalid", "Something is wrong", lm_module.recovery_fix_with_guide("Correct the setting", lm_module.CONFIG_GUIDE_URL), False)
     report.checks = [
         lm_module.make_doctor_check("Configuration", "WARN", "Something is wrong", "Setting: value", advice),
         lm_module.make_doctor_check("Configuration", "PASS", "Everything else is fine"),
@@ -540,7 +540,7 @@ def test_one_row_renders_as_one_indented_block(lm_module):
     start = lines.index("[WARN] Something is wrong")
     assert lines[start + 1] == "  Setting: value"
     assert lines[start + 2] == f"  To fix: Correct the setting"
-    assert lines[start + 3] == f"  Guide: {lm_module.CONFIG_FILE_GUIDE_URL}"
+    assert lines[start + 3] == f"  Guide: {lm_module.CONFIG_GUIDE_URL}"
     assert lines[start + 4] == "[PASS] Everything else is fine"
 
 

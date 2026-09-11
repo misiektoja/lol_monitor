@@ -54,7 +54,7 @@ def test_the_existing_file_refusal_reads_the_way_the_siblings_report_it(lm_modul
 
     assert advice.code == "file.exists"
     assert "--generate-config <new-file>" in advice.fix
-    assert f"Guide: {lm_module.CONFIG_FILE_GUIDE_URL}" in advice.fix
+    assert f"Guide: {lm_module.CONFIG_GUIDE_URL}" in advice.fix
 
 
 # Verifies a rate limited webhook is reported as itself, since waiting it out is not the fix for an unreachable host
