@@ -325,7 +325,9 @@ Without it, lines are printed in full and `--doctor` says so. Truncation is off 
 
 ## Coloured Output
 
-Colour is on by default and marks what a value is rather than decorating the line: player names, identifiers, champions, ranks, dates, links and the `[PASS]`/`[WARN]`/`[FAIL]`/`[SKIP]` markers each get their own colour. In a match roster the monitored player's own entry is bold, through the `monitored_username` part, so their line stands out among the nine others. The log file is never coloured, so a log attached to a bug report stays plain text. `COLORED_OUTPUT` and `COLOR_THEME` apply to monitoring output and to the [`--setup`](setup-and-first-run.md#guided-setup) and `--doctor` screens alike.
+Colour is on by default and marks what a value is rather than decorating the line: player names, identifiers, champions, ranks, dates, links and the `[PASS]`/`[WARN]`/`[FAIL]`/`[SKIP]` markers each get their own colour. In a match roster the monitored player's own entry is bold, through the `monitored_username` part, so their line stands out among the nine others. The log file is never coloured, so a log attached to a bug report stays plain text. `COLORED_OUTPUT` and `COLOR_THEME` apply to monitoring output and to the [`--setup`](setup-and-first-run.md#guided-setup), `--doctor` and `--help` screens alike.
+
+The `--help` screen is coloured too. Group headings, option names, the values those options take, the example commands and the comments above them each get their own colour, so the screen can be scanned instead of read.
 
 Colour switches itself off when the output is not a terminal you are watching. That covers redirected or piped output, a `NO_COLOR` environment variable of any value, a `TERM` of `dumb` or empty and a `--no-color` run. The startup summary reports the resolved state next to the setting, so `False (setting: True)` means colour was configured but the terminal did not qualify.
 
