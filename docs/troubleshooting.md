@@ -1,6 +1,6 @@
 # Troubleshooting
 
-If a dotenv file cannot be read or is not UTF-8, monitoring stops with the file path and repair guidance. Save it as UTF-8 and check its read permissions. Doctor reports the failed load and continues the remaining checks.
+If a dotenv file cannot be opened or is not UTF-8, monitoring stops with the file path and the repair step for that cause. Doctor reports the failed load and continues the remaining checks.
 
 Every message the tool prints for a problem starts with `* Error:` or `* Warning:`. An error stops the run, a warning does not.
 

@@ -93,3 +93,16 @@ def test_malformed_region_maps_remain_diagnosable(monkeypatch, routing):
     assert any("REGION_TO_CONTINENT" in error for error in errors)
     with pytest.raises(ValueError, match="REGION_TO_CONTINENT"):
         monitor.region_continent("eun1")
+
+
+# Proves each cause names itself, so a readable file with bad bytes and an unopenable one do not share one message
+@pytest.mark.parametrize("error,expected_detail,expected_fix", [
+    (UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"), "is not valid UTF-8 text", "Save the dotenv file as UTF-8"),
+    (PermissionError(13, "Permission denied"), "could not be opened", "Check the dotenv file path and its read permissions"),
+    (ValueError("unexpected"), "could not be read", "Check that the dotenv file is readable UTF-8 text"),
+])
+def test_dotenv_load_problem_names_its_cause(error, expected_detail, expected_fix):
+    detail, fix = monitor.dotenv_load_problem("/tmp/private.env", error)
+
+    assert detail == f"Dotenv file '/tmp/private.env' {expected_detail}"
+    assert fix == expected_fix
