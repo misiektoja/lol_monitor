@@ -270,6 +270,9 @@ INTERVALS_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#check-intervals"
 RIOT_API_KEY_GUIDE_URL = f"{DOCS_BASE_URL}/setup-and-first-run/#riot-api-key"
 REGION_GUIDE_URL = f"{DOCS_BASE_URL}/setup-and-first-run/#region-codes"
 SMTP_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#smtp-settings"
+TLS_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#tls-verification"
+INSTALL_GUIDE_URL = f"{DOCS_BASE_URL}/installation/"
+DOCTOR_GUIDE_URL = f"{DOCS_BASE_URL}/troubleshooting/#doctor-preflight"
 SECRETS_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#storing-secrets"
 OUTPUT_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#output-and-files"
 USAGE_GUIDE_URL = f"{DOCS_BASE_URL}/usage/"
@@ -317,6 +320,9 @@ COMMAND_LINE_SECRET_KEYS = frozenset()
 # Set when --config-file is given the literal string "none", which switches off the search rather than naming a file
 CONFIG_DISCOVERY_DISABLED = False
 
+# The exception the last connectivity check raised, so a quiet caller can classify what it did not print
+LAST_CONNECTIVITY_ERROR = None
+
 # to solve the issue: 'SyntaxError: f-string expression part cannot include a backslash'
 nl_ch = "\n"
 
@@ -352,6 +358,7 @@ import re
 import ipaddress
 import asyncio
 import html
+import importlib.util
 try:
     import aiohttp
     from pulsefire.clients import RiotAPIClient
@@ -454,6 +461,11 @@ def render_command(arguments=None, include_paths=True, config_path=None, env_pat
     if selected_env and not (str(selected_env).casefold() == "none" and command_writes_dotenv(arguments or ())):
         parts.extend(["--env-file", str(selected_env)])
     return " ".join(quote_command_argument(part) for part in parts)
+
+
+# Returns the command that installs one package with the interpreter running this tool, never a bare pip
+def pip_install_command(requirement):
+    return " ".join(quote_command_argument(part) for part in (sys.executable or "python3", "-m", "pip", "install", requirement))
 
 
 # Returns the keys a dotenv file itself defines, used to tell a file-supplied secret from an exported one
@@ -589,7 +601,8 @@ def sanitize_error_text(value):
 
 # Every recovery category the tool can report, kept closed so a message is testable, deduplicable and translatable later
 RECOVERY_CODES = frozenset({
-    "config.missing", "config.invalid",
+    "config.missing", "config.invalid", "config.insecure",
+    "dependency.missing",
     "secret.missing",
     "auth.api_key_invalid",
     "network.unavailable", "network.timeout",
@@ -900,6 +913,14 @@ def normalize_log_separators(message):
     return re.sub(r"(?m)^─+$", lambda match: match.group(0).replace("─", "-"), message)
 
 
+# Returns the log file monitoring will actually write, which takes its name from the Riot ID
+def build_log_path(base_path, suffix):
+    log_path = Path(os.path.expanduser(str(base_path)))
+    if log_path.suffix == "" and suffix:
+        log_path = log_path.parent / f"{log_path.name}_{suffix}.log"
+    return log_path
+
+
 # Logger class to output messages to stdout and log file
 class Logger(object):
     def __init__(self, filename):
@@ -924,15 +945,20 @@ def signal_handler(sig, frame):
 
 
 # Checks internet connectivity
-def check_internet(url=None, timeout=None):
+def check_internet(url=None, timeout=None, quiet=False):
+    global LAST_CONNECTIVITY_ERROR
     # Read at call time, since a default bound at import would ignore whatever the config file set
     selected_url = CHECK_INTERNET_URL if url is None else url
     selected_timeout = CHECK_INTERNET_TIMEOUT if timeout is None else timeout
     try:
         _ = req.get(selected_url, timeout=selected_timeout, verify=VERIFY_SSL)
+        LAST_CONNECTIVITY_ERROR = None
         return True
     except req.RequestException as e:
-        print_recovery_error(e, context="connectivity", debug=True)
+        # A quiet caller renders the failure itself, which the doctor needs so nothing lands on its progress line
+        LAST_CONNECTIVITY_ERROR = e
+        if not quiet:
+            print_recovery_error(e, context="connectivity", debug=True)
         return False
 
 
@@ -1042,6 +1068,22 @@ def calculate_timespan(timestamp1, timestamp2, show_weeks=True, show_hours=True,
         return '0 seconds'
 
 
+# Opens one authenticated SMTP session and leaves closing it to the caller
+def smtp_connect_and_login(use_ssl, smtp_timeout=15):
+    smtp_object = smtplib.SMTP(SMTP_HOST, int(SMTP_PORT), timeout=smtp_timeout)
+    try:
+        if use_ssl:
+            smtp_object.starttls(context=tls_context())
+        smtp_object.login(SMTP_USER, SMTP_PASSWORD)
+        return smtp_object
+    except Exception:
+        try:
+            smtp_object.quit()
+        except Exception:
+            pass
+        raise
+
+
 # Sends email notification
 def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
     fqdn_re = re.compile(r'(?=^.{4,253}$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}\.?$)')
@@ -1079,13 +1121,7 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
         return 1
 
     try:
-        if use_ssl:
-            ssl_context = tls_context()
-            smtpObj = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=smtp_timeout)
-            smtpObj.starttls(context=ssl_context)
-        else:
-            smtpObj = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=smtp_timeout)
-        smtpObj.login(SMTP_USER, SMTP_PASSWORD)
+        smtpObj = smtp_connect_and_login(use_ssl, smtp_timeout=smtp_timeout)
         email_msg = MIMEMultipart('alternative')
         email_msg["From"] = SENDER_EMAIL
         email_msg["To"] = RECEIVER_EMAIL
@@ -2843,6 +2879,521 @@ async def lol_monitor_user(riotid, region, csv_file_name):
             continue
 
 
+# The four shared status markers. A fifth neutral marker is the single biggest source of drift between these
+# tools, because every state it would cover is a state the others already call PASS
+DOCTOR_STATUSES = ("PASS", "WARN", "FAIL", "SKIP")
+
+# Riot's development key allows 100 requests every two minutes and each in-game cycle spends several of them,
+# so an active interval below this leaves no headroom for the extra calls a live match report makes
+DOCTOR_MIN_SAFE_ACTIVE_INTERVAL = 10
+
+# Preflight rows wait far less than a real delivery, so an unreachable host cannot stall the whole report
+DOCTOR_PASSIVE_TIMEOUT = 5
+
+# The passing label of the email row, pinned so the wording cannot drift from the sibling monitors
+SMTP_READY_CHECK_LABEL = "SMTP connection and login succeeded"
+
+# The one label for a channel that is switched on and cannot deliver, shared with every sibling monitor
+EMAIL_UNUSABLE_CHECK_LABEL = "Email alerts are enabled but unusable"
+
+
+# One doctor result, held until the whole report is rendered
+DoctorCheck = namedtuple("DoctorCheck", ["section", "status", "label", "detail", "advice"])
+DoctorCheck.__new__.__defaults__ = ("", None)
+
+
+# Collects doctor checks plus the work later checks reuse, so nothing is fetched or authenticated twice
+class DoctorReport:
+    # Starts an empty report with no validated key, no resolved account and no channel marked ready for a delivery test
+    def __init__(self):
+        self.checks = []
+        self.api_key_valid = False
+        self.account = None
+        # Why the target lookup cannot run, phrased as a clause the skipped row completes
+        self.target_skip_reason = ""
+        # Structural flag, so offering a delivery test never depends on matching a rendered label
+        self.email_ready = False
+
+
+# Builds one doctor check, keeping construction in one place so the shape cannot drift between sections
+def make_doctor_check(section, status, label, detail="", advice=None):
+    if status not in DOCTOR_STATUSES:
+        raise ValueError(f"Unsupported doctor status: {status}")
+    # A row the user has to act on is useless without an action, so the row is rejected rather than printed bare
+    if status in ("WARN", "FAIL") and (advice is None or not advice.fix):
+        raise ValueError(f"Doctor {status} rows require a fix")
+    # Several advice objects carry the same text as their summary and printing it twice reads as two problems
+    return DoctorCheck(section, status, label, "" if str(detail).strip() == str(label).strip() else detail, advice)
+
+
+# Joins setting names the way every doctor detail and action in this family lists them
+def join_setting_names(names, conjunction):
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} {conjunction} {names[-1]}"
+
+
+# Returns enabled email notification category names in display order
+def email_notification_categories():
+    return [label for enabled, label in ((STATUS_NOTIFICATION, "status changes"), (ERROR_NOTIFICATION, "errors")) if enabled]
+
+
+# Reports the running Python version plus every required and optional dependency
+def doctor_check_environment(version_info=None, spec_finder=None):
+    checks = []
+    selected_version = sys.version_info if version_info is None else version_info
+    version_text = ".".join(str(part) for part in tuple(selected_version)[:3])
+    minimum_detail = f"Minimum supported version: {MINIMUM_PYTHON_VERSION_TEXT}"
+    if tuple(selected_version)[:2] >= MINIMUM_PYTHON_VERSION:
+        checks.append(make_doctor_check("Environment", "PASS", f"Python {version_text} is supported", minimum_detail))
+    else:
+        advice = make_recovery_advice("dependency.missing", f"Python {version_text} is unsupported", f"Install Python {MINIMUM_PYTHON_VERSION_TEXT} or newer then retry", False)
+        checks.append(make_doctor_check("Environment", "FAIL", advice.summary, minimum_detail, advice))
+
+    find_spec = importlib.util.find_spec if spec_finder is None else spec_finder
+
+    # Returns whether one module can be located, treating an unimportable parent as absent
+    def module_present(module_name):
+        try:
+            return find_spec(module_name) is not None
+        except (ImportError, ValueError):
+            return False
+
+    for module_name, package_name in (("pulsefire", "pulsefire"), ("requests", "requests"), ("dateutil", "python-dateutil")):
+        if module_present(module_name):
+            checks.append(make_doctor_check("Environment", "PASS", f"Required dependency {package_name} is installed"))
+        else:
+            advice = make_recovery_advice("dependency.missing", f"Required dependency {package_name} is missing", recovery_fix_with_guide(f"Install it with: {pip_install_command(package_name)}", INSTALL_GUIDE_URL), False)
+            checks.append(make_doctor_check("Environment", "FAIL", advice.summary, advice=advice))
+
+    if module_present("dotenv"):
+        checks.append(make_doctor_check("Environment", "PASS", "Optional dependency python-dotenv is installed", "Used only for reading secrets from a dotenv file"))
+    else:
+        advice = make_recovery_advice("dependency.missing", "Optional dependency python-dotenv is not installed", recovery_fix_with_guide(f"Install it with: {pip_install_command('python-dotenv')}. Or export the secrets as environment variables", INSTALL_GUIDE_URL), False)
+        checks.append(make_doctor_check("Environment", "WARN", advice.summary, "Secrets can only come from environment variables or the configuration file. Every other feature is unaffected", advice))
+    return checks
+
+
+# Reports which secrets are in effect and where each one was read from, by name and never by value
+def doctor_secret_checks(env_path=None):
+    from_file, from_environment, from_settings, from_command_line = group_secrets_by_source(env_path)
+    checks = []
+    if from_file:
+        checks.append(make_doctor_check("Configuration", "PASS", "Secrets loaded from the dotenv file", ", ".join(from_file)))
+    if from_environment:
+        checks.append(make_doctor_check("Configuration", "PASS", "Secrets loaded from the environment", ", ".join(from_environment)))
+    if from_settings:
+        checks.append(make_doctor_check("Configuration", "PASS", "Secrets loaded from the configuration file", ", ".join(from_settings)))
+    if from_command_line:
+        checks.append(make_doctor_check("Configuration", "PASS", "Secrets loaded from the command line", ", ".join(from_command_line)))
+    if not checks:
+        checks.append(make_doctor_check("Configuration", "PASS", "No secrets loaded", "Nothing was read from a dotenv file, the environment, the configuration file or the command line"))
+    return checks
+
+
+# Returns the closest parent that exists, so writability is judged without creating anything
+def nearest_existing_parent(path):
+    candidate = Path(path).expanduser()
+    if candidate.exists():
+        return candidate if candidate.is_dir() else candidate.parent
+    while not candidate.exists() and candidate != candidate.parent:
+        candidate = candidate.parent
+    return candidate
+
+
+# Reports whether one file monitoring will write can be created, without creating anything
+def doctor_destination_check(label, destination):
+    selected = Path(destination).expanduser()
+    parent = nearest_existing_parent(selected)
+    if parent.is_dir() and os.access(parent, os.W_OK):
+        return make_doctor_check("Configuration", "PASS", f"{label} appears writable", f"Path: {selected}")
+    advice = classify_recovery_error(context="file", detail=f"{label} is not writable: {selected}")
+    return make_doctor_check("Configuration", "FAIL", advice.summary, advice.detail, advice)
+
+
+# Reports each file monitoring will write, resolving the log name once a Riot ID is known
+def doctor_output_destination_checks(riot_id=None):
+    checks = []
+    if DISABLE_LOGGING:
+        checks.append(make_doctor_check("Configuration", "PASS", "Output logging is disabled"))
+    elif LOL_LOGFILE:
+        # The log name carries the part of the Riot ID before the tag, which is known without any Riot lookup
+        suffix = str(riot_id or "").partition("#")[0]
+        if suffix or Path(os.path.expanduser(str(LOL_LOGFILE))).suffix:
+            checks.append(doctor_destination_check("Log destination", build_log_path(LOL_LOGFILE, suffix)))
+        else:
+            checks.append(make_doctor_check("Configuration", "PASS", "Log destination will be finalized after a target is selected", f"Base path: {Path(os.path.expanduser(str(LOL_LOGFILE)))}"))
+    if CSV_FILE:
+        checks.append(doctor_destination_check("CSV destination", CSV_FILE))
+    else:
+        checks.append(make_doctor_check("Configuration", "PASS", "CSV logging is disabled"))
+    return checks
+
+
+# Returns all type and range errors in settings that control runtime timing or counts
+def runtime_configuration_errors():
+    errors = []
+    positive_numbers = (("LOL_CHECK_INTERVAL", LOL_CHECK_INTERVAL), ("LOL_ACTIVE_CHECK_INTERVAL", LOL_ACTIVE_CHECK_INTERVAL), ("CHECK_INTERNET_TIMEOUT", CHECK_INTERNET_TIMEOUT))
+    nonnegative_numbers = (("LIVENESS_CHECK_INTERVAL", LIVENESS_CHECK_INTERVAL), ("LOL_ACTIVE_CHECK_SIGNAL_VALUE", LOL_ACTIVE_CHECK_SIGNAL_VALUE))
+    for name, value in positive_numbers:
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
+            errors.append(f"{name} must be a number greater than zero, not {value!r}")
+    for name, value in nonnegative_numbers:
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
+            errors.append(f"{name} must be a number zero or greater, not {value!r}")
+    if not isinstance(SMTP_PORT, int) or isinstance(SMTP_PORT, bool) or not 1 <= SMTP_PORT <= 65535:
+        errors.append(f"SMTP_PORT must be an integer from 1 through 65535, not {SMTP_PORT!r}")
+    return errors
+
+
+# Reports the region routing the run will use, which is the choice the tool can no longer make on its own
+def doctor_region_checks(region=None):
+    if not region:
+        return []
+    try:
+        continent = region_continent(region)
+    except ValueError:
+        advice = classify_recovery_error(context="target.region", detail=f"Region: {region}")
+        return [make_doctor_check("Configuration", "FAIL", REGION_INPUT_ERROR, f"Region: {region}", advice)]
+    return [make_doctor_check("Configuration", "PASS", "The region routes to a Riot continent", f"Region {region} is routed through the {continent} host")]
+
+
+# Reports the configuration and dotenv files in effect plus every file the tool will write
+def doctor_check_configuration(config_path=None, env_path=None, riot_id=None, region=None):
+    checks = []
+    if config_path:
+        checks.append(make_doctor_check("Configuration", "PASS", "Configuration file loaded", f"Path: {config_path}"))
+    else:
+        checks.append(make_doctor_check("Configuration", "PASS", "No configuration file selected", "Using built-in defaults and command-line overrides"))
+    if env_path and os.path.isfile(str(env_path)):
+        checks.append(make_doctor_check("Configuration", "PASS", "Dotenv file loaded", f"Path: {env_path}"))
+    elif env_path:
+        advice = make_recovery_advice("config.missing", "The requested dotenv file was not found", recovery_fix_with_guide("Create the file or select an existing path with --env-file", SECRETS_GUIDE_URL), False, f"Path: {env_path}")
+        checks.append(make_doctor_check("Configuration", "WARN", advice.summary, advice.detail, advice))
+    else:
+        checks.append(make_doctor_check("Configuration", "PASS", "No dotenv file selected", "Using environment variables and other configured sources"))
+    checks.extend(doctor_secret_checks(env_path))
+    checks.extend(doctor_region_checks(region))
+
+    if isinstance(LOL_ACTIVE_CHECK_INTERVAL, (int, float)) and not isinstance(LOL_ACTIVE_CHECK_INTERVAL, bool) and 0 < LOL_ACTIVE_CHECK_INTERVAL < DOCTOR_MIN_SAFE_ACTIVE_INTERVAL:
+        intervals = f"{display_time(LOL_CHECK_INTERVAL)} out of game, {display_time(LOL_ACTIVE_CHECK_INTERVAL)} in game"
+        advice = make_recovery_advice("riot.rate_limited", "Check intervals are short enough to be rate limited", recovery_fix_with_guide(f"Raise LOL_ACTIVE_CHECK_INTERVAL to at least {DOCTOR_MIN_SAFE_ACTIVE_INTERVAL} seconds", INTERVALS_GUIDE_URL), True)
+        checks.append(make_doctor_check("Configuration", "WARN", "Check intervals are short", intervals, advice))
+
+    if VERIFY_SSL:
+        checks.append(make_doctor_check("Configuration", "PASS", "TLS certificate verification is on", "Every outbound request checks the server certificate"))
+    else:
+        advice = make_recovery_advice("config.insecure", "TLS certificate verification is off", recovery_fix_with_guide("Set VERIFY_SSL back to True unless this network intercepts TLS with its own certificate authority", TLS_GUIDE_URL), False)
+        checks.append(make_doctor_check("Configuration", "WARN", "TLS certificate verification is off", "VERIFY_SSL is False, so an intercepted connection cannot be told apart from the real service", advice))
+
+    numeric_errors = runtime_configuration_errors()
+    if numeric_errors:
+        numeric_detail = "Invalid numeric settings: " + "; ".join(numeric_errors)
+        advice = make_recovery_advice("config.invalid", "One or more numeric settings are invalid", recovery_fix_with_guide("Correct the reported settings in the configuration file", CONFIG_FILE_GUIDE_URL), False, numeric_detail)
+        checks.append(make_doctor_check("Configuration", "FAIL", "One or more numeric settings are invalid", numeric_detail, advice))
+
+    try:
+        ascii_log_separators_enabled()
+    except ValueError as exc:
+        advice = make_recovery_advice("config.invalid", "The log separator mode is not one this tool knows", recovery_fix_with_guide('Set ASCII_LOG_SEPARATORS to "Auto", "On" or "Off"', OUTPUT_GUIDE_URL), False, sanitize_error_text(str(exc)))
+        checks.append(make_doctor_check("Configuration", "FAIL", advice.summary, f"Mode: {ASCII_LOG_SEPARATORS}", advice))
+
+    checks.extend(doctor_output_destination_checks(riot_id))
+    return checks
+
+
+# Confirms the configured connectivity endpoint is reachable, reusing the settings monitoring will use
+def doctor_check_connectivity():
+    if check_internet(quiet=True):
+        return [make_doctor_check("Connectivity", "PASS", "The connectivity endpoint is reachable", f"Endpoint: {CHECK_INTERNET_URL}")]
+    advice = classify_recovery_error(LAST_CONNECTIVITY_ERROR, context="connectivity", detail=f"Could not reach {CHECK_INTERNET_URL}")
+    return [make_doctor_check("Connectivity", "FAIL", "The connectivity endpoint could not be reached", f"Endpoint: {CHECK_INTERNET_URL}", advice)]
+
+
+# Asks Riot for the platform status, which is the cheapest call that answers whether the key is accepted
+async def riot_api_key_probe(region):
+    async with riot_api_client() as client:
+        return await client.get_lol_status_v4_platform_data(region=region)
+
+
+# Asks Riot for the account behind one Riot ID, the same lookup monitoring makes before it starts
+async def riot_account_probe(riot_id, region):
+    riotid_name, riotid_tag = riot_id.split("#", 1)
+    async with riot_api_client() as client:
+        return await client.get_account_v1_by_riot_id(region=region_continent(region), game_name=riotid_name, tag_line=riotid_tag)
+
+
+# Validates the Riot API key against the configured region, recording why a later lookup cannot run
+def doctor_check_authentication(report, region=None):
+    if not doctor_value_is_set(RIOT_API_KEY):
+        report.target_skip_reason = "No Riot API key is configured"
+        advice = classify_recovery_error(context="credentials")
+        return [make_doctor_check("Authentication", "FAIL", "No Riot API key is configured", "Nothing can be monitored without one", advice)]
+    if not region:
+        report.target_skip_reason = "No region was given"
+        return [make_doctor_check("Authentication", "SKIP", "The Riot API key was not checked", "No region was given, so no request was attempted")]
+    if not REGION_TO_CONTINENT.get(region):
+        report.target_skip_reason = "The region is not one this tool knows"
+        return [make_doctor_check("Authentication", "SKIP", "The Riot API key was not checked", "The region is not one this tool knows, so no request was attempted")]
+    try:
+        asyncio.run(riot_api_key_probe(region))
+    except Exception as exc:
+        report.target_skip_reason = "The Riot API key did not validate"
+        advice = classify_recovery_error(exc, context="target")
+        return [make_doctor_check("Authentication", "FAIL", advice.summary, advice.detail, advice)]
+    report.api_key_valid = True
+    return [make_doctor_check("Authentication", "PASS", "Riot accepted the configured API key", "The key itself was not displayed")]
+
+
+# Confirms the monitored account exists, reusing the key the authentication check already validated
+def doctor_check_target(report, riot_id=None, region=None, target_error=None):
+    if target_error:
+        advice = classify_recovery_error(context="target", detail=target_error)
+        return [make_doctor_check("Target", "FAIL", advice.summary, advice.detail, advice)]
+    missing = [name for name, value in (("Riot ID", riot_id), ("region", region)) if not value]
+    if missing:
+        # Both positionals are required, so a run started from this state stops before it monitors anything
+        detail = f"No {' and no '.join(missing)} {'was' if len(missing) == 1 else 'were'} provided"
+        advice = classify_recovery_error(context="target.missing", detail=detail)
+        return [make_doctor_check("Target", "FAIL", advice.summary, "Nothing can be monitored until both are given", advice)]
+    if not report.api_key_valid:
+        return [make_doctor_check("Target", "SKIP", "The monitored account was not checked", f"{report.target_skip_reason or 'The Riot API key did not validate'}, so no lookup was attempted")]
+    try:
+        account = asyncio.run(riot_account_probe(riot_id, region))
+    except Exception as exc:
+        advice = classify_recovery_error(exc, context="target")
+        return [make_doctor_check("Target", "FAIL", advice.summary, advice.detail, advice)]
+    report.account = account
+    game_name = sanitize_untrusted_text(account.get("gameName"))
+    tag_line = sanitize_untrusted_text(account.get("tagLine"))
+    return [make_doctor_check("Target", "PASS", "The monitored account exists", f"Riot ID: {game_name}#{tag_line}")]
+
+
+# Returns the doctor row for email alerts whose settings cannot deliver, worded the same way by every sibling monitor
+def doctor_email_unusable_check(detail, fix):
+    advice = make_recovery_advice("smtp.invalid", EMAIL_UNUSABLE_CHECK_LABEL, recovery_fix_with_guide(fix, SMTP_GUIDE_URL), False, detail)
+    return make_doctor_check("Notifications", "WARN", EMAIL_UNUSABLE_CHECK_LABEL, detail, advice)
+
+
+# Checks email alert settings then confirms the SMTP sign-in without sending anything
+def doctor_check_email_notifications(report):
+    enabled_categories = email_notification_categories()
+    unset = unset_email_settings()
+    # The error alert ships on by default, so it alone cannot mean the channel is switched on
+    deliberate_categories = [category for category in enabled_categories if category != "errors"]
+    if not deliberate_categories and len(unset) == len(EMAIL_DELIVERY_SETTINGS):
+        return [make_doctor_check("Notifications", "PASS", "Email notifications are disabled", "No SMTP connection was attempted and no email was sent")]
+    if unset:
+        return [doctor_email_unusable_check(f"{join_setting_names(unset, 'or')} is empty or still set to its placeholder", f"Set {join_setting_names(unset, 'and')} or turn the email alerts off")]
+    if not enabled_categories:
+        advice = make_recovery_advice("smtp.invalid", "Email is configured but no alert types are selected", recovery_fix_with_guide("Turn on at least one email alert in the configuration file", SMTP_GUIDE_URL), False)
+        return [make_doctor_check("Notifications", "WARN", advice.summary, "Nothing would ever be emailed", advice)]
+    smtp_object = None
+    try:
+        smtp_object = smtp_connect_and_login(SMTP_SSL, smtp_timeout=DOCTOR_PASSIVE_TIMEOUT)
+    except Exception as exc:
+        advice = classify_recovery_error(exc, "email")
+        return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
+    finally:
+        if smtp_object is not None:
+            try:
+                smtp_object.quit()
+            except Exception:
+                pass
+    report.email_ready = True
+    return [make_doctor_check("Notifications", "PASS", SMTP_READY_CHECK_LABEL, f"Alerts: {', '.join(enabled_categories)}. No email was sent during this passive check")]
+
+
+# The fixed section order the report renders in, chosen so each section depends only on the ones above it
+DOCTOR_SECTIONS = ("Environment", "Configuration", "Authentication", "Connectivity", "Target", "Notifications")
+
+# Delivery results are printed as they happen rather than inside a section, but they still count in the summary
+DOCTOR_DELIVERY_SECTION = "Optional delivery tests"
+
+# The theme entry each doctor result marker is drawn in, so a failure reads as one at a glance
+DOCTOR_MARK_STYLES = {"PASS": "boolean_true", "WARN": "warning", "FAIL": "error", "SKIP": "info"}
+
+# Width of the transient progress line currently on screen, so the next write can erase exactly what it drew
+DOCTOR_PROGRESS_WIDTH = 0
+
+
+# Renders one doctor result marker, which the colour engine styles by status
+def render_doctor_marker(status):
+    return f"[{status}]"
+
+
+# Prints one result the way the report renders it, so a row printed after the report matches the rows above it
+def print_doctor_check(check):
+    print(f"{render_doctor_marker(check.status)} {check.label}")
+    if check.detail:
+        print(f"  {check.detail}")
+
+
+# Renders the heading and every non-empty section, with a fix line on the rows that are not a pass
+def render_doctor_sections(report):
+    # The install method is context rather than a check: it cannot fail, so it is stated once here
+    # instead of occupying a result row that no marker describes
+    lines = ["Doctor", f"Detected install method: {install_method()}"]
+    for section in DOCTOR_SECTIONS:
+        section_checks = [check for check in report.checks if check.section == section]
+        if not section_checks:
+            continue
+        lines.extend(("", section))
+        for check in section_checks:
+            lines.append(f"{render_doctor_marker(check.status)} {check.label}")
+            if check.detail:
+                lines.append(f"  {check.detail}")
+            if check.status != "PASS" and check.advice is not None:
+                # The fix carries its own guide line, so each line is indented on its own
+                lines.extend(f"  {advice_line}" for advice_line in f"To fix: {check.advice.fix}".splitlines())
+    return sanitize_error_text("\n".join(lines))
+
+
+# Renders the one sentence that says whether the setup is usable and where to read more
+def render_doctor_summary(checks):
+    failures = sum(check.status == "FAIL" for check in checks)
+    warnings = sum(check.status == "WARN" for check in checks)
+    if failures:
+        summary_line = f"  {failures} check(s) failed, {warnings} warning(s). Fix the failures above before relying on the tool."
+    elif warnings:
+        summary_line = f"  All critical checks passed with {warnings} warning(s). Review the warnings above."
+    else:
+        summary_line = "  All checks passed. You are good to go!"
+    return "\n".join(("", "Summary", summary_line, "", f"Guide: {DOCTOR_GUIDE_URL}"))
+
+
+# Returns the real terminal underneath the logger wrapper, so progress can move the cursor safely
+def doctor_terminal_stream():
+    stream = sys.stdout
+    while isinstance(stream, Logger):
+        stream = stream.terminal
+    return stream
+
+
+# Shows one transient doctor step, only on an interactive terminal
+# The line stays uncoloured on purpose: it is erased by writing exactly len(line) spaces, and escape
+# sequences would make that width wrong and leave a styled remnant behind
+def doctor_progress(label):
+    global DOCTOR_PROGRESS_WIDTH
+    terminal = doctor_terminal_stream()
+    if terminal.isatty():
+        if DOCTOR_PROGRESS_WIDTH:
+            terminal.write("\r" + (" " * DOCTOR_PROGRESS_WIDTH) + "\r")
+        line = f"* Checking {ANSI_ESCAPE_RE.sub('', sanitize_untrusted_text(label))} ..."
+        DOCTOR_PROGRESS_WIDTH = len(line)
+        terminal.write("\r" + line)
+        terminal.flush()
+
+
+# Clears the transient doctor progress line on an interactive terminal
+def doctor_progress_clear():
+    global DOCTOR_PROGRESS_WIDTH
+    terminal = doctor_terminal_stream()
+    if terminal.isatty() and DOCTOR_PROGRESS_WIDTH:
+        terminal.write("\r" + (" " * DOCTOR_PROGRESS_WIDTH) + "\r")
+        terminal.flush()
+    DOCTOR_PROGRESS_WIDTH = 0
+
+
+# States what doctor will and will not do, before the first slow check starts rather than after
+def render_doctor_notice():
+    print("Running preflight checks. No files will be written. The interactive email test runs only after separate approval.\n")
+
+
+# Prompts for explicit delivery consent and defaults safely to no
+def doctor_ask_yes_no(question, input_func=input):
+    while True:
+        try:
+            value = read_interactively(input_func, f"{question} [y/N]: ").strip().casefold()
+        except EOFError:
+            print("\nDelivery test skipped.")
+            return False
+        except KeyboardInterrupt:
+            # Ctrl+C ends the run here the way it does anywhere else, rather than only declining this one test
+            signal_handler(signal.SIGINT, None)
+            raise
+        if not value or value in ("n", "no"):
+            return False
+        if value in ("y", "yes"):
+            return True
+        print("  Please answer 'y' or 'n'.")
+
+
+# Offers one real delivery per ready channel, only after separate interactive approval
+def doctor_offer_notification_tests(report, input_func=input, interactive=None):
+    terminal_is_interactive = (sys.stdin.isatty() and sys.stdout.isatty()) if interactive is None else interactive
+    if not terminal_is_interactive or not report.email_ready:
+        return []
+    print("\n" + DOCTOR_DELIVERY_SECTION + "\n")
+    print("Doctor will not write files. Each approved test sends one real message.\n")
+    if doctor_ask_yes_no("Send one test email now? This will deliver a real message", input_func=input_func):
+        delivered = send_email("lol_monitor: doctor test email", "This test email was sent after approval in --doctor. Your SMTP delivery settings work.", "", SMTP_SSL, smtp_timeout=DOCTOR_PASSIVE_TIMEOUT) == 0
+        if delivered:
+            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS", "Doctor test email delivered", "One real test email was sent after confirmation")
+        else:
+            advice = make_recovery_advice("smtp.connection", "Doctor test email delivery failed", recovery_fix_with_guide("Review the SMTP error above and correct the email settings", SMTP_GUIDE_URL), True)
+            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "FAIL", advice.summary, "The approved test email could not be delivered", advice)
+    else:
+        check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "SKIP", "Test email was not sent", "You declined the real delivery test. Run doctor again and approve the email test when ready")
+    # Recorded on the report so the summary sentence and the exit code cannot disagree about the same run
+    report.checks.append(check)
+    print_doctor_check(check)
+    return [check]
+
+
+# Runs every preflight check, then the approved delivery tests, returning zero only when nothing failed
+def run_doctor(riot_id=None, region=None, config_path=None, env_path=None, target_error=None):
+    report = DoctorReport()
+    progress = doctor_progress if doctor_terminal_stream().isatty() else None
+    # A Riot ID the tool rejected names no log file, since the run that would open one cannot start
+    log_target = None if target_error else riot_id
+    render_doctor_notice()
+    try:
+        for label, collect in (
+            ("environment", lambda: doctor_check_environment()),
+            ("configuration", lambda: doctor_check_configuration(config_path, env_path, log_target, region)),
+            ("connectivity", lambda: doctor_check_connectivity()),
+            ("authentication", lambda: doctor_check_authentication(report, region)),
+            ("the monitored account", lambda: doctor_check_target(report, riot_id, region, target_error)),
+            ("notifications", lambda: doctor_check_email_notifications(report)),
+        ):
+            if progress is not None:
+                progress(label)
+            report.checks.extend(collect())
+    finally:
+        doctor_progress_clear()
+    print(render_doctor_sections(report))
+    doctor_offer_notification_tests(report)
+    print(render_doctor_summary(report.checks))
+    # The next steps block is the one place that prints the monitoring command, so it is not repeated here
+    return 1 if any(check.status == "FAIL" for check in report.checks) else 0
+
+
+# Prints one labelled command on its own indented line, the shared shape across these tools
+def print_labelled_command(label, command, suffix=""):
+    print(label)
+    print(f"    {command}{suffix}\n")
+
+
+# Returns the target arguments a printed command needs, leaving out a pair the configuration file already supplies
+def command_target_arguments(riot_id=None, region=None, riot_id_saved=False, region_saved=False):
+    if not riot_id or not region:
+        # Monitoring cannot run without both, so the placeholders stay while the doctor reports the gap itself
+        return [riot_id or RIOT_ID_PLACEHOLDER, region or REGION_PLACEHOLDER]
+    if riot_id_saved and region_saved:
+        return []
+    return [riot_id, region]
+
+
+# Prints the command that starts monitoring with the files this run checked, so a report read on its own
+# ends with the next action rather than leaving the reader to assemble the command
+def print_doctor_next_steps(riot_id=None, region=None, riot_id_saved=False, region_saved=False, doctor_exit=0):
+    print("\nNext steps\n")
+    label = "After Doctor passes, start monitoring:" if doctor_exit else "Start monitoring:"
+    print_labelled_command(label, render_command(command_target_arguments(riot_id, region, riot_id_saved, region_saved)))
+    # No trailing blank line: the command printer already left one and the report must not end on two
+    print(f"Guide: {QUICK_START_GUIDE_URL}")
+
+
+
 def main():
     global CLI_CONFIG_PATH, CONFIG_DISCOVERY_DISABLED, COMMAND_LINE_SECRET_KEYS, EXPORTED_SECRET_KEYS, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT, INCLUDE_FORBIDDEN_MATCHES
 
@@ -2940,6 +3491,13 @@ def main():
         dest="env_file",
         metavar="PATH",
         help="Path to optional dotenv file (auto-search if not set, disable with 'none')",
+    )
+    conf.add_argument(
+        "--doctor",
+        dest="doctor",
+        action="store_true",
+        default=None,
+        help="Run read-only preflight checks and report what is ready and what is not",
     )
 
     # API credentials
@@ -3064,25 +3622,23 @@ def main():
             sys.exit(1)
 
     # Resolved right after the config file is read, so every later message sees the target this run will actually use
-    if not args.riot_id and RIOT_ID:
+    riot_id_saved = not args.riot_id and bool(RIOT_ID)
+    region_saved = not args.region and bool(REGION)
+    if riot_id_saved:
         args.riot_id = RIOT_ID
-    if not args.region and REGION:
+    if region_saved:
         args.region = REGION
 
-    # Normalized once, so the log file name, every printed command and every Riot lookup see the same text
+    # Normalized once, so the log file name, every printed command and every Riot lookup see the same text.
+    # A rejected Riot ID is recorded rather than raised here, so --doctor can report it as a row of its own
+    target_input_error = None
     if args.riot_id:
         try:
             args.riot_id = normalize_riot_id(args.riot_id)
         except ValueError as exc:
-            print_recovery_error(context="target", detail=str(exc))
-            sys.exit(1)
+            target_input_error = str(exc)
     if args.region:
         args.region = normalize_region(args.region)
-
-    # A bare run with no saved target has nothing to do, so it gets the help instead of failing further down
-    if len(sys.argv) == 1 and not (args.riot_id and args.region):
-        parser.print_help(sys.stderr)
-        sys.exit(1)
 
     # Recorded before the dotenv file is read, so an exported value stays ahead of the same name in that file
     EXPORTED_SECRET_KEYS = frozenset(secret for secret in SECRET_KEYS if os.getenv(secret) is not None)
@@ -3121,6 +3677,55 @@ def main():
 
     apply_tls_verification_setting()
 
+    if args.riot_api_key:
+        RIOT_API_KEY = args.riot_api_key
+
+    # Assigned once from the arguments rather than accumulated, so a second run in one process starts clean
+    COMMAND_LINE_SECRET_KEYS = frozenset(name for name, supplied in (("RIOT_API_KEY", args.riot_api_key), ) if supplied)
+
+    # Applied before the report so every row it prints describes the run this command line asked for
+    if args.check_interval:
+        LOL_CHECK_INTERVAL = args.check_interval
+        LIVENESS_CHECK_COUNTER = LIVENESS_CHECK_INTERVAL / LOL_CHECK_INTERVAL
+
+    if args.active_interval:
+        LOL_ACTIVE_CHECK_INTERVAL = args.active_interval
+
+    if args.include_forbidden_matches is True:
+        INCLUDE_FORBIDDEN_MATCHES = True
+
+    if args.notify_status is True:
+        STATUS_NOTIFICATION = True
+
+    if args.notify_errors is False:
+        ERROR_NOTIFICATION = False
+
+    if args.disable_logging is True:
+        DISABLE_LOGGING = True
+
+    if args.csv_file:
+        CSV_FILE = os.path.expanduser(args.csv_file)
+    else:
+        if CSV_FILE:
+            CSV_FILE = os.path.expanduser(CSV_FILE)
+
+    # A target is optional only for the modes that legitimately finish without one. Checked after the dotenv
+    # file is resolved, so the command this prints carries the same files the run was given
+    if (not args.riot_id or not args.region) and not (args.doctor or args.send_test_email):
+        missing = "No Riot ID was provided" if not args.riot_id else "No region was provided"
+        print_recovery_error(context="target.missing", detail=missing)
+        sys.exit(1)
+
+    if args.doctor:
+        doctor_exit = run_doctor(riot_id=args.riot_id, region=args.region, config_path=cfg_path, env_path=env_path, target_error=target_input_error)
+        # A target the configuration file already carries is left out, so the command stays as short as a saved run needs
+        print_doctor_next_steps(args.riot_id, args.region, riot_id_saved, region_saved, doctor_exit)
+        sys.exit(doctor_exit)
+
+    if target_input_error:
+        print_recovery_error(context="target", detail=target_input_error)
+        sys.exit(1)
+
     if not check_internet():
         sys.exit(1)
 
@@ -3132,6 +3737,7 @@ def main():
             sys.exit(1)
         sys.exit(0)
 
+    # Kept at its old position as a backstop, so every path below this line is known to have both positionals
     if not args.riot_id or not args.region:
         missing = "No Riot ID was provided" if not args.riot_id else "No region was provided"
         print_recovery_error(context="target.missing", detail=missing)
@@ -3141,31 +3747,9 @@ def main():
         print_recovery_error(context="target.region", detail=f"'{args.region}' is not present in REGION_TO_CONTINENT")
         sys.exit(1)
 
-    if args.riot_api_key:
-        RIOT_API_KEY = args.riot_api_key
-
-    # Assigned once from the arguments rather than accumulated, so a second run in one process starts clean
-    COMMAND_LINE_SECRET_KEYS = frozenset(name for name, supplied in (("RIOT_API_KEY", args.riot_api_key), ) if supplied)
-
     if not doctor_value_is_set(RIOT_API_KEY):
         print_recovery_error(context="credentials")
         sys.exit(1)
-
-    if args.check_interval:
-        LOL_CHECK_INTERVAL = args.check_interval
-        LIVENESS_CHECK_COUNTER = LIVENESS_CHECK_INTERVAL / LOL_CHECK_INTERVAL
-
-    if args.active_interval:
-        LOL_ACTIVE_CHECK_INTERVAL = args.active_interval
-
-    if args.include_forbidden_matches is True:
-        INCLUDE_FORBIDDEN_MATCHES = True
-
-    if args.csv_file:
-        CSV_FILE = os.path.expanduser(args.csv_file)
-    else:
-        if CSV_FILE:
-            CSV_FILE = os.path.expanduser(CSV_FILE)
 
     if CSV_FILE:
         try:
@@ -3241,28 +3825,13 @@ def main():
         print_recovery_error(RecoveryError(make_recovery_advice("config.invalid", str(e), recovery_fix_with_guide('Set ASCII_LOG_SEPARATORS to "Auto", "On" or "Off"', OUTPUT_GUIDE_URL), False)))
         sys.exit(1)
 
-    if args.disable_logging is True:
-        DISABLE_LOGGING = True
-
     if not DISABLE_LOGGING:
-        log_path = Path(os.path.expanduser(LOL_LOGFILE))
-        if log_path.parent != Path('.'):
-            if log_path.suffix == "":
-                log_path = log_path.parent / f"{log_path.name}_{riotid_name}.log"
-        else:
-            if log_path.suffix == "":
-                log_path = Path(f"{log_path.name}_{riotid_name}.log")
+        log_path = build_log_path(LOL_LOGFILE, riotid_name)
         log_path.parent.mkdir(parents=True, exist_ok=True)
         FINAL_LOG_PATH = str(log_path)
         sys.stdout = Logger(FINAL_LOG_PATH)
     else:
         FINAL_LOG_PATH = None
-
-    if args.notify_status is True:
-        STATUS_NOTIFICATION = True
-
-    if args.notify_errors is False:
-        ERROR_NOTIFICATION = False
 
     unset_email = unset_email_settings()
     if unset_email:

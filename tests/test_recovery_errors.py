@@ -37,6 +37,12 @@ def test_every_declared_code_is_reachable(lm_module):
     for context in CONTEXTS:
         for error in (RuntimeError("rate limit exceeded"), RuntimeError("request timed out"), RuntimeError("connection refused"), RuntimeError("401 Unauthorized"), RuntimeError("404 not found"), RuntimeError("500 Internal Server Error"), RuntimeError("authentication failed"), RuntimeError("the settings are incorrect"), RuntimeError("name and tagline"), RuntimeError("does not exist"), RuntimeError("something surprising")):
             produced.add(lm_module.classify_recovery_error(error, context=context).code)
+    # A doctor row builds its own advice rather than going through the classifier, so those call sites count too
+    for node in ast.walk(ast.parse(inspect.getsource(lm_module))):
+        if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "make_recovery_advice" and node.args:
+            code = node.args[0]
+            if isinstance(code, ast.Constant) and isinstance(code.value, str):
+                produced.add(code.value)
 
     assert produced == set(lm_module.RECOVERY_CODES), f"codes with no producer: {sorted(set(lm_module.RECOVERY_CODES) - produced)}"
 

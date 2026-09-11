@@ -167,6 +167,18 @@ class FakeSMTP:
         self.quit_called = True
 
 
+# Refuses an SMTP connection a test never asked for, so no run can reach a real mail server
+class RefusedSMTP:
+    def __init__(self, host, port, timeout=None):
+        raise AssertionError(f"this test opened an SMTP connection to {host}:{port} without the smtp_double fixture")
+
+
+@pytest.fixture(autouse=True)
+# Keeps every test offline on the SMTP side, whether or not it expects the code under test to connect
+def no_unexpected_smtp(monkeypatch):
+    monkeypatch.setattr(lm.smtplib, "SMTP", RefusedSMTP)
+
+
 @pytest.fixture
 # Replaces the SMTP client with the recording double
 def smtp_double(monkeypatch):
@@ -218,6 +230,8 @@ def deterministic_globals(monkeypatch):
     monkeypatch.setattr(lm, "LIVENESS_CHECK_COUNTER", 288, raising=False)
     monkeypatch.setattr(lm, "INCLUDE_FORBIDDEN_MATCHES", False, raising=False)
     monkeypatch.setattr(lm, "RIOT_API_KEY", "riot-api-key-test-value", raising=False)
+    monkeypatch.setattr(lm, "RIOT_ID", "", raising=False)
+    monkeypatch.setattr(lm, "REGION", "", raising=False)
     monkeypatch.setattr(lm, "SMTP_HOST", "smtp.example.test", raising=False)
     monkeypatch.setattr(lm, "SMTP_PORT", 587, raising=False)
     monkeypatch.setattr(lm, "SMTP_USER", "monitor@example.test", raising=False)

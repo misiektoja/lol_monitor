@@ -63,10 +63,14 @@ def test_version_is_printed_and_exits(lm_module, monkeypatch, capsys):
     assert lm_module.VERSION in capsys.readouterr().out
 
 
-# Verifies running without arguments shows the help text and fails, instead of silently doing nothing
-def test_bare_invocation_shows_help(lm_module, monkeypatch, capsys):
+# Verifies running without arguments explains what is missing instead of dumping the whole option list
+def test_bare_invocation_names_the_missing_target(lm_module, monkeypatch, capsys):
     assert run_main(lm_module, monkeypatch, []) == 1
-    assert "usage: lol_monitor" in capsys.readouterr().err
+
+    output = capsys.readouterr().out
+    assert "* Error: No Riot ID was provided" in output
+    assert "To fix: " in output
+    assert "usage: lol_monitor" not in output
 
 
 # Verifies the generated config template is complete and is accepted by the tool's own parser
@@ -451,13 +455,6 @@ def test_disabled_discovery_is_not_a_missing_file(lm_module, monkeypatch, monito
     assert "does not exist" not in capsys.readouterr().out
 
 
-# Verifies a bare run with nothing saved still gets the help, since there is nothing it could monitor
-def test_a_bare_run_without_a_saved_target_prints_help(lm_module, monkeypatch, capsys):
-    assert run_main(lm_module, monkeypatch, []) == 1
-
-    assert "usage: lol_monitor" in capsys.readouterr().err
-
-
 # Verifies a target saved in the config file starts a run with no positional arguments at all
 def test_a_saved_target_needs_no_positionals(lm_module, monkeypatch, monitor_calls, isolated_working_directory):
     config = isolated_working_directory / "lol_monitor_test_only.conf"
@@ -510,3 +507,93 @@ def test_config_file_in_the_working_directory_is_used(lm_module, monkeypatch, mo
 
     assert lm_module.LOL_CHECK_INTERVAL == 900
     assert f"* Configuration file:\t\t{config}" in capsys.readouterr().out
+
+
+# Verifies the preflight runs without a target, since a first run is the one that most needs the report
+def test_doctor_runs_without_a_target(lm_module, monkeypatch, capsys):
+    assert run_main(lm_module, monkeypatch, ["--doctor", "--config-file", "none"]) == 1
+
+    output = capsys.readouterr().out
+    assert "No Riot ID and no region were provided" in output
+    assert "Summary" in output
+
+
+# Verifies the preflight runs ahead of the connectivity gate, so an offline machine still gets a report
+def test_doctor_runs_before_the_connectivity_gate(lm_module, monkeypatch, capsys):
+    monkeypatch.setattr(lm_module, "check_internet", lambda *args, **kwargs: False)
+
+    assert run_main(lm_module, monkeypatch, ["--doctor", "--config-file", "none", RIOT_ID, REGION]) == 1
+
+    output = capsys.readouterr().out
+    assert "The connectivity endpoint could not be reached" in output
+    assert "Next steps" in output
+
+
+# Verifies the preflight runs ahead of the credential gate rather than exiting before it can report on it
+def test_doctor_runs_before_the_credential_gate(lm_module, monkeypatch, capsys):
+    monkeypatch.setattr(lm_module, "RIOT_API_KEY", "", raising=False)
+
+    assert run_main(lm_module, monkeypatch, ["--doctor", "--config-file", "none", RIOT_ID, REGION]) == 1
+
+    assert "No Riot API key is configured" in capsys.readouterr().out
+
+
+# Verifies a Riot ID the tool rejects reaches the report as a row rather than exiting before it is printed
+def test_doctor_reports_a_rejected_riot_id(lm_module, monkeypatch, capsys):
+    assert run_main(lm_module, monkeypatch, ["--doctor", "--config-file", "none", "misiektoja", REGION]) == 1
+
+    output = capsys.readouterr().out
+    assert lm_module.RIOT_ID_INPUT_ERROR in output
+    assert "Summary" in output
+
+
+# Verifies a rejected Riot ID still stops a normal run, so the report is the only place it is tolerated
+def test_a_rejected_riot_id_still_stops_a_normal_run(lm_module, monkeypatch, capsys):
+    assert run_main(lm_module, monkeypatch, ["--config-file", "none", "misiektoja", REGION]) == 1
+
+    assert lm_module.RIOT_ID_INPUT_ERROR in capsys.readouterr().out
+
+
+# Verifies a region the routing table does not carry reaches the report before the gate that exits on it
+def test_doctor_reports_an_unknown_region(lm_module, monkeypatch, capsys):
+    assert run_main(lm_module, monkeypatch, ["--doctor", "--config-file", "none", RIOT_ID, "narnia"]) == 1
+
+    assert "Region: narnia" in capsys.readouterr().out
+
+
+# Verifies the settings a command line changes reach the report, so it describes the run that was asked for
+def test_doctor_reports_the_settings_this_command_line_set(lm_module, monkeypatch, capsys, smtp_double, isolated_working_directory):
+    csv_file = isolated_working_directory / "history.csv"
+
+    assert run_main(lm_module, monkeypatch, ["--doctor", "--config-file", "none", "-s", "-k", "3", "-b", str(csv_file), RIOT_ID, REGION]) == 1
+
+    output = capsys.readouterr().out
+    assert "Check intervals are short" in output
+    assert "CSV destination appears writable" in output
+    assert "Alerts: status changes" in output
+
+
+# Verifies the command the report prints carries the files this run was given, so a retry reads the same setup
+def test_the_doctor_command_carries_the_files_this_run_used(lm_module, monkeypatch, capsys):
+    assert run_main(lm_module, monkeypatch, ["--doctor", "--config-file", "none", "--env-file", "none", RIOT_ID, REGION]) == 1
+
+    output = capsys.readouterr().out
+    assert "--config-file none" in output
+    assert "--env-file none" in output
+
+
+# Verifies a preflight with nothing wrong exits zero, which is what a script gating on the report reads
+def test_a_clean_preflight_exits_zero(lm_module, monkeypatch, riot_api, smtp_double, capsys):
+    riot_api.script("get_lol_status_v4_platform_data", {"id": "EUN1"})
+    riot_api.script("get_account_v1_by_riot_id", {"puuid": "p" * 78, "gameName": "misiektoja", "tagLine": "EUNE"})
+
+    assert run_main(lm_module, monkeypatch, ["--doctor", "--config-file", "none", "-s", RIOT_ID, REGION]) == 0
+
+    assert "All checks passed" in capsys.readouterr().out
+
+
+# Verifies the preflight is advertised in the help, so a reader can find it without the documentation
+def test_the_help_advertises_the_preflight(lm_module, monkeypatch, capsys):
+    assert run_main(lm_module, monkeypatch, ["--help"]) == 0
+
+    assert "--doctor" in capsys.readouterr().out
