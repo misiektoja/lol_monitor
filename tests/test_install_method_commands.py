@@ -1,5 +1,6 @@
 """Tests that every printed command matches the detected install method and carries the files this run was given."""
 
+import inspect
 import sys
 
 import pytest
@@ -166,3 +167,19 @@ def test_the_dotenv_warning_names_the_command_to_re_run(lm_module, monkeypatch, 
     output = capsys.readouterr().out
     assert "* Warning: The dotenv file" in output
     assert f"Then re-run: python3 lol_monitor.py '{RIOT_ID}' {REGION} --env-file {env_file}" in output
+
+
+# Verifies the printed-command renderer takes the family's two shared parameters before any tool-specific one
+def test_the_command_renderer_shares_one_contract(lm_module):
+    parameters = list(inspect.signature(lm_module.render_command).parameters.values())
+    assert [parameter.name for parameter in parameters[:2]] == ["arguments", "include_paths"]
+    assert [parameter.default for parameter in parameters[:2]] == [None, True]
+    # A tool-specific extra is keyword-only, so a positional call copied from a sibling cannot bind to it
+    assert all(parameter.kind is inspect.Parameter.KEYWORD_ONLY for parameter in parameters[2:])
+
+
+# Verifies the renderer with no arguments prints the bare command, which is what the help screen puts before each example
+def test_the_renderer_with_no_arguments_prints_the_bare_command(lm_module):
+    prefix = lm_module.render_command(include_paths=False)
+    assert prefix and not prefix.endswith(" ")
+    assert lm_module.render_command(["--doctor"], include_paths=False) == f"{prefix} --doctor"
