@@ -47,6 +47,18 @@ def test_every_declared_code_is_reachable(lm_module):
     assert produced == set(lm_module.RECOVERY_CODES), f"codes with no producer: {sorted(set(lm_module.RECOVERY_CODES) - produced)}"
 
 
+# Verifies no delivery path prints at all, since a print there is an error line that skipped the recovery block
+def test_no_delivery_path_prints_outside_the_recovery_block(lm_module):
+    delivery = {"send_email", "send_webhook", "print_webhook_error", "smtp_connect_and_login", "post_webhook_request"}
+    offenders = []
+    for node in ast.walk(ast.parse(inspect.getsource(lm_module))):
+        if not isinstance(node, ast.FunctionDef) or node.name not in delivery:
+            continue
+        offenders.extend(f"{node.name}:{call.lineno}" for call in ast.walk(node) if isinstance(call, ast.Call) and getattr(call.func, "id", "") == "print")
+
+    assert not offenders, "delivery paths printing outside the recovery block: " + ", ".join(offenders)
+
+
 # Verifies a rate limit is retryable, since the tool waits it out rather than asking the user to act
 def test_a_rate_limit_is_retryable(lm_module):
     advice = lm_module.classify_recovery_error(RuntimeError("429 rate limit exceeded"))

@@ -661,7 +661,7 @@ def test_a_permanent_refusal_is_not_retried(discord, webhook_session, capsys):
     assert discord.send_webhook("subject", "body", "status", sleeper=sleeper) == 1
     assert len(webhook_session.posts) == 1
     assert sleeper.delays == []
-    assert "the service returned HTTP 404" in capsys.readouterr().out
+    assert "The webhook service returned HTTP 404" in capsys.readouterr().out
 
 
 # Verifies a server failure is retried once and then reported, so a delivery cannot loop
@@ -673,7 +673,7 @@ def test_a_server_failure_is_retried_once_then_reported(discord, webhook_session
     assert discord.send_webhook("subject", "body", "status", sleeper=sleeper) == 1
     assert len(webhook_session.posts) == discord.WEBHOOK_MAX_ATTEMPTS
     assert sleeper.delays == [discord.WEBHOOK_FALLBACK_RETRY_SECONDS]
-    assert "the service returned HTTP 500" in capsys.readouterr().out
+    assert "The webhook service returned HTTP 500" in capsys.readouterr().out
 
 
 # Verifies a delivered alert is traced with the provider and the title, never with the private destination
@@ -715,7 +715,7 @@ def test_an_unreachable_service_is_retried_once_then_reported(discord, webhook_s
 
     assert discord.send_webhook("subject", "body", "status", sleeper=sleeper) == 1
     assert sleeper.delays == [discord.WEBHOOK_FALLBACK_RETRY_SECONDS]
-    assert "the service could not be reached" in capsys.readouterr().out
+    assert "The webhook service could not be reached" in capsys.readouterr().out
 
 
 # Verifies a failure never prints the private destination, the token inside it or the response body
@@ -730,6 +730,42 @@ def test_a_failure_never_prints_the_private_destination(discord, webhook_session
     assert "private-token-value" not in output
     assert "tk_secret_token_value" not in output
     assert DISCORD_URL not in output
+
+
+# Verifies a refused delivery carries the fix and the guide, so no delivery path reports without saying what to do
+def test_a_refused_delivery_carries_the_shared_error_block(discord, webhook_session, capsys):
+    from conftest import FakeWebhookResponse
+    webhook_session.responses.append(FakeWebhookResponse(404))
+
+    assert discord.send_webhook("subject", "body", "status", sleeper=lambda seconds: None) == 1
+
+    output = capsys.readouterr().out
+    assert "* Error: The webhook service returned HTTP 404" in output
+    assert "To fix: " in output
+    assert f"Guide: {discord.WEBHOOK_GUIDE_URL}" in output
+
+
+# Verifies an unreachable service carries the same block, so the two failure kinds read alike
+def test_an_unreachable_service_carries_the_shared_error_block(discord, webhook_session, capsys):
+    webhook_session.responses.extend([req.exceptions.ConnectionError("connection refused")] * 2)
+
+    assert discord.send_webhook("subject", "body", "status", sleeper=lambda seconds: None) == 1
+
+    output = capsys.readouterr().out
+    assert "* Error: The webhook service could not be reached" in output
+    assert "To fix: " in output
+    assert f"Guide: {discord.WEBHOOK_GUIDE_URL}" in output
+
+
+# Verifies an unusable webhook setting is refused with the same block the delivery failures print
+def test_an_unusable_webhook_setting_carries_the_shared_error_block(discord, monkeypatch, capsys):
+    monkeypatch.setattr(discord, "WEBHOOK_PROVIDER", "carrier pigeon")
+
+    assert discord.send_webhook("subject", "body", "status") == 1
+
+    output = capsys.readouterr().out
+    assert "* Error: WEBHOOK_PROVIDER must be discord or ntfy" in output
+    assert f"Guide: {discord.WEBHOOK_GUIDE_URL}" in output
 
 
 # Verifies a message built around the destination is redacted at the printer, since not every caller sanitizes first

@@ -175,11 +175,11 @@ lol_monitor --send-test-webhook
 
 `--doctor` reports the same setup without sending anything. A destination that is not a complete HTTPS link, an unsupported provider, an invalid header or a transform naming a method that does not exist all fail the report by name. See [Webhook Settings](configuration.md#webhook-settings).
 
-### `Error sending webhook: the service returned HTTP <code>`
+### `The webhook service returned HTTP <code>`
 
 The service answered and refused the delivery. `401` or `403` usually means the webhook was deleted or the ntfy topic needs a token, `404` means the Discord webhook no longer exists and `413` means the message was too large for the service. The URL is never printed with the error, so check the saved destination with `--doctor` rather than reading it back from the screen.
 
-### `Error sending webhook: the service could not be reached`
+### `The webhook service could not be reached`
 
 The host did not answer. The delivery is retried once and then reported. Monitoring continues, so a webhook outage never stops a run.
 

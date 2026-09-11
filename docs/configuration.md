@@ -167,7 +167,7 @@ A failed delivery is retried once. A rate-limited service is honoured up to five
 Errors name the service and the status code, never the URL, the token inside it or the response body:
 
 ```
-Error sending webhook: the service returned HTTP 401
+* Error: The webhook service returned HTTP 401
 ```
 
 Which events produce a webhook is covered under [Webhook Notifications](usage.md#webhook-notifications).

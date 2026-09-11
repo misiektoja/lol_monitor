@@ -729,7 +729,9 @@ def test_a_refused_test_webhook_exits_non_zero(lm_module, monkeypatch, capsys, w
 
     assert run_main(lm_module, monkeypatch, ["--send-test-webhook", "--config-file", "none", "--webhook-url", "https://ntfy.sh/my-private-topic"]) == 1
 
-    assert "Error sending webhook" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "* Error: The webhook service returned HTTP 404" in output
+    assert "To fix: " in output
 
 
 # Verifies a test email with no mail server configured names the settings to fill in rather than failing at the server

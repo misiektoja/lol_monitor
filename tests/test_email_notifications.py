@@ -82,6 +82,34 @@ def test_incomplete_settings_are_refused_without_connecting(lm_module, smtp_doub
     assert smtp_double.last is None
 
 
+@pytest.mark.parametrize("setting,value", [
+    ("SMTP_HOST", "not a host"),
+    ("SMTP_PORT", "not a port"),
+    ("SENDER_EMAIL", "not-an-email"),
+    ("SMTP_PASSWORD", ""),
+])
+# Verifies a refused setting names the fix and the guide, so no delivery path reports without saying what to do
+def test_a_refused_setting_carries_the_shared_error_block(lm_module, smtp_double, monkeypatch, capsys, setting, value):
+    monkeypatch.setattr(lm_module, setting, value)
+
+    assert lm_module.send_email("subject", "body", "", True) == 1
+
+    output = capsys.readouterr().out
+    assert "* Error: The SMTP settings are incorrect (" in output
+    assert "To fix: Check SMTP_HOST, SMTP_PORT, SENDER_EMAIL and RECEIVER_EMAIL in the configuration file" in output
+    assert f"Guide: {lm_module.SMTP_GUIDE_URL}" in output
+
+
+# Verifies a message the tool cannot send carries the same block as an unusable setting
+def test_an_unsendable_message_carries_the_shared_error_block(lm_module, smtp_double, capsys):
+    assert lm_module.send_email("", "body", "", True) == 1
+    assert lm_module.send_email("subject", "", "", True) == 1
+
+    output = capsys.readouterr().out
+    assert output.count("* Error: The SMTP settings are incorrect (") == 2
+    assert output.count(f"Guide: {lm_module.SMTP_GUIDE_URL}") == 2
+
+
 # Verifies a message with nothing to say is refused rather than delivered empty
 def test_empty_message_is_refused(lm_module, smtp_double):
     assert lm_module.send_email("subject", "", "", True) == 1
