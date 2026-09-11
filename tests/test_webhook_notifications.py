@@ -1161,3 +1161,24 @@ def test_the_startup_row_reports_a_switched_off_channel(lm_module, monkeypatch):
     rows = {row.label: row.value for row in lm_module.build_startup_summary("Faker#KR1 (kr)")}
 
     assert rows["Notifications (webhook)"] == "Off"
+
+
+# Verifies a link whose text repeats its destination reaches Discord bare, because a masked link there prints as plain text
+def test_self_labeled_links_stay_bare_in_discord_markdown(lm_module):
+    profile_url = "https://op.gg/summoners/eune/misiektoja"
+    markdown = lm_module.html_body_to_discord_markdown(f"Profile: <a href=\"{profile_url}\">{profile_url}</a><br>")
+    assert markdown == f"Profile: {profile_url}"
+
+
+# Verifies a link with its own text keeps the masked form Discord renders as a hyperlink
+def test_labeled_links_keep_the_masked_discord_form(lm_module):
+    body_html = "Match: <b><a href=\"https://op.gg/summoners/eune/misiektoja\">misiektoja</a></b><br>"
+    assert lm_module.html_body_to_discord_markdown(body_html) == "Match: **[misiektoja](https://op.gg/summoners/eune/misiektoja)**"
+
+
+# Verifies an image link becomes its alt text or a bare URL instead of an empty masked link
+def test_image_links_never_produce_an_empty_discord_label(lm_module):
+    with_alt = "<a href=\"https://op.gg/champions/ahri\"><img src=\"https://ddragon.gg/ahri.png\" alt=\"Ahri\"></a>"
+    without_alt = "<a href=\"https://op.gg/champions/ahri\"><img src=\"https://ddragon.gg/ahri.png\"></a>"
+    assert lm_module.html_body_to_discord_markdown(with_alt) == "[Ahri](https://op.gg/champions/ahri)"
+    assert lm_module.html_body_to_discord_markdown(without_alt) == "https://op.gg/champions/ahri"
