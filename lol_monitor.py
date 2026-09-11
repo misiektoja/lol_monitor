@@ -708,12 +708,12 @@ def install_method_display_name(method=None):
     return f"{base} in a container" if running_in_container() else base
 
 
-# Returns the argv prefix that invokes this tool for the detected install method
+# Returns a compact display prefix for the detected install method
 def install_command_prefix():
-    executable = sys.executable
+    executable = "python" if platform.system() == "Windows" else "python3"
     if install_method() == INSTALL_METHOD_SCRIPT:
-        return [executable, str(Path(__file__).resolve())]
-    return [executable, "-m", "lol_monitor"]
+        return [executable, "lol_monitor.py"]
+    return ["lol_monitor"]
 
 
 # The documentation placeholders a printed command carries unquoted, because the reader replaces them before running it
@@ -753,12 +753,12 @@ def render_command(arguments=None, include_paths=True, *, config_path=None, env_
     return " ".join(quote_command_argument(part) for part in parts)
 
 
-# Returns the command that installs one package with the interpreter running this tool, never a bare pip
+# Returns a compact dependency installation hint for the active platform
 def pip_install_command(requirement):
-    return " ".join(quote_command_argument(part) for part in (sys.executable or "python3", "-m", "pip", "install", requirement))
+    return " ".join(quote_command_argument(part) for part in (("python" if platform.system() == "Windows" else "python3"), "-m", "pip", "install", requirement))
 
 
-# Returns advice for an optional library that is missing, naming the exact install command for this interpreter
+# Returns advice for a missing optional library with a compact installation hint
 def missing_dependency_advice(package, effect, alternative=""):
     return make_recovery_advice("dependency.missing", f"{effect} because the optional '{package}' library is missing", recovery_fix_with_guide(f"Install it with: {pip_install_command(package)}" + (f". {alternative}" if alternative else ""), INSTALL_GUIDE_URL), False)
 
