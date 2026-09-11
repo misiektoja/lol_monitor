@@ -15,7 +15,9 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = PROJECT_ROOT / "lol_monitor.py"
 
-API_KEY = "RGAPI-intraces-0000-0000-0000-000000000000"
+# A placeholder rather than a Riot-shaped key: nothing offline validates the format, and a realistic one
+# only adds a finding to every secret scan
+API_KEY = "riot-api-key-offline-test-value"
 RIOT_ID = "offlineuser#EUNE"
 PUUID = "offline-puuid-0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
 MATCH_ID = "EUN1_7654321000"

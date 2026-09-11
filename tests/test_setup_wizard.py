@@ -1049,15 +1049,19 @@ def test_a_directory_destination_is_refused(tmp_path, capsys):
 
 
 # Verifies the disabled file settings are refused, since setup exists to write both files
-@pytest.mark.parametrize("config_file,env_file,expected", [
-    ("none", ".env", "--setup requires a config destination"),
-    ("lol_monitor.conf", "none", "--setup requires a dotenv destination"),
+@pytest.mark.parametrize("config_file,env_file,expected,fix", [
+    ("none", ".env", "--setup has nowhere to write the configuration", "Replace '--config-file none' with a writable path"),
+    ("lol_monitor.conf", "none", "--setup has nowhere to write the private settings", "Replace '--env-file none' with a writable path"),
 ])
-def test_a_disabled_destination_is_refused(tmp_path, capsys, config_file, env_file, expected):
+def test_a_disabled_destination_is_refused(tmp_path, capsys, config_file, env_file, expected, fix):
     code = monitor.run_setup_wizard(config_file=config_file, env_file=env_file, interactive=True)
 
+    printed = capsys.readouterr().out
     assert code == 1
-    assert expected in capsys.readouterr().out
+    assert f"* Error: {expected}" in printed
+    # The action line answers this refusal rather than falling back to the monitoring loop's generic advice
+    assert fix in printed
+    assert "Guide: " in printed
 
 
 # Verifies a non-interactive run explains itself and names the alternative instead of hanging

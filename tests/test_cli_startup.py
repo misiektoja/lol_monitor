@@ -573,7 +573,8 @@ def test_config_file_in_the_working_directory_is_used(lm_module, monkeypatch, mo
 
 # Verifies the preflight runs without a target, since a first run is the one that most needs the report
 def test_doctor_runs_without_a_target(lm_module, monkeypatch, capsys):
-    assert run_main(lm_module, monkeypatch, ["--doctor", "--config-file", "none"]) == 1
+    # A preflight that was simply not told what to watch has nothing broken in it, so the exit code stays clean
+    assert run_main(lm_module, monkeypatch, ["--doctor", "--config-file", "none"]) == 0
 
     output = capsys.readouterr().out
     assert "No Riot ID and no region were provided" in output
@@ -742,10 +743,11 @@ def test_a_test_email_with_no_mail_server_names_the_settings(lm_module, monkeypa
     assert "Set SMTP_HOST, SMTP_USER, SENDER_EMAIL and RECEIVER_EMAIL first" in output
 
 
-# Verifies a run without a target still reaches the modes that legitimately finish without one
-@pytest.mark.parametrize("argv", [["--send-test-webhook"], ["--send-test-email"], ["--doctor"]])
-def test_the_modes_that_need_no_target_are_not_stopped_by_the_missing_one(lm_module, monkeypatch, capsys, argv):
-    assert run_main(lm_module, monkeypatch, [*argv, "--config-file", "none"]) != 0
+# Verifies a run without a target still reaches the modes that legitimately finish without one. The delivery
+# tests end on their own missing settings, while the preflight finds nothing broken and exits clean
+@pytest.mark.parametrize("argv,expected", [(["--send-test-webhook"], 1), (["--send-test-email"], 1), (["--doctor"], 0)])
+def test_the_modes_that_need_no_target_are_not_stopped_by_the_missing_one(lm_module, monkeypatch, capsys, argv, expected):
+    assert run_main(lm_module, monkeypatch, [*argv, "--config-file", "none"]) == expected
 
     assert "No Riot ID was provided" not in capsys.readouterr().out
 

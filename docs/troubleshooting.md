@@ -36,7 +36,7 @@ When a channel validates and you are at a terminal, doctor then offers to send *
 
 The report ends with a **Next steps** block naming the command that starts monitoring, carrying the same `--config-file` and `--env-file` this run checked. It carries the target this run used, leaves it out when the configuration file already supplies both values and otherwise shows `<riot_id> <region>` for you to replace. While a check is failing it asks for the failures first.
 
-It exits `0` when every check passed and `1` when any check or the approved delivery test failed, so it can be used as a container healthcheck or a CI smoke test:
+It exits `0` when every check passed and `1` when any check or the approved delivery test failed, so it can be used as a container healthcheck or a CI smoke test. A `[WARN]` row never changes the exit code: running the preflight without naming a player warns that nothing will be monitored and still exits `0` when the rest of the setup is sound, the same as in the sibling monitors.
 
 ```sh
 lol_monitor --doctor <riot_id> <region> && echo "ready"

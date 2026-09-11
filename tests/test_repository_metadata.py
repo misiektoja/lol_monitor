@@ -47,6 +47,19 @@ def test_citation_metadata_describes_this_project():
     assert author["given-names"] and author["family-names"] and author["alias"] == "misiektoja"
 
 
+# Verifies the four places that state a version agree, since a mismatch ships a build naming a release it is not
+def test_every_place_that_states_a_version_agrees():
+    module = read_asset("lol_monitor.py")
+    declared = re.search(r'^VERSION = "([^"]+)"', module, re.M)
+    documented = re.search(r"^v([\d.]+)$", module, re.M)
+    packaged = re.search(r'^version = "([^"]+)"', read_asset("pyproject.toml"), re.M)
+    noted = re.search(r"^# Changes in ([\d.]+)", read_asset("RELEASE_NOTES.md"), re.M)
+
+    assert declared is not None and documented is not None and packaged is not None and noted is not None
+    stated = {"VERSION": declared.group(1), "module docstring": documented.group(1), "pyproject.toml": packaged.group(1), "RELEASE_NOTES.md": noted.group(1)}
+    assert len(set(stated.values())) == 1, f"these disagree about the version: {stated}"
+
+
 # Verifies the citation names a version somebody can cite, so it tracks the newest dated release notes section
 def test_citation_tracks_the_newest_released_version():
     released = re.search(r"^# Changes in ([\d.]+) \((\d{1,2} \w{3} \d{4})\)", read_asset("RELEASE_NOTES.md"), re.M)

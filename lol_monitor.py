@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.8.2
+v1.9
 
 Tool implementing real-time tracking of LoL (League of Legends) players activities:
 https://github.com/misiektoja/lol_monitor/
@@ -14,7 +14,7 @@ python-dateutil
 python-dotenv (optional)
 """
 
-VERSION = "1.8.2"
+VERSION = "1.9"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -1085,6 +1085,14 @@ def classify_recovery_error(error=None, context="runtime", detail=""):
 
     if context == "file.exists":
         return advice("file.exists", safe_detail or "The destination file already exists", f"Re-run with --force to replace it after a timestamped backup, or write to a different path with '{render_command(['--generate-config', '<new_file>'], include_paths=False)}'", False, CONFIG_FILE_GUIDE_URL)
+
+    if context == "file.unwritable":
+        # The wizard reaches this either because a destination was switched off or because the path cannot be written
+        if "nowhere to write the private settings" in message:
+            return advice("file.unwritable", safe_detail or "--setup has nowhere to write the private settings", "Replace '--env-file none' with a writable path, or drop the flag to write .env in the current directory", False, SECRETS_GUIDE_URL)
+        if "nowhere to write the configuration" in message:
+            return advice("file.unwritable", safe_detail or "--setup has nowhere to write the configuration", f"Replace '--config-file none' with a writable path, or drop the flag to write {DEFAULT_CONFIG_FILENAME} in the current directory", False, CONFIG_FILE_GUIDE_URL)
+        return advice("file.unwritable", safe_detail or "A setup destination cannot be written", "Choose a path inside an existing directory you can write to with --config-file or --env-file", False, CONFIG_FILE_GUIDE_URL)
 
     if context == "file":
         return advice("file.unwritable", safe_detail or "A file the tool writes could not be opened", "Check that the directory exists and is writable, or choose another path", False, OUTPUT_GUIDE_URL)
@@ -5037,10 +5045,11 @@ def doctor_check_target(report, riot_id=None, region=None, target_error=None):
         return [make_doctor_check("Target", "FAIL", advice.summary, advice.detail, advice)]
     missing = [name for name, value in (("Riot ID", riot_id), ("region", region)) if not value]
     if missing:
-        # Both positionals are required, so a run started from this state stops before it monitors anything
+        # A preflight run without a target is checking everything else, so the exit code stays clean the way
+        # every sibling monitor keeps it: nothing here is broken, the run was simply not told what to watch
         detail = f"No {' and no '.join(missing)} {'was' if len(missing) == 1 else 'were'} provided"
         advice = classify_recovery_error(context="target.missing", detail=detail)
-        return [make_doctor_check("Target", "FAIL", advice.summary, "Nothing can be monitored until both are given", advice)]
+        return [make_doctor_check("Target", "WARN", advice.summary, f"Nothing will be monitored until {'both are' if len(missing) > 1 else 'one is'} given", advice)]
     if not report.api_key_valid:
         return [make_doctor_check("Target", "SKIP", "The monitored account was not checked", f"{report.target_skip_reason or 'The Riot API key did not validate'}, so no lookup was attempted")]
     debug_print("Monitored account check", region=region)
@@ -5482,9 +5491,9 @@ def _wizard_validate_destination(path, label):
 # Resolves both setup destinations, refusing the disabled settings that leave nowhere to write
 def _wizard_destinations(config_file=None, env_file=None):
     if config_file is not None and str(config_file).casefold() == "none":
-        raise ValueError("--setup requires a config destination. Replace '--config-file none' with a writable path")
+        raise ValueError("--setup has nowhere to write the configuration")
     if env_file is not None and str(env_file).casefold() == "none":
-        raise ValueError("--setup requires a dotenv destination. Replace '--env-file none' with a writable path")
+        raise ValueError("--setup has nowhere to write the private settings")
     config_path = Path(config_file).expanduser() if config_file is not None else Path.cwd() / DEFAULT_CONFIG_FILENAME
     env_path = Path(env_file).expanduser() if env_file is not None else Path.cwd() / ".env"
     return _wizard_validate_destination(config_path, "Configuration destination"), _wizard_validate_destination(env_path, "Dotenv destination")

@@ -380,12 +380,14 @@ def test_a_rejected_riot_id_is_a_target_row(lm_module):
 
 
 @pytest.mark.parametrize("riot_id,region,detail", [(None, None, "No Riot ID and no region were provided"), (RIOT_ID, None, "No region was provided"), (None, REGION, "No Riot ID was provided")])
-# Verifies a half-given target fails naming the missing half, since the loop cannot start from that state
-def test_a_missing_target_fails_naming_what_is_missing(lm_module, riot_id, region, detail):
+# Verifies a half-given target warns naming the missing half, at the severity every sibling monitor uses so
+# one preflight does not exit 1 where the same state exits 0 in the next tool
+def test_a_missing_target_warns_naming_what_is_missing(lm_module, riot_id, region, detail):
     check = only_row(lm_module.doctor_check_target(lm_module.DoctorReport(), riot_id, region), "Target")
 
-    assert check.status == "FAIL"
+    assert check.status == "WARN"
     assert check.label == detail
+    assert check.detail.startswith("Nothing will be monitored until ")
 
 
 # Verifies a lookup that could not run is skipped with the cause the authentication check recorded
