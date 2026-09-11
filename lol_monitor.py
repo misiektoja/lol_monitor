@@ -35,6 +35,12 @@ CONFIG_BLOCK = """
 #   - Hard-code it in the code or config file
 RIOT_API_KEY = "your_riot_api_key"
 
+# User to monitor, written as riot_id_name#tag, and the region code the account belongs to
+# Saving them here means running the tool without repeating them every time
+# Both are overridden by the positional arguments when those are passed
+RIOT_ID = ""
+REGION = ""
+
 # SMTP settings for sending email notifications
 # If left as-is, no notifications will be sent
 #
@@ -222,6 +228,8 @@ game_type_mapping = {
 # Default dummy values so linters shut up
 # Do not change values below - modify them in the configuration section or config file instead
 RIOT_API_KEY = ""
+RIOT_ID = ""
+REGION = ""
 SMTP_HOST = ""
 SMTP_PORT = 0
 SMTP_USER = ""
@@ -3001,10 +3009,6 @@ def main():
 
     args = parser.parse_args()
 
-    if len(sys.argv) == 1:
-        parser.print_help(sys.stderr)
-        sys.exit(1)
-
     CONFIG_DISCOVERY_DISABLED = args.config_file is not None and str(args.config_file).casefold() == "none"
     if CONFIG_DISCOVERY_DISABLED:
         CLI_CONFIG_PATH = None
@@ -3020,6 +3024,17 @@ def main():
     if cfg_path:
         if not load_config_file(cfg_path):
             sys.exit(1)
+
+    # Resolved right after the config file is read, so every later message sees the target this run will actually use
+    if not args.riot_id and RIOT_ID:
+        args.riot_id = RIOT_ID
+    if not args.region and REGION:
+        args.region = REGION
+
+    # A bare run with no saved target has nothing to do, so it gets the help instead of failing further down
+    if len(sys.argv) == 1 and not (args.riot_id and args.region):
+        parser.print_help(sys.stderr)
+        sys.exit(1)
 
     # Recorded before the dotenv file is read, so an exported value stays ahead of the same name in that file
     EXPORTED_SECRET_KEYS = frozenset(secret for secret in SECRET_KEYS if os.getenv(secret) is not None)

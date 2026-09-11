@@ -451,6 +451,56 @@ def test_disabled_discovery_is_not_a_missing_file(lm_module, monkeypatch, monito
     assert "does not exist" not in capsys.readouterr().out
 
 
+# Verifies a bare run with nothing saved still gets the help, since there is nothing it could monitor
+def test_a_bare_run_without_a_saved_target_prints_help(lm_module, monkeypatch, capsys):
+    assert run_main(lm_module, monkeypatch, []) == 1
+
+    assert "usage: lol_monitor" in capsys.readouterr().err
+
+
+# Verifies a target saved in the config file starts a run with no positional arguments at all
+def test_a_saved_target_needs_no_positionals(lm_module, monkeypatch, monitor_calls, isolated_working_directory):
+    config = isolated_working_directory / "lol_monitor_test_only.conf"
+    config.write_text(f'RIOT_ID = "{RIOT_ID}"\nREGION = "{REGION}"\n', encoding="utf-8")
+
+    assert run_main(lm_module, monkeypatch, []) == 0
+
+    assert monitor_calls[0]["riotid"] == RIOT_ID
+    assert monitor_calls[0]["region"] == REGION
+
+
+# Verifies a positional overrides the saved pair, so watching somebody else for one run needs no file edit
+def test_a_positional_overrides_the_saved_target(lm_module, monkeypatch, monitor_calls, isolated_working_directory):
+    config = isolated_working_directory / "lol_monitor_test_only.conf"
+    config.write_text(f'RIOT_ID = "{RIOT_ID}"\nREGION = "{REGION}"\n', encoding="utf-8")
+
+    assert run_main(lm_module, monkeypatch, ["other_name#TAG", "euw1"]) == 0
+
+    assert monitor_calls[0]["riotid"] == "other_name#TAG"
+    assert monitor_calls[0]["region"] == "euw1"
+
+
+# Verifies one saved half still combines with one passed half, since the two positionals resolve independently
+def test_a_saved_region_completes_a_passed_riot_id(lm_module, monkeypatch, monitor_calls, isolated_working_directory):
+    config = isolated_working_directory / "lol_monitor_test_only.conf"
+    config.write_text(f'REGION = "{REGION}"\n', encoding="utf-8")
+
+    assert run_main(lm_module, monkeypatch, ["other_name#TAG"]) == 0
+
+    assert monitor_calls[0]["riotid"] == "other_name#TAG"
+    assert monitor_calls[0]["region"] == REGION
+
+
+# Verifies the missing-target error is decided after the config file is read, so a saved pair is never called missing
+def test_the_missing_target_error_waits_for_the_config_file(lm_module, monkeypatch, monitor_calls, isolated_working_directory, capsys):
+    config = isolated_working_directory / "lol_monitor_test_only.conf"
+    config.write_text(f'RIOT_ID = "{RIOT_ID}"\nREGION = "{REGION}"\n', encoding="utf-8")
+
+    assert run_main(lm_module, monkeypatch, ["--config-file", str(config)]) == 0
+
+    assert "No Riot ID was provided" not in capsys.readouterr().out
+
+
 # Verifies an optional config file in the working directory is picked up without a flag
 def test_config_file_in_the_working_directory_is_used(lm_module, monkeypatch, monitor_calls, isolated_working_directory, capsys):
     config = isolated_working_directory / "lol_monitor_test_only.conf"

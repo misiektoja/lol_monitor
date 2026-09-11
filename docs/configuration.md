@@ -53,6 +53,19 @@ lol_monitor <riot_id> <region>
 
 A Riot ID is the game name plus the tag line, written as `riot_id_name#tag`. The accepted region codes are listed under [Region Codes](setup-and-first-run.md#region-codes).
 
+To stop repeating them, save the pair in the configuration file:
+
+```ini
+RIOT_ID = "riot_id_name#tag"
+REGION = "eun1"
+```
+
+Then `lol_monitor` alone starts monitoring that player. A positional argument still wins, so you can watch someone else for one run without editing the file:
+
+```sh
+lol_monitor "other_name#tag" euw1
+```
+
 ## SMTP Settings
 
 Email notifications need the SMTP block in the configuration file filled in:
