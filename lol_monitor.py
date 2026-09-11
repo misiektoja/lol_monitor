@@ -284,7 +284,7 @@ COLORED_OUTPUT = True
 # Can also be enabled via the --verbose flag, which turns it on regardless of this setting
 VERBOSE_MODE = False
 
-# Whether to print timestamped diagnostic detail, including every outbound call,
+# Whether to print timestamped diagnostic detail, including outbound calls,
 # each notification delivery attempt and the technical cause of failures
 # Independent of VERBOSE_MODE, so enable both to see everything
 # Can also be enabled via the --debug flag, which turns it on regardless of this setting
@@ -1429,6 +1429,42 @@ def read_interactively(reader, *args, **kwargs):
 def read_secret_interactively(reader, *args, **kwargs):
     with default_interrupt_handling():
         return reader(*args, **kwargs)
+
+
+# Accepts finite numeric values without overflowing on unusually large integers
+def finite_number(value):
+    import math
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
+# Preserves inline credentials privately before setup replaces their only saved source
+def preserve_inline_config_secrets(config_path, env_path):
+    from dotenv import dotenv_values
+    source = Path(config_path).expanduser()
+    if not source.is_file():
+        return None
+    original = {}
+    if not load_config_file(source, namespace=original, report_errors=False):
+        raise ValueError("Existing configuration could not be read before preserving its inline secrets")
+    defaults = _config_template_defaults()
+    destination = Path(env_path).expanduser()
+    saved = dotenv_values(str(destination), interpolate=False) if destination.exists() else {}
+    updates = {}
+    for key in SECRET_KEYS:
+        value = original.get(key)
+        if isinstance(value, str) and value and value != defaults.get(key) and saved.get(key) is None:
+            updates[key] = value
+    if not updates:
+        return None
+    try:
+        return update_dotenv_file(destination, updates)
+    except Exception as exc:
+        raise OSError(f"Could not preserve inline secrets in '{destination}'. The original configuration was not replaced") from exc
 
 
 # Removes inline secret assignments from a setup backup while preserving other configuration text
@@ -4911,8 +4947,6 @@ def load_config_file(config_path, namespace=None, report_errors=True):
         detail = f"Config file '{config_path}' has invalid Python syntax"
         if exc.lineno is not None:
             detail += f" at line {exc.lineno}"
-        if exc.text:
-            detail += f" | Source: {exc.text.rstrip()}"
         detail += f" | Parser: {exc.msg}"
     # Checked before ValueError because UnicodeDecodeError derives from it
     except UnicodeDecodeError:
@@ -5560,10 +5594,10 @@ def runtime_configuration_errors():
     positive_numbers = (("LOL_CHECK_INTERVAL", LOL_CHECK_INTERVAL), ("LOL_ACTIVE_CHECK_INTERVAL", LOL_ACTIVE_CHECK_INTERVAL), ("CHECK_INTERNET_TIMEOUT", CHECK_INTERNET_TIMEOUT))
     nonnegative_numbers = (("LIVENESS_CHECK_INTERVAL", LIVENESS_CHECK_INTERVAL), ("LOL_ACTIVE_CHECK_SIGNAL_VALUE", LOL_ACTIVE_CHECK_SIGNAL_VALUE))
     for name, value in positive_numbers:
-        if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
+        if not finite_number(value) or value <= 0:
             errors.append(f"{name} must be a number greater than zero, not {value!r}")
     for name, value in nonnegative_numbers:
-        if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
+        if not finite_number(value) or value < 0:
             errors.append(f"{name} must be a number zero or greater, not {value!r}")
     if not isinstance(SMTP_PORT, int) or isinstance(SMTP_PORT, bool) or not 1 <= SMTP_PORT <= 65535:
         errors.append(f"SMTP_PORT must be an integer from 1 through 65535, not {SMTP_PORT!r}")
@@ -6793,14 +6827,17 @@ def _wizard_apply_saved_values(state, env_path=None):
     except (OSError, UnicodeError, ValueError) as exc:
         print_recovery_error(exc, context="file", detail=f"Could not read saved secrets from '{selected_path}'")
         raise SystemExit(1) from None
-    globals().update(state.config_values)
+    saved_config = dict(_config_template_defaults())
+    if not load_config_file(state.config_path, namespace=saved_config):
+        raise SystemExit(1)
+    globals().update(saved_config)
     for key in SECRET_KEYS:
         if key in exported:
             value, source = exported[key], "environment"
         elif saved.get(key) is not None:
             value, source = saved[key], "dotenv file"
         else:
-            value, source = state.config_values.get(key), "configuration file"
+            value, source = saved_config.get(key), "configuration file"
         globals()[key] = value
         if source == "dotenv file":
             os.environ[key] = str(value)
@@ -6900,11 +6937,12 @@ def run_setup_wizard(initial_riot_id=None, initial_region=None, config_file=None
 
     # Everything above only filled the state, so this is the first and only point anything reaches disk
     try:
+        preserved_dotenv = preserve_inline_config_secrets(state.config_path, state.env_path)
         config_result = write_config_file(state.config_path, generate_config_with_current_values(state.config_values), redact_secrets=True)
     except Exception as exc:
         print_recovery_error(exc, context="file", detail=f"Could not write the configuration to '{state.config_path}'")
         return 1
-    dotenv_result = None
+    dotenv_result = preserved_dotenv
     if state.secret_updates:
         try:
             dotenv_result = update_dotenv_file(state.env_path, state.secret_updates)
@@ -7671,10 +7709,10 @@ def main():
         debug_print("No private settings were resolved from config, dotenv, environment or the command line")
 
     # Applied before the report so every row it prints describes the run this command line asked for
-    if args.check_interval:
+    if args.check_interval is not None:
         LOL_CHECK_INTERVAL = args.check_interval
 
-    if args.active_interval:
+    if args.active_interval is not None:
         LOL_ACTIVE_CHECK_INTERVAL = args.active_interval
 
     if args.include_forbidden_matches is True:
@@ -7734,6 +7772,11 @@ def main():
         # A target the configuration file already carries is left out, so the command stays as short as a saved run needs
         print_doctor_next_steps(args.riot_id, args.region, riot_id_saved, region_saved, doctor_exit)
         sys.exit(doctor_exit)
+
+    configuration_errors = runtime_configuration_errors() + runtime_boolean_errors()
+    if configuration_errors:
+        print_recovery_advice(make_recovery_advice("config.invalid", "Invalid settings: " + ". ".join(configuration_errors), recovery_fix_with_guide("Correct the reported settings in the configuration file or command line", CONFIG_FILE_GUIDE_URL), False))
+        sys.exit(1)
 
     if target_input_error:
         print_recovery_error(context="target", detail=target_input_error)

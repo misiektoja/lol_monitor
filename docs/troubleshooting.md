@@ -61,7 +61,7 @@ lol_monitor <riot_id> <region> --verbose
 [DEBUG 23:47:21] Riot account lookup: riot_id=Faker#KR1, outcome=OK
 ```
 
-Traced operations include configuration and secret resolution, the connectivity probe, every Riot API and Data Dragon call, the champion icon download an email or ntfy attachment needs, SMTP delivery, the log and CSV files being opened and written, each retry with the wait it chose, and every completed check with the interval before the next one. Every operation that makes an outbound call reports its result as `outcome=OK`, `outcome=failed` with an `error=` field, `outcome=degraded` or `outcome=skipped`, so a trace never stops at what was attempted:
+Debug traces cover configuration loading, connectivity, monitoring API calls, notification delivery and file operations. Coverage varies by operation. One-shot lookups and calls made internally by dependencies do not always have matching result lines:
 
 ```sh
 lol_monitor <riot_id> <region> --debug
@@ -248,3 +248,7 @@ If `pip` reports an externally managed environment, follow the pipx steps in [In
 If the tool cannot import a dependency, install the dependencies with the same Python interpreter that runs the script. On macOS or Linux use `python3 -m pip install -r requirements.txt`. On Windows use `python -m pip install -r requirements.txt`. Match the requirements file to your downloaded script.
 
 If a new terminal cannot find your saved settings, return to the directory used during setup or pass both `--config-file` and `--env-file` explicitly. Run `lol_monitor --doctor "<riot_id>" <region>` to see which settings are loaded.
+
+## Invalid saved settings and state
+
+Timing values must be finite and within the documented range. Normal startup checks effective timing settings before monitoring. A configuration syntax error reports its file, line number and parser message without echoing source text that may contain credentials.
