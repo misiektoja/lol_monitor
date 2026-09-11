@@ -69,8 +69,10 @@ def test_failed_summoner_lookup_reports_unavailable_values(lm_module, riot_api, 
 
     details = asyncio.run(lm_module.get_summoner_details(PUUID, "eun1"))
 
+    printed = capsys.readouterr().out
     assert details == {"summoner_level": "N/A", "revision_date": "N/A"}
-    assert "Error while getting summoner details" in capsys.readouterr().out
+    assert "* Error: The Riot API is temporarily unavailable" in printed
+    assert "To fix: " in printed
 
 
 # Verifies both ranked queues are reported with tier, division, points and the win record
@@ -245,7 +247,9 @@ def test_failing_match_id_lookup_returns_nothing(lm_module, riot_api, capsys):
     riot_api.script("get_lol_match_v5_match_ids_by_puuid", RuntimeError("429 Rate limit exceeded"))
 
     assert asyncio.run(lm_module.get_latest_match_ids(PUUID, "eun1", count=10)) == []
-    assert "Cannot fetch latest match IDs" in capsys.readouterr().out
+    printed = capsys.readouterr().out
+    assert "* Error: Riot is rate limiting requests" in printed
+    assert "To fix: The tool will wait and retry" in printed
 
 
 # Verifies the total match count walks the whole history one page at a time
@@ -267,7 +271,9 @@ def test_failing_total_match_count_is_reported(lm_module, riot_api, capsys):
     riot_api.script("get_lol_match_v5_match_ids_by_puuid", RuntimeError("429 Rate limit exceeded"))
 
     assert asyncio.run(lm_module.get_total_match_count(PUUID, "eun1")) == 0
-    assert "Cannot determine total match count" in capsys.readouterr().out
+    printed = capsys.readouterr().out
+    assert "* Error: Riot is rate limiting requests" in printed
+    assert "To fix: The tool will wait and retry" in printed
 
 
 # Builds a Data Dragon response double

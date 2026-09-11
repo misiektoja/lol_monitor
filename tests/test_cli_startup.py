@@ -471,7 +471,9 @@ def test_listing_everything_stops_without_a_player(lm_module, monkeypatch, listi
     monkeypatch.setattr(lm_module, "get_user_puuid", no_puuid)
 
     assert run_main(lm_module, monkeypatch, ["-l", "-a", RIOT_ID, REGION]) == 1
-    assert "Could not get PUUID for user" in capsys.readouterr().out
+    printed = capsys.readouterr().out
+    assert f"* Error: Riot has no account for {RIOT_ID}" in printed
+    assert "To fix: Check the game name and the tag line" in printed
     assert listing_calls == []
 
 

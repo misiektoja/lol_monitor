@@ -432,7 +432,9 @@ def test_an_empty_history_is_reported(lm_module, riot_api, fake_clock, capsys):
     riot_api.script("get_lol_match_v5_match_ids_by_puuid", [])
 
     assert asyncio.run(lm_module.print_match_history(PUUID, USER, "eun1", 1, 5, None)) == (0, 0)
-    assert "No match history found" in capsys.readouterr().out
+    printed = capsys.readouterr().out
+    assert "* Error: Riot returned no match history for this account" in printed
+    assert "To fix: Check the Riot ID and the region" in printed
 
 
 # Verifies a request whose lower bound is above its upper bound lists nothing

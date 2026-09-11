@@ -3276,7 +3276,7 @@ async def get_summoner_details(puuid: str, region: str):
 
         except Exception as e:
             debug_swallowed_exception("Summoner details", e)
-            print(f"* Error while getting summoner details: {e}")
+            print_recovery_error(e, detail=f"Cannot read the summoner details: {e}")
 
     return summoner_info
 
@@ -3702,7 +3702,7 @@ async def get_latest_match_ids(puuid: str, region: str, count: int = 10, start: 
 
     except Exception as e:
         debug_swallowed_exception("Match ID fetch", e)
-        print(f"* Error: Cannot fetch latest match IDs: {e}")
+        print_recovery_error(e, detail=f"Cannot fetch the latest match IDs: {e}")
         print_cur_ts("Timestamp:\t\t\t")
         return []
 
@@ -3739,7 +3739,7 @@ async def get_total_match_count(puuid: str, region: str) -> int:
 
     except Exception as e:
         debug_swallowed_exception("Total match count", e)
-        print(f"* Error: Cannot determine total match count: {e}")
+        print_recovery_error(e, detail=f"Cannot determine the total match count: {e}")
         return 0
 
 
@@ -3999,6 +3999,10 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
         return 0, 0
 
 
+# Returns the advice an account with no readable match history carries, worded the same in the listing and the count
+def no_match_history_advice(): return make_recovery_advice("target.not_found", "Riot returned no match history for this account", recovery_fix_with_guide("Check the Riot ID and the region, since match history is kept per region", USAGE_GUIDE_URL), False)
+
+
 # Prints history of matches with relevant details
 async def print_match_history(puuid: str, riotid_name: str, region: str, matches_min: int, matches_num: int, csv_file_name):
 
@@ -4015,7 +4019,7 @@ async def print_match_history(puuid: str, riotid_name: str, region: str, matches
     all_fetched_ids = await get_latest_match_ids(puuid, region, count=range_size, start=start_index)
 
     if not all_fetched_ids:
-        print("* Error: No match history found")
+        print_recovery_error(RecoveryError(no_match_history_advice()))
         return 0, 0
 
     # Reverse immediately so we process oldest to newest
@@ -7018,9 +7022,9 @@ def main():
                     print(f"* Found {total_count} total matches available\n")
                 else:
                     if not puuid:
-                        print("* Error: Could not get PUUID for user")
+                        print_recovery_error(context="target", detail=f"Riot has no account for {args.riot_id}")
                     else:
-                        print("* Error: Could not determine total match count")
+                        print_recovery_error(RecoveryError(no_match_history_advice()))
                     sys.exit(1)
             except Exception as e:
                 print_recovery_error(e)
