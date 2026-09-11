@@ -1,6 +1,5 @@
 """Tests for the webhook channel: what is built, what is sent, what is refused and what the private URL never reveals."""
 
-import json
 
 import pytest
 import requests as req
@@ -374,7 +373,7 @@ def test_a_failing_transformation_names_its_entry(discord, monkeypatch):
     ("WEBHOOK_USERNAME", 7, "WEBHOOK_USERNAME must be a string"),
     ("WEBHOOK_AVATAR_URL", 7, "WEBHOOK_AVATAR_URL must be a string"),
     ("WEBHOOK_AVATAR_URL", "http://example.test/a.png", "WEBHOOK_AVATAR_URL must contain a complete HTTPS link without embedded credentials"),
-    ("WEBHOOK_TEMPLATE", 7, "WEBHOOK_TEMPLATE must be a dictionary, list or string"),
+    ("WEBHOOK_TEMPLATE", 7, "WEBHOOK_TEMPLATE must be a dictionary or a JSON object string"),
     ("WEBHOOK_TRANSFORMS", "upper", "WEBHOOK_TRANSFORMS must be a list or tuple"),
     ("WEBHOOK_TRANSFORMS", [("title",)], "WEBHOOK_TRANSFORMS entry 1 must contain a field name and string method name"),
     ("WEBHOOK_TRANSFORMS", [("title", "__class__")], "WEBHOOK_TRANSFORMS entry 1 uses an unsupported string method"),
@@ -584,15 +583,15 @@ def test_unset_ntfy_options_are_left_out(ntfy, webhook_session):
     assert webhook_session.posts[0]["params"] == {"title": "subject"}
 
 
-# Verifies a template that renders to a string is posted as a raw body rather than re-encoded as JSON
-def test_a_string_template_is_posted_as_a_raw_body(discord, webhook_session, monkeypatch):
+# Preserves escaped JSON templates while enforcing the no-mentions policy
+def test_legacy_escaped_json_template_keeps_mentions_disabled(discord, webhook_session, monkeypatch):
     from conftest import FakeWebhookResponse
     monkeypatch.setattr(discord, "WEBHOOK_TEMPLATE", '{{"content": "{title}"}}')
     webhook_session.responses.append(FakeWebhookResponse(204))
 
     discord.send_webhook("subject", "body", "status")
 
-    assert json.loads(webhook_session.posts[0]["data"]) == {"content": "subject"}
+    assert webhook_session.posts[0]["json"] == {"content": "subject", "allowed_mentions": {"parse": []}}
 
 
 # Verifies every delivery pins the deadline, the TLS setting and the redirect policy the tool chose

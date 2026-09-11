@@ -70,6 +70,8 @@ lol_monitor "other_name#tag" euw1
 
 ## SMTP Settings
 
+Private password entry preserves leading and trailing spaces. The exact value checked with the mail server is saved.
+
 [`--setup`](setup-and-first-run.md#guided-setup) collects these for you and signs in to the mail server before saving them. To configure them by hand, set the SMTP settings in `lol_monitor.conf`.
 
 Email notifications need the SMTP block in the configuration file filled in:
@@ -109,6 +111,8 @@ Alerts that name no champion, such as an error alert, are unaffected. If the dow
 [`--setup`](setup-and-first-run.md#guided-setup) offers the setting once match emails are enabled.
 
 ## Webhook Settings
+
+A delivery keeps its original destination and credentials for every retry. Reloaded settings apply to the next delivery. Discord templates must produce a JSON object. Dictionary templates and JSON strings are supported, including strings with escaped format braces. Mentions remain disabled in every template.
 
 Webhooks send the same alerts as email to a Discord channel or an ntfy topic. They are switched off until you set a destination. [`--setup`](setup-and-first-run.md#guided-setup) collects the service, the destination and the alert switches together:
 

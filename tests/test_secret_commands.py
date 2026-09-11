@@ -486,7 +486,7 @@ def test_an_accepted_password_is_saved(lm_module, tmp_path, capsys):
 
     lm_module.run_set_smtp_password(env_file=destination, interactive=True, input_func=refuse_prompt, getpass_func=ScriptedPrompt("  entered-password  "), sign_in=lambda password, timeout=None: "monitor@example.test")
 
-    assert destination.read_text(encoding="utf-8") == 'SMTP_PASSWORD="entered-password"\n'
+    assert destination.read_text(encoding="utf-8") == 'SMTP_PASSWORD="  entered-password  "\n'
     output = capsys.readouterr().out
     assert "accepted the password for monitor@example.test" in output
     assert "--send-test-email" in output
