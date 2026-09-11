@@ -51,7 +51,7 @@ The Riot ID and the region are positional arguments. Both are required to start 
 lol_monitor <riot_id> <region>
 ```
 
-A Riot ID is the game name plus the tag line, written as `riot_id_name#tag`. The accepted region codes are listed under [Region Codes](setup-and-first-run.md#region-codes).
+A Riot ID is the game name plus the tag line, written as `riot_id_name#tag`. The accepted region codes are listed under [Region Codes](setup-and-first-run.md#region-codes). Region codes are not case sensitive, and spaces around the `#` are ignored, so `" Name # TAG "` and `EUN1` are read the same as `Name#TAG` and `eun1`.
 
 To stop repeating them, save the pair in the configuration file:
 

@@ -21,13 +21,16 @@ def test_riot_id_is_resolved_to_a_puuid(lm_module, riot_api):
     assert request["tag_line"] == "EUNE"
 
 
-# Verifies a region the tool does not know still resolves against a default continent instead of failing
-def test_unknown_region_falls_back_to_a_default_continent(lm_module, riot_api):
+# Verifies a region the tool does not know is refused rather than silently answered from a European shard
+def test_an_unknown_region_is_not_answered_from_a_default_continent(lm_module, riot_api, capsys):
     riot_api.script("get_account_v1_by_riot_id", {"puuid": PUUID})
 
-    asyncio.run(lm_module.get_user_puuid("misiektoja#EUNE", "not-a-region"))
+    assert asyncio.run(lm_module.get_user_puuid("misiektoja#EUNE", "not-a-region")) is None
 
-    assert riot_api.requests_to("get_account_v1_by_riot_id")[0]["region"] == "europe"
+    assert riot_api.requests_to("get_account_v1_by_riot_id") == []
+    output = capsys.readouterr().out
+    assert "not-a-region" in output
+    assert "which is the short code and not the display name" in output
 
 
 # Verifies the API key is sent as the Riot token header and never as a query parameter

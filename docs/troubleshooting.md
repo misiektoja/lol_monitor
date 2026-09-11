@@ -34,7 +34,7 @@ Both positionals are required to start monitoring. The message names whichever o
 
 ### `'<region>' is not present in REGION_TO_CONTINENT`
 
-The region is not one of the codes the tool knows. Use the short form, not the display name, and check it against [Region Codes](setup-and-first-run.md#region-codes). `EUW` is not a region code, `euw1` is.
+The region is not one of the codes the tool knows. Use the short form, not the display name, and check it against [Region Codes](setup-and-first-run.md#region-codes). `EUW` is not a region code, `euw1` is. Capitalisation does not matter, so this is never about `EUN1` against `eun1`.
 
 ### `That is not a complete Riot ID`
 

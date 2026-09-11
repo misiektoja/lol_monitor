@@ -279,6 +279,10 @@ RIOT_API_KEY_REGISTRATION_URL = "https://developer.riotgames.com"
 RIOT_ID_FORMS = "Riot ID written as riot_id_name#tag"
 REGION_FORMS = "region code such as eun1, euw1 or na1"
 
+# What a rejected positional is told, kept beside the forms it names so the two cannot drift apart
+RIOT_ID_INPUT_ERROR = "That is not a complete Riot ID, the name and tagline could not be read"
+REGION_INPUT_ERROR = "That is not a region code this tool knows"
+
 # One spelling per positional, so a printed command, a help example and a fix line cannot name it differently
 RIOT_ID_PLACEHOLDER = "<riot_id>"
 REGION_PLACEHOLDER = "<region>"
@@ -665,6 +669,8 @@ def classify_recovery_error(error=None, context="runtime", detail=""):
             return advice("network.timeout", "The Riot API request timed out", "Check connectivity then try again", True)
         if status in (401, 403) or "unauthorized" in message or "forbidden" in message:
             return advice("auth.api_key_invalid", "Riot rejected the configured API key", f"A development key expires 24 hours after it is issued, so copy a fresh one from {RIOT_API_KEY_REGISTRATION_URL}", False, RIOT_API_KEY_GUIDE_URL)
+        if "region_to_continent" in message:
+            return advice("target.region", safe_detail or REGION_INPUT_ERROR, f"Pass a {REGION_FORMS}, which is the short code and not the display name", False, REGION_GUIDE_URL)
         if "name and tagline" in message or "name#tag" in message:
             return advice("target.invalid", safe_detail or "That is not a complete Riot ID", f"Pass a {RIOT_ID_FORMS}, where the part after the # is the tag line and not the region", False, USAGE_GUIDE_URL)
         return advice("target.not_found", safe_detail or "Riot has no account for that Riot ID", "Check the game name and the tag line, since a renamed account cannot be monitored", False, USAGE_GUIDE_URL)
@@ -1473,6 +1479,35 @@ def format_banned_champions_html(ban_lines: List[str]) -> str:
     return "".join(html_lines)
 
 
+# Returns one Riot ID in the form the tool stores, rejecting anything that is not a name and a tag line
+def normalize_riot_id(value):
+    if isinstance(value, bool) or value is None:
+        raise ValueError(RIOT_ID_INPUT_ERROR)
+    name, separator, tag = str(value).strip().partition("#")
+    name, tag = name.strip(), tag.strip()
+    if not separator or not name or not tag or "#" in tag:
+        raise ValueError(RIOT_ID_INPUT_ERROR)
+    return f"{name}#{tag}"
+
+
+# Returns one region code in the lower-case form the routing table is keyed by, so EUN1 and eun1 are the same region
+def normalize_region(value):
+    if isinstance(value, bool) or value is None:
+        raise ValueError(REGION_INPUT_ERROR)
+    text = str(value).strip().casefold()
+    if not text:
+        raise ValueError(REGION_INPUT_ERROR)
+    return text
+
+
+# Returns the routing continent for one region code, which the startup check guarantees is a known one
+def region_continent(region):
+    continent = REGION_TO_CONTINENT.get(region)
+    if not continent:
+        raise ValueError(f"'{region}' is not present in REGION_TO_CONTINENT")
+    return continent
+
+
 # Returns Riot game name & tag line for specified Riot ID
 def get_user_riot_name_tag(riotid: str):
 
@@ -1480,7 +1515,7 @@ def get_user_riot_name_tag(riotid: str):
         riotid_name = riotid.split('#', 1)[0]
         riotid_tag = riotid.split('#', 1)[1]
     except IndexError:
-        print_recovery_error(context="target", detail="That is not a complete Riot ID, the name and tagline could not be read")
+        print_recovery_error(context="target", detail=RIOT_ID_INPUT_ERROR)
         return "", ""
 
     return riotid_name, riotid_tag
@@ -1493,7 +1528,7 @@ async def get_user_puuid(riotid: str, region: str) -> Optional[str]:
 
     async with riot_api_client() as client:
         try:
-            account = await client.get_account_v1_by_riot_id(region=REGION_TO_CONTINENT.get(region, "europe"), game_name=riotid_name, tag_line=riotid_tag)
+            account = await client.get_account_v1_by_riot_id(region=region_continent(region), game_name=riotid_name, tag_line=riotid_tag)
             puuid = account["puuid"]
         except Exception as e:
             print_recovery_error(e, context="target", debug=True)
@@ -1881,7 +1916,7 @@ async def get_latest_match_ids(puuid: str, region: str, count: int = 10, start: 
             # If count <= 100, make a single request
             if count <= MAX_MATCHES_PER_REQUEST:
                 matches = await client.get_lol_match_v5_match_ids_by_puuid(
-                    region=REGION_TO_CONTINENT.get(region, 'europe'),
+                    region=region_continent(region),
                     puuid=puuid,
                     queries={'start': start, 'count': count}
                 )
@@ -1896,7 +1931,7 @@ async def get_latest_match_ids(puuid: str, region: str, count: int = 10, start: 
                 request_count = min(remaining, MAX_MATCHES_PER_REQUEST)
 
                 matches = await client.get_lol_match_v5_match_ids_by_puuid(
-                    region=REGION_TO_CONTINENT.get(region, 'europe'),
+                    region=region_continent(region),
                     puuid=puuid,
                     queries={'start': current_start, 'count': request_count}
                 )
@@ -1932,7 +1967,7 @@ async def get_total_match_count(puuid: str, region: str) -> int:
         async with riot_api_client() as client:
             while True:
                 matches = await client.get_lol_match_v5_match_ids_by_puuid(
-                    region=REGION_TO_CONTINENT.get(region, 'europe'),
+                    region=region_continent(region),
                     puuid=puuid,
                     queries={'start': start, 'count': MAX_MATCHES_PER_REQUEST}
                 )
@@ -1964,7 +1999,7 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
     else:
         async with riot_api_client() as client:
             try:
-                match = await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, 'europe'), id=match_id)
+                match = await client.get_lol_match_v5_match(region=region_continent(region), id=match_id)
             except Exception as e:
                 if getattr(e, 'status', None) == 403:
                     if INCLUDE_FORBIDDEN_MATCHES:
@@ -2247,7 +2282,7 @@ async def print_match_history(puuid: str, riotid_name: str, region: str, matches
             for match_id in batch_ids:
                 try:
                     # Fetch match details
-                    match = await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, 'europe'), id=match_id)
+                    match = await client.get_lol_match_v5_match(region=region_continent(region), id=match_id)
 
                     # Calculate match number
                     # Since we reversed the list, oldest is at index 0
@@ -3030,6 +3065,16 @@ def main():
         args.riot_id = RIOT_ID
     if not args.region and REGION:
         args.region = REGION
+
+    # Normalized once, so the log file name, every printed command and every Riot lookup see the same text
+    if args.riot_id:
+        try:
+            args.riot_id = normalize_riot_id(args.riot_id)
+        except ValueError as exc:
+            print_recovery_error(context="target", detail=str(exc))
+            sys.exit(1)
+    if args.region:
+        args.region = normalize_region(args.region)
 
     # A bare run with no saved target has nothing to do, so it gets the help instead of failing further down
     if len(sys.argv) == 1 and not (args.riot_id and args.region):
