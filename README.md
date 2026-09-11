@@ -14,29 +14,27 @@ Powerful tool for real-time monitoring of **LoL (League of Legends) players' act
 
 **Full documentation: [misiektoja.github.io/lol_monitor](https://misiektoja.github.io/lol_monitor/)**
 
-### 🚀 Quick Install
+<a id="-quick-install"></a>
+<a id="-quick-install-run"></a>
+### 🚀 Quick Install & Run
+
+New to Python or unsure what is installed? Follow the [Python install walkthrough](https://misiektoja.github.io/lol_monitor/installation/#new-to-python-install-everything) first.
+
+Install from PyPI:
 
 ```sh
 pip install lol_monitor
 ```
 
-Run it with no arguments to see the commands to start from and to be offered the guided setup:
-
-```sh
-lol_monitor
-```
-
-The guided setup asks a few questions and writes a ready-to-run configuration:
+Run the setup wizard:
 
 ```sh
 lol_monitor --setup
 ```
 
-Or track a player straight away by passing their Riot ID, written as `riot_id_name#tag`, and their region code:
+The wizard asks for the target, authentication, polling intervals and optional notifications. Review the settings before saving them. See [Setup & First Run](https://misiektoja.github.io/lol_monitor/setup-and-first-run/) for the service-specific steps.
 
-```sh
-lol_monitor <riot_id> <region> -r "your_riot_api_key"
-```
+For the manual single-file method, dependencies and upgrade commands, see [Installation](https://misiektoja.github.io/lol_monitor/installation/).
 
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/assets/lol_monitor.png" alt="lol_monitor_screenshot" width="90%"/>
@@ -56,6 +54,25 @@ lol_monitor <riot_id> <region> -r "your_riot_api_key"
 - Possibility to **control the running copy** of the script via signals
 - **Utility tools** for CSV format conversion and match history comparison
 - **Functional, procedural Python** (minimal OOP)
+
+<a id="common-commands"></a>
+## Common Commands
+
+Use [Quick Install & Run](#-quick-install-run) for first-time setup. These examples use the PyPI command. See [Command Format by Installation Method](https://misiektoja.github.io/lol_monitor/usage/#command-format) for manual-script equivalents.
+
+Replace the target placeholders with a Riot ID such as "Player#TAG" plus a region code such as euw1. Monitoring requires the [Riot API key](https://misiektoja.github.io/lol_monitor/setup-and-first-run/#riot-api-key) described in the setup guide.
+
+| I want to... | Run this |
+| --- | --- |
+| Configure the target, credentials and alerts | `lol_monitor --setup` |
+| Start monitoring with saved credentials | `lol_monitor "<riot_id>" <region>` |
+| Check setup before monitoring | `lol_monitor --doctor "<riot_id>" <region>` |
+| Enter or replace credentials through hidden prompts | `lol_monitor --set-riot-api-key` |
+| Use a specific configuration and secrets file | `lol_monitor --config-file lol_monitor.conf --env-file .env "<riot_id>" <region>` |
+| List recent matches | `lol_monitor "<riot_id>" <region> -l -n 10` |
+| List every supported command-line option | `lol_monitor --help` |
+
+Monitoring runs until you press `Ctrl+C`. For email, Discord and ntfy alerts, CSV output and service-specific commands, see [Usage](https://misiektoja.github.io/lol_monitor/usage/). If a run fails, start with [Doctor Preflight](https://misiektoja.github.io/lol_monitor/troubleshooting/#doctor-preflight).
 
 ## Documentation
 

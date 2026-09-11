@@ -1,5 +1,20 @@
 # Usage
 
+<a id="command-format"></a>
+## Command Format by Installation Method
+
+Examples use the PyPI command. For a downloaded script, run commands from the directory containing `lol_monitor.py` and keep the same arguments:
+
+| Installation | Command |
+| --- | --- |
+| PyPI or pipx | `lol_monitor [OPTIONS]` |
+| Manual script on macOS or Linux | `python3 lol_monitor.py [OPTIONS]` |
+| Manual script on Windows | `python lol_monitor.py [OPTIONS]` |
+
+For example, `lol_monitor --setup` becomes `python3 lol_monitor.py --setup` on macOS or Linux. Use `python` on Windows. Replace placeholders such as `"<riot_id>" <region>` with a Riot ID such as "Player#TAG" plus a region code such as euw1.
+
+For first-time configuration, follow [Setup & First Run](setup-and-first-run.md). Use [Doctor Preflight](troubleshooting.md#doctor-preflight) to check a setup before monitoring.
+
 ## Starting Point
 
 Run the tool with no arguments to see the commands worth starting from and to be offered the [guided setup](setup-and-first-run.md#guided-setup):

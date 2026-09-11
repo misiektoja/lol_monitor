@@ -1,5 +1,12 @@
 # Setup & First Run
 
+## Before You Start
+
+Install the tool using [Installation](installation.md). You will need a Riot ID such as "Player#TAG" plus a region code such as euw1 and the [Riot API key](#riot-api-key). The wizard collects credentials through hidden prompts.
+
+Open a terminal in the directory where you want to keep the configuration and monitoring output. Later commands should use that directory or explicitly select the same `--config-file` and `--env-file` paths. Manual installations use the [command equivalents](usage.md#command-format).
+
+<a id="setup-wizard"></a>
 ## Guided Setup
 
 The quickest way to a working configuration is to answer a few questions:
@@ -33,13 +40,15 @@ lol_monitor
 Or grab a [Riot API key](#riot-api-key) and track a player by passing their Riot ID and region:
 
 ```sh
-lol_monitor <riot_id> <region> -r "your_riot_api_key"
+lol_monitor --set-riot-api-key
+lol_monitor "<riot_id>" <region>
 ```
 
 Or if you installed [manually](installation.md#manual-installation):
 
 ```sh
-python3 lol_monitor.py <riot_id> <region> -r "your_riot_api_key"
+python3 lol_monitor.py --set-riot-api-key
+python3 lol_monitor.py "<riot_id>" <region>
 ```
 
 A Riot ID is the game name plus the tag line, written as `riot_id_name#tag`. The region is the short code from [Region Codes](#region-codes) below, not the display name.
@@ -58,7 +67,7 @@ To list every supported command-line argument, with worked examples for the comm
 lol_monitor --help
 ```
 
-Passing the key with `-r` puts it in your shell history. Once the first run works, move it into a dotenv file or an environment variable as described in [Storing Secrets](configuration.md#storing-secrets).
+The hidden prompt saves the key to a dotenv file. See [Storing Secrets](configuration.md#storing-secrets) for other supported sources.
 
 ## Riot API Key
 
@@ -100,3 +109,7 @@ Pass the short form of the region, not the display name:
 | oc1 | Oceania (OC) |
 
 A region that is not in this list is refused at startup rather than guessed at. The mapping from region to routing continent lives in the `REGION_TO_CONTINENT` setting, so a region Riot adds later can be added there without waiting for a release.
+
+## Continue with Usage
+
+Use [Usage](usage.md) for monitoring and output options or [Configuration](configuration.md) to adjust saved settings. If setup or monitoring fails, run [Doctor Preflight](troubleshooting.md#doctor-preflight) and follow the reported recovery steps.
