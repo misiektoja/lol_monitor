@@ -539,6 +539,7 @@ class ErrorAlertState:
         setattr(self, f"{channel}_retry_at", now + delay)
         print(f"* The {channel} alert is on hold for {display_time(delay)} after {failures} {'attempt' if failures == 1 else 'attempts'}, then tried again")
 
+
 # Riot names its own wait on a rate limit, but a header the tool cannot vouch for is not allowed to stall a run
 RIOT_MAX_RETRY_AFTER_SECONDS = 3600.0
 
@@ -1968,6 +1969,11 @@ def apply_color_to_text(text):
         else:
             parts.append(_colorize_line(chunk))
     return "".join(parts)
+
+
+# Colours every link in a line, for the screens printed before the output stream colouriser is installed
+def colorize_links(text):
+    return _sub_outside_color(_URL_RE, lambda mo: colorize("link", mo.group(0)), text)
 
 
 # Returns the underlying terminal behind any number of colouring stream wrappers
@@ -6153,7 +6159,7 @@ def _wizard_collect_polling_section(state, input_func=None):
 
 # Asks for the Riot API key through a hidden prompt and validates it against Riot before accepting it
 def _wizard_collect_auth_section(state, input_func=None, getpass_func=None, validator=None):
-    print(f"Create or view your Riot API key: {RIOT_API_KEY_REGISTRATION_URL}")
+    print(colorize_links(f"Create or view your Riot API key: {RIOT_API_KEY_REGISTRATION_URL}"))
     existing = doctor_value_is_set(state.config_values.get("RIOT_API_KEY"))
     if existing and not _wizard_ask_yes_no("Replace the Riot API key already configured?", default=False, input_func=input_func):
         return
@@ -6607,7 +6613,7 @@ def run_setup_wizard(initial_riot_id=None, initial_region=None, config_file=None
     if not terminal_is_interactive:
         print("The setup wizard needs an interactive terminal (TTY).")
         print("Run --setup from an interactive shell or use --generate-config and edit the files manually.")
-        print(f"Guide: {QUICK_START_GUIDE_URL}")
+        print(colorize_links(f"Guide: {QUICK_START_GUIDE_URL}"))
         return 1
 
     try:
@@ -6799,7 +6805,7 @@ def print_doctor_next_steps(riot_id=None, region=None, riot_id_saved=False, regi
     label = "After Doctor passes, start monitoring:" if doctor_exit else "Start monitoring:"
     print_labelled_command(label, render_command(command_target_arguments(riot_id, region, riot_id_saved, region_saved)))
     # No trailing blank line: the command printer already left one and the report must not end on two
-    print(f"Guide: {QUICK_START_GUIDE_URL}")
+    print(colorize_links(f"Guide: {QUICK_START_GUIDE_URL}"))
 
 
 # One startup summary setting, routed to the concise view, the verbose view or both. The log keeps the verbose view
