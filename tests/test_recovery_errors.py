@@ -362,3 +362,20 @@ def test_every_context_the_tool_uses_is_covered(lm_module):
             used.add(node.args[1].value)
 
     assert used <= set(CONTEXTS), f"contexts this file never exercises: {sorted(used - set(CONTEXTS))}"
+
+
+# Verifies a failed CSV write reports through the recovery block, since the monitoring loop carries on past it
+def test_no_csv_write_failure_prints_its_own_line(lm_module):
+    csv_writers = {"init_csv_file", "write_csv_entry"}
+    offenders = []
+    guarded = 0
+    for node in ast.walk(ast.parse(inspect.getsource(lm_module))):
+        if not isinstance(node, ast.Try) or (node.body[-1].end_lineno or node.body[0].lineno) - node.body[0].lineno > 6:
+            continue
+        if not any(isinstance(inner, ast.Call) and getattr(inner.func, "id", "") in csv_writers for statement in node.body for inner in ast.walk(statement)):
+            continue
+        guarded += 1
+        offenders.extend(f"line {statement.lineno}" for handler in node.handlers for statement in handler.body if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call) and getattr(statement.value.func, "id", "") == "print")
+
+    assert guarded >= 3, f"only {guarded} CSV writes are guarded, so this no longer covers them"
+    assert not offenders, "CSV write failures reported outside the recovery block:\n" + "\n".join(offenders)

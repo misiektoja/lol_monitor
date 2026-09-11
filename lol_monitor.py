@@ -3922,7 +3922,7 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
                 csv_lane = u_lane if (u_lane is not None and u_lane != "NONE") else "N/A"
                 write_csv_entry(csv_file_name, str(datetime.fromtimestamp(match_start_ts)), str(datetime.fromtimestamp(match_stop_ts)), display_time(int(match_duration)), gamemode, u_victory, u_kills, u_deaths, u_assists, u_champion_display, csv_level, csv_role, csv_lane, team1_str, team2_str)
             except Exception as e:
-                print(f"* Error: {e}")
+                print_recovery_error(e, context="file")
 
         if status_notification_flag:
             teams_str = teams_detailed_str if teams_detailed_str else ""

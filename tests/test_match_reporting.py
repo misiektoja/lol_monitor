@@ -449,3 +449,15 @@ def test_a_shortfall_of_displayable_matches_is_reported(lm_module, riot_api, fak
     asyncio.run(lm_module.print_match_history(PUUID, USER, "eun1", 1, 2, None))
 
     assert "Not enough displayable matches found" in capsys.readouterr().out
+
+
+# Verifies a CSV row that cannot be written carries a fix rather than a bare error line
+def test_an_unwritable_csv_row_is_reported_with_a_fix(lm_module, tmp_path, capsys):
+    unreachable = tmp_path / "missing-directory" / "matches.csv"
+
+    report_match(lm_module, match_payload(), csv_file_name=str(unreachable))
+
+    printed = capsys.readouterr().out
+    assert "* Error: Failed to write to CSV file" in printed
+    assert "To fix: Check that the directory exists and is writable, or choose another path" in printed
+    assert f"Guide: {lm_module.OUTPUT_GUIDE_URL}" in printed
