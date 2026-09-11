@@ -211,6 +211,8 @@ Windows supports too few signals for this, so it is available on Linux, Unix and
 
 [GRC](https://github.com/garabik/grc) can colour the log file.
 
+The bundled recipe follows the same colours as the live output. It also covers the other monitors in the family, so one copy in `~/.grc/` colours every tool's logs.
+
 Add this to your GRC config at `~/.grc/grc.conf`:
 
 ```
