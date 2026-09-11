@@ -47,8 +47,8 @@ def test_a_rejected_api_key_is_reported(lm_module, riot_api, capsys):
     assert asyncio.run(lm_module.get_user_puuid("misiektoja#EUNE", "eun1")) is None
 
     output = capsys.readouterr().out
-    assert "Error while converting Riot ID to PUUID" in output
-    assert "API key might not be valid anymore" in output
+    assert "Riot rejected the configured API key" in output
+    assert "developer.riotgames.com" in output
 
 
 # Verifies summoner details are reported with the level and the last profile change

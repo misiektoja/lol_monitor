@@ -171,7 +171,7 @@ def test_connectivity_check(lm_module, monkeypatch, capsys):
 
     monkeypatch.setattr(lm_module.req, "get", explode)
     assert lm_module.check_internet("https://riot.example.test", 5) is False
-    assert "No connectivity" in capsys.readouterr().out
+    assert "The connectivity endpoint could not be reached" in capsys.readouterr().out
 
 
 # Verifies an executable is found on PATH and a missing one is reported by name

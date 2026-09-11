@@ -247,8 +247,36 @@ exec(CONFIG_BLOCK, globals())
 # Default name for the optional config file
 DEFAULT_CONFIG_FILENAME = "lol_monitor.conf"
 
+# Documentation links, kept as constants so error messages, help text and the guides they point at cannot drift apart
+PROJECT_URL = "https://github.com/misiektoja/lol_monitor"
+DOCS_BASE_URL = "https://misiektoja.github.io/lol_monitor"
+QUICK_START_GUIDE_URL = f"{DOCS_BASE_URL}/setup-and-first-run/"
+CONFIG_FILE_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#configuration-file"
+INTERVALS_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#check-intervals"
+RIOT_API_KEY_GUIDE_URL = f"{DOCS_BASE_URL}/setup-and-first-run/#riot-api-key"
+REGION_GUIDE_URL = f"{DOCS_BASE_URL}/setup-and-first-run/#region-codes"
+SMTP_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#smtp-settings"
+SECRETS_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#storing-secrets"
+OUTPUT_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#output-and-files"
+USAGE_GUIDE_URL = f"{DOCS_BASE_URL}/usage/"
+RIOT_API_KEY_REGISTRATION_URL = "https://developer.riotgames.com"
+
+# The accepted forms of the two positionals, named once so every message that asks for them agrees
+RIOT_ID_FORMS = "Riot ID written as riot_id_name#tag"
+REGION_FORMS = "region code such as eun1, euw1 or na1"
+
+# One spelling per positional, so a printed command, a help example and a fix line cannot name it differently
+RIOT_ID_PLACEHOLDER = "<riot_id>"
+REGION_PLACEHOLDER = "<region>"
+
 # List of secret keys to load from env/config
 SECRET_KEYS = ("RIOT_API_KEY", "SMTP_PASSWORD")
+
+# Shortest secret replaced by plain substring search. Sanitizing runs over normal monitoring output, so a
+# short value such as a simple SMTP password would otherwise redact ordinary words like champion names.
+# Every credential this tool handles is far longer, and shorter ones stay covered by the shape patterns
+# in sanitize_error_text that match the assignment and header forms an error can actually expose.
+MIN_REDACTABLE_SECRET_LENGTH = 12
 
 LIVENESS_CHECK_COUNTER = LIVENESS_CHECK_INTERVAL / LOL_CHECK_INTERVAL
 
@@ -297,6 +325,7 @@ except ModuleNotFoundError:
     raise SystemExit("Error: Couldn't find the Pulsefire library !\n\nTo install it, run:\n    pip3 install pulsefire\n\nOnce installed, re-run this tool. For more help, visit:\nhttps://pulsefire.iann838.com/usage/basic/installation/")
 import shlex
 import shutil
+from collections import namedtuple
 from pathlib import Path
 from typing import Optional, Any, Dict, List, Mapping, Tuple, TypedDict
 
@@ -389,6 +418,182 @@ def render_command(arguments=None, include_paths=True, config_path=None, env_pat
     return " ".join(quote_command_argument(part) for part in parts)
 
 
+# Returns the secret values long enough to replace wherever they appear, skipping the shipped placeholders
+def known_secret_values():
+    return [value for value in (globals().get(key) for key in SECRET_KEYS) if isinstance(value, str) and len(value) >= MIN_REDACTABLE_SECRET_LENGTH and not value.startswith("your_")]
+
+
+# Redacts configured secrets and Riot credentials from one error-shaped value
+def sanitize_error_text(value):
+    text = str(value or "")
+    for secret in sorted(known_secret_values(), key=len, reverse=True):
+        text = text.replace(secret, "<redacted>")
+    # Anchored on the assignment, header and URL forms an error can expose, so they hold at any secret length
+    patterns = (
+        (r"(?m)(\b(?:RIOT_API_KEY|SMTP_PASSWORD)\b\s*=\s*).*$", r"\1<redacted>"),
+        (r"(?i)(['\"]?x-riot-token['\"]?\s*[:=]\s*['\"]?)[^\s,;'\"}]+", r"\1<redacted>"),
+        (r"(?i)\bRGAPI-[A-Za-z0-9-]+", "<redacted>"),
+        (r"(?i)([?&]api_key=)[^&#\s]+", r"\1<redacted>"),
+    )
+    for pattern, replacement in patterns:
+        text = re.sub(pattern, replacement, text)
+    return text
+
+
+# Every recovery category the tool can report, kept closed so a message is testable, deduplicable and translatable later
+RECOVERY_CODES = frozenset({
+    "config.missing", "config.invalid",
+    "secret.missing",
+    "auth.api_key_invalid",
+    "network.unavailable", "network.timeout",
+    "riot.rate_limited", "riot.unavailable",
+    "target.missing", "target.invalid", "target.region", "target.not_found",
+    "smtp.invalid", "smtp.authentication", "smtp.connection",
+    "file.unwritable",
+    "unknown",
+})
+
+# A namedtuple rather than a dataclass, matching the shape every sibling monitor carries advice in
+RecoveryAdvice = namedtuple("RecoveryAdvice", ["code", "summary", "fix", "retryable", "detail"])
+RecoveryAdvice.__new__.__defaults__ = ("",)
+
+
+# Carries structured recovery advice across an exception boundary without exposing technical detail
+class RecoveryError(Exception):
+    # Initializes a structured recovery exception, keeping the original cause attached for debug output
+    def __init__(self, advice, cause=None):
+        self.advice = advice
+        self.cause = cause
+        if cause is not None:
+            self.__cause__ = cause
+        super().__init__(advice.summary)
+
+
+# Builds one piece of recovery advice, refusing any code outside the closed set and sanitizing every field
+def make_recovery_advice(code, summary, fix, retryable, detail=""):
+    if code not in RECOVERY_CODES:
+        raise ValueError(f"Unsupported recovery code: {code}")
+    return RecoveryAdvice(code, sanitize_error_text(summary), sanitize_error_text(fix), bool(retryable), sanitize_error_text(detail) if detail else "")
+
+
+# Adds a directly relevant documentation link on its own line
+def recovery_fix_with_guide(fix, guide_url):
+    return f"{fix}\nGuide: {guide_url}"
+
+
+# Returns the HTTP status carried by an error, when it has one
+def recovery_http_status(error):
+    status = getattr(error, "status", None)
+    if not isinstance(status, int):
+        status = getattr(getattr(error, "response", None), "status_code", None)
+    return status if isinstance(status, int) else None
+
+
+# Maps one exception plus its HTTP status and calling context to stable recovery advice
+def classify_recovery_error(error=None, context="runtime", detail=""):
+    if isinstance(error, RecoveryError):
+        return error.advice
+    message = str(detail or error or "").lower()
+    safe_detail = sanitize_error_text(detail or error) if (detail or error) else ""
+    status = recovery_http_status(error)
+
+    # Builds one piece of advice, attaching the guide line only where a page actually covers the row
+    def advice(code, summary, fix, retryable, guide_url=None):
+        return make_recovery_advice(code, summary, recovery_fix_with_guide(fix, guide_url) if guide_url else fix, retryable, safe_detail)
+
+    if context == "config":
+        if "does not exist" in message:
+            return advice("config.missing", safe_detail or "The configuration file was not found", f"Create one with '{render_command(['--generate-config', DEFAULT_CONFIG_FILENAME], include_paths=False)}' or correct the --config-file path", False, CONFIG_FILE_GUIDE_URL)
+        return advice("config.invalid", safe_detail or "The configuration file could not be read", f"Correct the reported line, or start from a fresh template with '{render_command(['--generate-config', DEFAULT_CONFIG_FILENAME], include_paths=False)}'", False, CONFIG_FILE_GUIDE_URL)
+
+    if context == "credentials":
+        return advice("secret.missing", "No Riot API key reached the tool", f"Pass it with -r, export RIOT_API_KEY or add it to a dotenv file, then run {render_command([RIOT_ID_PLACEHOLDER, REGION_PLACEHOLDER])}", False, SECRETS_GUIDE_URL)
+
+    if context == "target.missing":
+        return advice("target.missing", safe_detail or "No player was provided", f"Pass a {RIOT_ID_FORMS} and a {REGION_FORMS}: {render_command([RIOT_ID_PLACEHOLDER, REGION_PLACEHOLDER])}", False, QUICK_START_GUIDE_URL)
+
+    if context == "target.region":
+        return advice("target.region", safe_detail or "That is not a region code this tool knows", f"Pass a {REGION_FORMS}, which is the short code and not the display name", False, REGION_GUIDE_URL)
+
+    if context == "target":
+        if status == 429 or "rate limit" in message:
+            return advice("riot.rate_limited", "Riot rate limited the player lookup", "Wait for the reported period then try again", True, INTERVALS_GUIDE_URL)
+        if "timed out" in message or "timeout" in message:
+            return advice("network.timeout", "The Riot API request timed out", "Check connectivity then try again", True)
+        if status in (401, 403) or "unauthorized" in message or "forbidden" in message:
+            return advice("auth.api_key_invalid", "Riot rejected the configured API key", f"A development key expires 24 hours after it is issued, so copy a fresh one from {RIOT_API_KEY_REGISTRATION_URL}", False, RIOT_API_KEY_GUIDE_URL)
+        if "name and tagline" in message or "name#tag" in message:
+            return advice("target.invalid", safe_detail or "That is not a complete Riot ID", f"Pass a {RIOT_ID_FORMS}, where the part after the # is the tag line and not the region", False, USAGE_GUIDE_URL)
+        return advice("target.not_found", safe_detail or "Riot has no account for that Riot ID", "Check the game name and the tag line, since a renamed account cannot be monitored", False, USAGE_GUIDE_URL)
+
+    if context == "connectivity":
+        # Classified from the error, because the detail names the endpoint rather than the failure
+        cause = str(error or "").lower()
+        if "timed out" in cause or "timeout" in cause:
+            return advice("network.timeout", "The connectivity endpoint did not answer in time", "Check network, DNS, proxy and the CHECK_INTERNET_URL setting", True)
+        return advice("network.unavailable", "The connectivity endpoint could not be reached", "Check network, DNS, proxy and the CHECK_INTERNET_URL setting", True)
+
+    if context == "email":
+        if any(term in message for term in ("authentication", "auth", "username and password", "535")):
+            return advice("smtp.authentication", "The SMTP server rejected the sign-in", "Check SMTP_USER and SMTP_PASSWORD, and use an app password if the provider requires one", False, SMTP_GUIDE_URL)
+        if any(term in message for term in ("settings are incorrect", "incomplete", "invalid")):
+            return advice("smtp.invalid", safe_detail or "The SMTP settings are incomplete or invalid", "Check SMTP_HOST, SMTP_PORT, SENDER_EMAIL and RECEIVER_EMAIL in the configuration file", False, SMTP_GUIDE_URL)
+        return advice("smtp.connection", "The SMTP server could not be reached", "Check SMTP_HOST, SMTP_PORT and SMTP_SSL, then confirm the host is reachable from this machine", True, SMTP_GUIDE_URL)
+
+    if context == "file":
+        return advice("file.unwritable", safe_detail or "A file the tool writes could not be opened", "Check that the directory exists and is writable, or choose another path", False, OUTPUT_GUIDE_URL)
+
+    # Runtime, which is the monitoring loop and every Riot API call it makes
+    if status == 429 or "rate limit" in message or "too many requests" in message:
+        return advice("riot.rate_limited", "Riot is rate limiting requests", "The tool will wait and retry. Increase the polling intervals if this repeats", True, INTERVALS_GUIDE_URL)
+    if status in (401, 403) or "forbidden" in message or "unauthorized" in message:
+        return advice("auth.api_key_invalid", "Riot rejected the configured API key", f"A development key expires 24 hours after it is issued, so copy a fresh one from {RIOT_API_KEY_REGISTRATION_URL}", False, RIOT_API_KEY_GUIDE_URL)
+    if status == 404 or "not found" in message:
+        return advice("target.not_found", "Riot has no account for the monitored Riot ID", "Check the game name and the tag line, since a renamed account cannot be monitored", False, USAGE_GUIDE_URL)
+    if (status is not None and status >= 500) or any(term in message for term in ("internal server error", "service unavailable", "bad gateway")):
+        return advice("riot.unavailable", "The Riot API is temporarily unavailable", "This is usually a Riot outage. The tool will keep retrying", True)
+    if "timed out" in message or "timeout" in message:
+        return advice("network.timeout", "The Riot API request timed out", "Check connectivity. The tool will keep retrying", True)
+    if any(term in message for term in ("connection", "name resolution", "network is unreachable", "no connectivity")):
+        return advice("network.unavailable", "Riot could not be reached", "Check connectivity, DNS and any proxy. The tool will keep retrying", True)
+    return advice("unknown", safe_detail or "The request could not be completed", "Check the technical detail below and the monitoring log for the failing request", True)
+
+
+# Renders one structured failure as the shared Error, To fix and optional Technical detail block
+def render_recovery_error(error=None, context="runtime", debug=False, detail=""):
+    advice = classify_recovery_error(error, context, detail)
+    lines = [f"* Error: {advice.summary}", f"To fix: {advice.fix}"]
+    # A detail that only repeats the summary spends a line saying nothing, which is section 15.52's rule for rows
+    if debug and advice.detail and advice.detail != advice.summary:
+        lines.append(f"Technical detail: {sanitize_error_text(advice.detail)}")
+    return "\n".join(lines)
+
+
+# Prints one structured recovery error and returns its stable advice
+def print_recovery_error(error=None, context="runtime", debug=False, detail=""):
+    advice = classify_recovery_error(error, context, detail)
+    print(render_recovery_error(RecoveryError(advice), debug=debug))
+    return advice
+
+
+# Tracks the last uninterrupted recovery category so a long outage cannot repeat the same hint every cycle
+class RecoveryHintTracker:
+    # Starts with no category, so the first failure of any kind always renders its hint
+    def __init__(self):
+        self.last_code = None
+
+    # Returns True for the first category and again only when the failure category changes
+    def should_render(self, advice):
+        if advice.code == self.last_code:
+            return False
+        self.last_code = advice.code
+        return True
+
+    # Clears suppression after a successful cycle, so a recurrence is reported again
+    def reset(self):
+        self.last_code = None
+
+
 # Reports whether separator-only log lines should use ASCII on this system
 def ascii_log_separators_enabled():
     mode = str(ASCII_LOG_SEPARATORS).strip().lower()
@@ -433,7 +638,7 @@ def check_internet(url=CHECK_INTERNET_URL, timeout=CHECK_INTERNET_TIMEOUT):
         _ = req.get(url, timeout=timeout)
         return True
     except req.RequestException as e:
-        print(f"* No connectivity, please check your network:\n\n{e}")
+        print_recovery_error(e, context="connectivity", debug=True)
         return False
 
 
@@ -605,7 +810,7 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
         smtpObj.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, email_msg.as_string())
         smtpObj.quit()
     except Exception as e:
-        print(f"Error sending email: {e}")
+        print_recovery_error(e, context="email", debug=True)
         return 1
     return 0
 
@@ -982,7 +1187,7 @@ def get_user_riot_name_tag(riotid: str):
         riotid_name = riotid.split('#', 1)[0]
         riotid_tag = riotid.split('#', 1)[1]
     except IndexError:
-        print("* Error while extracting name and tagline from Riot ID ! It needs to be in name#tag format.")
+        print_recovery_error(context="target", detail="That is not a complete Riot ID, the name and tagline could not be read")
         return "", ""
 
     return riotid_name, riotid_tag
@@ -998,9 +1203,7 @@ async def get_user_puuid(riotid: str, region: str) -> Optional[str]:
             account = await client.get_account_v1_by_riot_id(region=REGION_TO_CONTINENT.get(region, "europe"), game_name=riotid_name, tag_line=riotid_tag)
             puuid = account["puuid"]
         except Exception as e:
-            print(f"* Error while converting Riot ID to PUUID: {e}")
-            if 'Unauthorized' in str(e):
-                print("* API key might not be valid anymore!")
+            print_recovery_error(e, context="target", debug=True)
             puuid = None
 
     return puuid
@@ -1800,7 +2003,7 @@ async def print_save_recent_matches(riotid: str, region: str, matches_min: int, 
         if csv_file_name:
             init_csv_file(csv_file_name)
     except Exception as e:
-        print(f"* Error: {e}")
+        print_recovery_error(e, context="file", debug=True)
 
     puuid = await get_user_puuid(riotid, region)
     riotid_name, riotid_tag = get_user_riot_name_tag(riotid)
@@ -1914,8 +2117,7 @@ def load_config_file(config_path, namespace=None, report_errors=True):
     except Exception as exc:
         detail = f"Config file '{config_path}' failed with {type(exc).__name__}: {exc}"
     if report_errors:
-        print(f"* Error: {detail}")
-        print("* Config files are read as data. Only documented SETTING = value lines with plain literal values are accepted.")
+        print_recovery_error(context="config", detail=detail)
     return False
 
 
@@ -2028,12 +2230,13 @@ async def lol_monitor_user(riotid, region, csv_file_name):
     puuid = None
     riotid_name = ""
     started_announced = False
+    hint_tracker = RecoveryHintTracker()
 
     try:
         if csv_file_name:
             init_csv_file(csv_file_name)
     except Exception as e:
-        print(f"* Error: {e}")
+        print_recovery_error(e, context="file", debug=True)
 
     puuid = await get_user_puuid(riotid, region)
 
@@ -2271,6 +2474,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
             ingame_old = ingame
             alive_counter += 1
             email_sent = False
+            hint_tracker.reset()
 
             if LIVENESS_CHECK_COUNTER and alive_counter >= LIVENESS_CHECK_COUNTER:
                 print_cur_ts("Liveness check, timestamp:\t")
@@ -2282,15 +2486,20 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                 time.sleep(LOL_CHECK_INTERVAL)
 
         except Exception as e:
-            print(f"* Error, retrying in {display_time(LOL_CHECK_INTERVAL)}: {e}")
-            if 'Unauthorized' in str(e):
-                print("* API key might not be valid anymore!")
+            advice = classify_recovery_error(e)
+            # The detail carries the failing request, which is how one Riot failure is told from another
+            if hint_tracker.should_render(advice):
+                print(render_recovery_error(RecoveryError(advice), debug=True))
+            else:
+                print(f"* Error: {advice.summary}")
+            print(f"* Retrying in {display_time(LOL_CHECK_INTERVAL)}")
+            if advice.code == "auth.api_key_invalid":
                 if ERROR_NOTIFICATION and not email_sent:
                     m_subject = f"lol_monitor: API key error! (user: {riotid_name})"
-                    m_body = f"API key might not be valid anymore or new patch deployed: {e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                    m_body = f"{advice.summary}: {sanitize_error_text(e)}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                     m_body_html = (
                         f"<html><head></head><body>"
-                        f"API key might not be valid anymore or new patch deployed: <b>{html.escape(str(e))}</b>"
+                        f"{html.escape(advice.summary)}: <b>{html.escape(sanitize_error_text(e))}</b>"
                         f"{get_cur_ts('<br><br>Timestamp: ')}"
                         f"</body></html>"
                     )
@@ -2336,7 +2545,7 @@ def main():
 
     parser = argparse.ArgumentParser(
         prog="lol_monitor",
-        description=("Monitor a League of Legends user's playing status and send customizable email alerts [ https://github.com/misiektoja/lol_monitor/ ]"), formatter_class=argparse.RawTextHelpFormatter
+        description=(f"Monitor a League of Legends user's playing status and send customizable email alerts [ {PROJECT_URL}/ ]"), formatter_class=argparse.RawTextHelpFormatter
     )
 
     # Positional
@@ -2499,7 +2708,7 @@ def main():
     cfg_path = find_config_file(CLI_CONFIG_PATH)
 
     if not cfg_path and CLI_CONFIG_PATH:
-        print(f"* Error: Config file '{CLI_CONFIG_PATH}' does not exist")
+        print_recovery_error(context="config", detail=f"Config file '{CLI_CONFIG_PATH}' does not exist")
         sys.exit(1)
 
     if cfg_path:
@@ -2553,18 +2762,19 @@ def main():
         sys.exit(0)
 
     if not args.riot_id or not args.region:
-        print("* Error: RIOT_ID and REGION arguments are required !")
+        missing = "No Riot ID was provided" if not args.riot_id else "No region was provided"
+        print_recovery_error(context="target.missing", detail=missing)
         sys.exit(1)
 
     if not REGION_TO_CONTINENT.get(args.region):
-        print("* Error: REGION might be wrong as it is not present in 'REGION_TO_CONTINENT' dictionary")
+        print_recovery_error(context="target.region", detail=f"'{args.region}' is not present in REGION_TO_CONTINENT")
         sys.exit(1)
 
     if args.riot_api_key:
         RIOT_API_KEY = args.riot_api_key
 
     if not RIOT_API_KEY or RIOT_API_KEY == "your_riot_api_key":
-        print("* Error: RIOT_API_KEY (-r / --riot-api-key) value is empty or incorrect\n")
+        print_recovery_error(context="credentials")
         sys.exit(1)
 
     if args.check_interval:
@@ -2588,7 +2798,7 @@ def main():
             with open(CSV_FILE, 'a', newline='', buffering=1, encoding="utf-8") as _:
                 pass
         except Exception as e:
-            print(f"* Error: CSV file cannot be opened for writing: {e}")
+            print_recovery_error(e, context="file", debug=True, detail=f"CSV file '{CSV_FILE}' cannot be opened for writing")
             sys.exit(1)
 
     if args.list_recent_matches:
@@ -2615,9 +2825,7 @@ def main():
                         print("* Error: Could not determine total match count")
                     sys.exit(1)
             except Exception as e:
-                print(f"* Error: {e}")
-                if 'Unauthorized' in str(e):
-                    print("* API key might not be valid anymore!")
+                print_recovery_error(e, debug=True)
                 sys.exit(1)
         else:
             if args.recent_matches_count and args.recent_matches_count > 0:
@@ -2645,9 +2853,7 @@ def main():
         try:
             asyncio.run(print_save_recent_matches(args.riot_id, args.region, matches_min, matches_num, CSV_FILE))
         except Exception as e:
-            print(f"* Error: {e}")
-            if 'Unauthorized' in str(e):
-                print("* API key might not be valid anymore!")
+            print_recovery_error(e, debug=True)
         sys.exit(0)
 
     riotid_name, riotid_tag = get_user_riot_name_tag(args.riot_id)
@@ -2658,7 +2864,7 @@ def main():
     try:
         ascii_log_separators_enabled()
     except ValueError as e:
-        print(f"* Error: {e}")
+        print_recovery_error(RecoveryError(make_recovery_advice("config.invalid", str(e), recovery_fix_with_guide('Set ASCII_LOG_SEPARATORS to "Auto", "On" or "Off"', OUTPUT_GUIDE_URL), False)))
         sys.exit(1)
 
     if args.disable_logging is True:

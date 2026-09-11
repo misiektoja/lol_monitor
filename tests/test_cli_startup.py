@@ -116,7 +116,7 @@ def test_executable_config_content_stops_startup(lm_module, monkeypatch, capsys,
     import os
 
     assert os.environ.get("LOL_CLI_EXEC_PROBE") is None
-    assert "read as data" in capsys.readouterr().out
+    assert "Correct the reported line" in capsys.readouterr().out
 
 
 # Verifies a setting an older version wrote is ignored with a note rather than stopping startup
@@ -154,25 +154,25 @@ def test_placeholder_api_key_is_refused(lm_module, monkeypatch, capsys):
     monkeypatch.setattr(lm_module, "RIOT_API_KEY", "your_riot_api_key")
 
     assert run_main(lm_module, monkeypatch, [RIOT_ID, REGION]) == 1
-    assert "RIOT_API_KEY (-r / --riot-api-key) value is empty or incorrect" in capsys.readouterr().out
+    assert "No Riot API key reached the tool" in capsys.readouterr().out
 
 
 # Verifies a run without both a player and a region is refused with an explanation
 def test_missing_player_or_region_is_refused(lm_module, monkeypatch, capsys):
     assert run_main(lm_module, monkeypatch, [RIOT_ID]) == 1
-    assert "RIOT_ID and REGION arguments are required" in capsys.readouterr().out
+    assert "No region was provided" in capsys.readouterr().out
 
 
 # Verifies a region the tool cannot route is refused before any request is made
 def test_an_unroutable_region_is_refused(lm_module, monkeypatch, capsys):
     assert run_main(lm_module, monkeypatch, [RIOT_ID, "not-a-region"]) == 1
-    assert "REGION might be wrong" in capsys.readouterr().out
+    assert "is not present in REGION_TO_CONTINENT" in capsys.readouterr().out
 
 
 # Verifies a Riot ID without a tag line is refused, since it cannot be resolved
 def test_a_riot_id_without_a_tag_is_refused(lm_module, monkeypatch, capsys):
     assert run_main(lm_module, monkeypatch, ["misiektoja", REGION]) == 1
-    assert "name#tag format" in capsys.readouterr().out
+    assert "That is not a complete Riot ID" in capsys.readouterr().out
 
 
 # Verifies a missing internet connection stops startup, since every poll would fail anyway
@@ -195,7 +195,7 @@ def test_unwritable_csv_path_is_refused(lm_module, monkeypatch, capsys, isolated
     unreachable = isolated_working_directory / "missing-directory" / "matches.csv"
 
     assert run_main(lm_module, monkeypatch, ["-b", str(unreachable), RIOT_ID, REGION]) == 1
-    assert "CSV file cannot be opened for writing" in capsys.readouterr().out
+    assert "cannot be opened for writing" in capsys.readouterr().out
 
 
 # Verifies the CSV path reaches the monitoring loop

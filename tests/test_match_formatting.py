@@ -16,7 +16,7 @@ def test_riot_id_is_split_into_name_and_tag(lm_module, riot_id, expected):
 # Verifies a Riot ID without a tag line is refused with an explanation of the expected format
 def test_riot_id_without_a_tag_is_refused(lm_module, capsys):
     assert lm_module.get_user_riot_name_tag("misiektoja") == ("", "")
-    assert "name#tag format" in capsys.readouterr().out
+    assert "That is not a complete Riot ID" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("game_type,expected", [

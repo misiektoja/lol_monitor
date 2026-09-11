@@ -304,7 +304,10 @@ def test_an_unexpected_failure_is_retried(lm_module, riot_api, fake_clock, monke
     with pytest.raises(LoopFinished):
         asyncio.run(lm_module.lol_monitor_user(RIOT_ID, "eun1", ""))
 
-    assert capsys.readouterr().out.count("* Error, retrying in 2 minutes, 30 seconds") == 2
+    output = capsys.readouterr().out
+    assert output.count("* Retrying in 2 minutes, 30 seconds") == 2
+    # The same category twice renders its hint once, so a lasting outage does not repeat the advice every cycle
+    assert output.count("To fix:") == 1
 
 
 # Verifies a rejected API key is called out and alerted on once, since only a new key can fix it
@@ -326,6 +329,6 @@ def test_a_rejected_api_key_is_alerted_once(lm_module, riot_api, fake_clock, mon
     with pytest.raises(LoopFinished):
         asyncio.run(lm_module.lol_monitor_user(RIOT_ID, "eun1", ""))
 
-    assert "API key might not be valid anymore" in capsys.readouterr().out
+    assert "Riot rejected the configured API key" in capsys.readouterr().out
     assert len(sent_emails) == 1
     assert sent_emails[0]["subject"] == f"lol_monitor: API key error! (user: {USER})"

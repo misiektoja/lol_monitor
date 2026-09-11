@@ -129,7 +129,7 @@ def test_smtp_failures_are_reported_not_raised(lm_module, monkeypatch, capsys):
     monkeypatch.setattr(lm_module.smtplib, "SMTP", refuse)
 
     assert lm_module.send_email("subject", "body", "", True) == 1
-    assert "Error sending email" in capsys.readouterr().out
+    assert "The SMTP server could not be reached" in capsys.readouterr().out
 
 
 # Verifies the configured timeout reaches the SMTP client, so a hung relay cannot stall the poll loop
