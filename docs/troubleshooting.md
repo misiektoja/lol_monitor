@@ -77,7 +77,7 @@ Secret values are never printed by either mode. Redaction happens inside both pr
 
 ## What a Long Run Prints
 
-A run that finds nothing still says it is alive. The banner prints in any mode, with or without `--verbose`: `* Monitoring healthy for <riot_id>` naming whether the player is in a match, followed by `Liveness check, timestamp:`. It is timed rather than counted in checks, so it appears once per `LIVENESS_CHECK_INTERVAL` of quiet, measured from the last thing the run printed. A player who stays in a match for a week is reported just as often as an idle one.
+A run that finds nothing still says it is alive. The banner prints in any mode, with or without `--verbose`: `* Monitoring healthy for <riot_id>` naming whether the player is in a match, followed by `Liveness check, timestamp:`. It is timed rather than counted in checks, so it appears once per `LIVENESS_CHECK_INTERVAL` of quiet, measured from the last thing the run printed. That setting defaults to 86400 seconds, a day. Set it to 0 to switch the banner off. A player who stays in a match for a week is reported just as often as an idle one.
 
 A monitoring failure is reported as `* Error: <what failed> (retrying in <time>)`, with the `To fix:` paragraph under it the first time that category appears. Every monitor in this family prints that same line. A failure the tool can retry away, such as a Riot outage or a lost connection, is reported once the short retry has failed too, so a blip of a single check prints nothing. A failure that needs you, such as a rejected API key, is reported on the first check. With `--verbose` every first failing check is reported.
 
