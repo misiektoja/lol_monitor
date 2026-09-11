@@ -805,7 +805,7 @@ def reload_dotenv_secrets(env_path, exported_keys=None):
         value = values.get(secret)
         if secret not in protected_keys and value is not None:
             os.environ[secret] = value
-            debug_print("Secret reloaded", name=secret, source=str(env_path), value=secret_fingerprint(value, secret))
+            debug_print("Secret reload", name=secret, path=str(env_path), **secret_fields(value, secret))
 
 
 # Copies exported secrets into module globals and returns the applied names paired with whether the value changed
@@ -818,7 +818,7 @@ def load_secrets_from_environment(namespace=None):
             continue
         applied.append((secret, selected_namespace.get(secret) != value))
         selected_namespace[secret] = value
-        debug_print("Secret resolved", name=secret, source="environment", value=secret_fingerprint(value, secret))
+        debug_print("Secret resolution", name=secret, source="environment", **secret_fields(value, secret))
     return applied
 
 
@@ -923,9 +923,12 @@ def doctor_value_is_set(value):
 
 # Describes a secret in diagnostic output without revealing any part of it
 def secret_fingerprint(value, key=None):
-    if not doctor_value_is_set(value):
-        return "not set"
-    return f"set, {len(value)} chars" if key in FIXED_LENGTH_SECRET_KEYS else "set"
+    fields = secret_fields(value, key)
+    return f"{fields['value']}, {fields['chars']} chars" if fields["chars"] else fields["value"]
+
+
+# Returns the diagnostic fields describing one secret, keeping the length out of the value so a line still splits on ", "
+def secret_fields(value, key=None): return {"value": "set" if doctor_value_is_set(value) else "not set", "chars": len(str(value).strip()) if key in FIXED_LENGTH_SECRET_KEYS and doctor_value_is_set(value) else None}
 
 
 # Returns the secret values long enough to replace wherever they appear, skipping the shipped placeholders

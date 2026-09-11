@@ -177,7 +177,10 @@ def test_a_debug_run_reports_configuration_and_secret_resolution(lm_module, monk
     lm_module.load_secrets_from_environment({})
 
     output = capsys.readouterr().out
-    assert "Secret resolved: name=RIOT_API_KEY, source=environment" in output
+    assert "Secret resolution: name=RIOT_API_KEY, source=environment" in output
+    # The length belongs to its own field, so a reader can split the line on ", " and get pairs
+    trace = [line for line in output.splitlines() if "Secret resolution: " in line][0].split("Secret resolution: ", 1)[1]
+    assert dict(field.split("=", 1) for field in trace.split(", "))["value"] == "set"
     assert "RGAPI-intraces-0000-0000-0000-000000000000" not in output
 
 

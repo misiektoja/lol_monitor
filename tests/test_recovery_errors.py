@@ -290,12 +290,12 @@ def test_an_unmapped_game_type_is_sanitized(lm_module):
 
 # Verifies a fixed-length credential reports its length, which is how a truncated paste is spotted
 def test_a_fixed_length_secret_reports_its_length(lm_module):
-    assert lm_module.secret_fingerprint("RGAPI-fullsize-0000-0000-0000-000000000000", "RIOT_API_KEY") == "set, 42 chars"
+    assert lm_module.secret_fields("RGAPI-fullsize-0000-0000-0000-000000000000", "RIOT_API_KEY") == {"value": "set", "chars": 42}
 
 
 # Verifies a value the user chose reports presence only, since its length is a real disclosure
 def test_a_chosen_secret_reports_presence_only(lm_module):
-    assert lm_module.secret_fingerprint("hunter2-and-then-some", "SMTP_PASSWORD") == "set"
+    assert lm_module.secret_fields("hunter2-and-then-some", "SMTP_PASSWORD") == {"value": "set", "chars": None}
 
 
 # Verifies one predicate decides whether any setting holds a real value, so a placeholder never reads as configured
