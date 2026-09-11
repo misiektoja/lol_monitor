@@ -104,6 +104,17 @@ def test_the_environment_beats_the_dotenv_file(lm_module, monkeypatch, monitor_c
     assert lm_module.RIOT_API_KEY == EXPORTED
 
 
+# Verifies an empty export is treated as absent, so a shell-profile leftover does not blank the dotenv value
+def test_an_empty_export_does_not_shadow_the_dotenv_file(lm_module, monkeypatch, monitor_calls, isolated_startup):
+    pytest.importorskip("dotenv")
+    env_file = write_dotenv(isolated_startup)
+    monkeypatch.setenv("RIOT_API_KEY", "")
+
+    assert run_main(lm_module, monkeypatch, [RIOT_ID, REGION, "--env-file", str(env_file)]) == 0
+
+    assert lm_module.RIOT_API_KEY == FROM_FILE
+
+
 # Verifies an exported secret applies with no dotenv file at all, which is the documented export-only setup
 def test_an_exported_secret_applies_without_a_dotenv_file(lm_module, monkeypatch, monitor_calls):
     monkeypatch.setenv("RIOT_API_KEY", EXPORTED)
