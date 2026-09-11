@@ -683,6 +683,31 @@ def test_the_cap_does_not_shorten_the_tools_own_interval(lm_module):
     assert lm_module.riot_retry_after_seconds(RuntimeError("429 Too Many Requests"), beyond_the_cap) == beyond_the_cap
 
 
+# Verifies a failure the tool can retry away is alerted only once the outage has lasted the alert delay, so a
+# blip of a few checks reaches nobody while a real outage still does
+@pytest.mark.parametrize("checks,expected", [(3, 0), (4, 1)])
+def test_a_retryable_failure_is_alerted_once_the_outage_has_lasted(lm_module, riot_api, fake_clock, monkeypatch, sent_emails, capsys, checks, expected):
+    monkeypatch.setattr(lm_module, "ERROR_NOTIFICATION", True)
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 1800)
+
+    # The short retry and then two full intervals put the fourth failing check past the five minute delay
+    run_checks(lm_module, riot_api, monkeypatch, always_failing, checks)
+
+    assert len(sent_emails) == expected
+
+
+# Verifies a failure nothing here can retry away is alerted on the first check, since waiting would change nothing
+def test_a_failure_that_cannot_clear_itself_is_alerted_at_once(lm_module, riot_api, fake_clock, monkeypatch, sent_emails, capsys):
+    monkeypatch.setattr(lm_module, "ERROR_NOTIFICATION", True)
+
+    def rejected(_remaining):
+        raise RuntimeError("401 Unauthorized")
+
+    run_checks(lm_module, riot_api, monkeypatch, rejected, 1)
+
+    assert [email["subject"] for email in sent_emails] == [f"lol_monitor: API key error! (user: {USER})"]
+
+
 # Verifies any monitoring failure alerts both channels, and once per category rather than once per check
 def test_a_monitoring_failure_alerts_both_channels_once(lm_module, riot_api, fake_clock, monkeypatch, sent_emails, capsys):
     monkeypatch.setattr(lm_module, "ERROR_NOTIFICATION", True)
@@ -704,7 +729,8 @@ def test_a_changed_failure_category_earns_a_new_alert(lm_module, riot_api, fake_
     def changing(remaining):
         raise RuntimeError("500 Internal Server Error" if remaining > 4 else "401 Unauthorized")
 
-    run_checks(lm_module, riot_api, monkeypatch, changing, 8)
+    # The first category has to last past the alert delay before the second one takes over
+    run_checks(lm_module, riot_api, monkeypatch, changing, 12)
 
     assert [email["subject"] for email in sent_emails] == [f"lol_monitor: monitoring error (user: {USER})", f"lol_monitor: API key error! (user: {USER})"]
 
