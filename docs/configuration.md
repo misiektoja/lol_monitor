@@ -116,7 +116,7 @@ Alerts that name no champion, such as an error alert, are unaffected. If the dow
 
 ## Webhook Settings
 
-A delivery keeps its original destination and credentials for every retry. Reloaded settings apply to the next delivery. Discord templates must produce a JSON object. Dictionary templates and JSON strings are supported, including strings with escaped format braces. Unknown fields such as `{descripton}` and placeholders the alert cannot fill are reported with the template text that failed, before delivery. Legacy JSON strings with doubled object braces still work. Alert text is expanded once, so quotes and braces in a title remain literal text. Mentions remain disabled in every template.
+Discord templates must produce a JSON object. Dictionary templates and JSON strings are supported, including legacy strings with doubled object braces. Unsupported placeholders are reported before delivery. Alert text is kept literal and mentions are disabled. Reloaded settings apply to the next delivery.
 
 Webhooks send the same alerts as email to a Discord channel or an ntfy topic. They are switched off until you set a destination. [`--setup`](setup-and-first-run.md#guided-setup) collects the service, the destination and the alert switches together:
 
@@ -213,7 +213,7 @@ lol_monitor --set-smtp-password
 lol_monitor --set-webhook-url
 ```
 
-`--set-riot-api-key` asks Riot for a platform status, `--set-smtp-password` signs in to the mail server without sending anything and `--set-webhook-url` checks that the link is a complete private HTTPS destination. A value that fails is not written, so the file never ends up holding a credential that does not work. The file is created with owner-only permissions, an existing value is replaced only after you confirm it, and no backup copy of the replaced credential is left behind. Add `--env-file PATH` to write somewhere other than `.env` in the current directory. An exported `SMTP_PASSWORD` wins over the saved one at startup, so the command says so after saving rather than leaving you with a value the next run will not read.
+`--set-riot-api-key` checks the key with Riot. `--set-smtp-password` checks mail sign-in without sending a message. `--set-webhook-url` checks the HTTPS URL. Failed checks leave the saved value unchanged. Replacements require confirmation and the dotenv file has owner-only permissions. Use `--env-file PATH` to choose another file. An exported `SMTP_PASSWORD` overrides the saved value at startup.
 
 Set environment variables with `export` on **Linux, Unix, macOS and WSL**:
 
@@ -275,7 +275,18 @@ A forgotten `export` can shadow the dotenv file invisibly, so `--debug` names ev
 
 A secret still holding its `your_...` placeholder counts as unset and is left out, and a run with no secret anywhere says so on one line. A length appears only for the secrets whose length the provider issues, never for a password you chose.
 
-When a `--set-*` command or the setup wizard replaces a secret, it rewrites that one assignment in place and leaves every other line alone. A line you wrote as `export NAME=...` keeps its `export`, so a dotenv file you also source in a shell still exports it. A value you clear has its line removed rather than left empty.
+Secret commands update the selected value without changing other dotenv settings. Clearing a value removes its assignment.
+
+### Reloading secrets and backup contents
+
+On systems with SIGHUP, reloading applies changes from the selected dotenv file. Removing a file-owned
+assignment restores its independently configured fallback or clears the value when no fallback exists.
+A read or parsing failure keeps the last usable credentials and reports how to correct the file.
+Values exported when the process started continue to take precedence during reload.
+
+Setup keeps the saved `DOTENV_FILE` unless you choose another path with `--env-file`. When you move it, review the private settings before saving. Kept credentials are copied to the new destination and the old file stays intact. Values already in the new dotenv file take precedence unless you replace them. At startup, a nonempty exported secret overrides the dotenv file. A dotenv value, including an empty one, overrides the configuration.
+
+Setup moves retained credentials from older configuration files into the selected dotenv file unless that file already defines the same key. It leaves the original configuration in place if it cannot preserve those credentials. Setup creates a timestamped configuration backup with inline secrets removed. General `--generate-config` backups can contain inline credentials. Replaced dotenv secrets are not backed up.
 
 ## Check Intervals
 
@@ -373,16 +384,3 @@ export LOL_MONITOR_INSTALL_METHOD=pip
 ```
 
 Set `LOL_MONITOR_IN_CONTAINER=true` to have the summary say so.
-
-
-### Reloading secrets and backup contents
-
-On systems with SIGHUP, reloading applies changes from the selected dotenv file. Removing a file-owned
-assignment restores its independently configured fallback or clears the value when no fallback exists.
-A read or parsing failure keeps the last usable credentials and reports how to correct the file.
-Values exported when the process started continue to take precedence during reload.
-
-
-Setup's configuration backup blanks inline secret assignments from older configurations while retaining
-other settings and comments. General `--generate-config` backups remain exact copies and can contain
-inline credentials. The dotenv file is not backed up during secret replacement.

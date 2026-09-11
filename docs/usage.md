@@ -13,7 +13,7 @@ Examples use the PyPI command. For a downloaded script, run commands from the di
 
 For example, `lol_monitor --setup` becomes `python3 lol_monitor.py --setup` on macOS or Linux. Use `python` on Windows. Replace placeholders such as `"<riot_id>" <region>` with a Riot ID such as "Player#TAG" plus a region code such as euw1.
 
-The manual-script examples assume the current directory contains `lol_monitor.py`. Commands printed by setup, Doctor and recovery messages use the running interpreter and the full script path. Packaged installations use the running interpreter with `-m lol_monitor`.
+Activate the tool's virtual environment before running these commands. For a downloaded script, run them from the directory containing `lol_monitor.py`.
 
 For first-time configuration, follow [Setup & First Run](setup-and-first-run.md). Use [Doctor Preflight](troubleshooting.md#doctor-preflight) to check a setup before monitoring.
 
@@ -73,7 +73,7 @@ Every run opens with the settings that are actually in effect, one per line:
 
 The short view names the target, where alerts go, where output goes and each optional feature that is switched on. A feature that is off is left out, apart from TLS verification, which appears while it is **off**.
 
-`--verbose` or `--debug` replaces it with the full view, which adds every remaining setting: the region and the routing it resolves to, the mail server and the recipient, the webhook provider and whether that channel is switched on, whether delivery confirmations are on, the process id, the Python version and operating system, the install method, the four secret source rows, ASCII log separators and the state of both diagnostic modes. **The log file always keeps the full view**, whatever the terminal showed, so a log attached to a bug report carries every effective setting.
+Use `--verbose` or `--debug` for the full startup summary, including region routing, notification settings, secret sources and runtime information. The log file always keeps the full summary.
 
 Each channel's own settings are indented under it, so the mail rows and the webhook rows read as one block rather than as separate entries.
 

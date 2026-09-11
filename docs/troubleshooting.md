@@ -24,17 +24,17 @@ Before monitoring anything, `--doctor` checks whether the setup is actually read
 lol_monitor --doctor <riot_id> <region>
 ```
 
-It is **read-only**: it writes no files and says so before the first check runs. It opens with the detected install method, then groups checks into **Environment**, **Configuration**, **Authentication**, **Connectivity**, **Target** and **Notifications**. Each row is marked `[PASS]`, `[WARN]`, `[FAIL]` or `[SKIP]`. Every `[WARN]` and `[FAIL]` row carries an indented `To fix:` line under its marker, plus a `Guide:` link when a page here covers that row. A `[SKIP]` row names a check that could not run and says why.
+Doctor writes no files. It checks **Environment**, **Configuration**, **Authentication**, **Connectivity**, **Target** and **Notifications**. Results use `[PASS]`, `[WARN]`, `[FAIL]` or `[SKIP]`. Follow the `To fix:` actions and guide links for warnings and failures.
 
-The Configuration section names the configuration and dotenv files in effect and reports **which secrets came from the dotenv file and which came from the environment**, by name only. No secret value is ever printed. It reports the continent your region routes through, whether [TLS verification](configuration.md#tls-verification) is on, and warns while it is off. Settings that control timing and counts, such as the check intervals and `SMTP_PORT`, are checked for usable values and every one that fails is named in a single row.
+Configuration checks cover the selected files, secret sources, timing settings and [TLS verification](configuration.md#tls-verification). Secret values are not displayed. The report also checks region routing.
 
-It also names the **log and CSV files monitoring would write** and reports whether each one can be created. The log file name includes the part of the Riot ID before the `#`, so it is only resolved when a Riot ID is given. Without one, the row reports the base path instead.
+Doctor checks whether the log and CSV destinations are writable.
 
-Authentication asks Riot for the platform status of your region, which is the cheapest call that proves the key is accepted. The key itself is never printed. Target then looks up the account behind the Riot ID with the same key. When the key does not validate, or when no region is available to route the request, both lookups are skipped rather than reported as a second failure.
+Authentication validates the API key with Riot. The target check verifies the Riot ID in the selected region.
 
 The Notifications section **signs in to the configured SMTP server** without sending anything, then checks the webhook destination, its headers and its alert choices without contacting the service. The private webhook URL is never displayed. Each ready row lists the **alert categories** that channel would deliver.
 
-When a channel validates and you are at a terminal, doctor then offers to send **one real test message** through it, behind its own confirmation. Each channel is asked about separately, so approving the email test never sends a webhook. Declining is the default. Nothing is sent without an explicit `y`, so a scripted or containerized run stays message-free. The `Summary` line is printed after those tests finish and counts their results, so the sentence and the exit code always describe the same run.
+In an interactive terminal, Doctor offers one real test message per ready channel. Each needs separate approval and defaults to No. Noninteractive runs send no test messages.
 
 The report ends with a **Next steps** block naming the command that starts monitoring, carrying the same `--config-file` and `--env-file` this run checked. It carries the target this run used, leaves it out when the configuration file already supplies both values and otherwise shows `<riot_id> <region>` for you to replace. While a check is failing it asks for the failures first.
 
@@ -81,15 +81,15 @@ Secret values are never printed by either mode. Redaction happens inside both pr
 
 ## What a Long Run Prints
 
-A run that finds nothing still says it is alive. The banner prints in any mode, with or without `--verbose`: `* Monitoring healthy for <riot_id>` naming whether the player is in a match, followed by `Liveness check, timestamp:`. It is timed rather than counted in checks, so it appears once per `LIVENESS_CHECK_INTERVAL` of quiet, measured from the last thing the run printed. That setting defaults to 86400 seconds, a day. Set it to 0 to switch the banner off. A player who stays in a match for a week is reported just as often as an idle one.
+During quiet monitoring, `* Monitoring healthy for <riot_id>` confirms the tool is still running and reports whether the player is in a match. `LIVENESS_CHECK_INTERVAL` defaults to 86400 seconds (24 hours). Set it to `0` to disable this reminder.
 
-A monitoring failure is reported as `* Error: <what failed> (retrying in <time>)`, with the `To fix:` paragraph under it the first time that category appears. Every monitor in this family prints that same line. A failure the tool can retry away, such as a Riot outage or a lost connection, is reported once the short retry has failed too, so a blip of a single check prints nothing. A failure that needs you, such as a rejected API key, is reported on the first check. With `--verbose` every first failing check is reported.
+Temporary failures are reported after a short retry fails. Problems that need your action, such as a rejected API key, are reported immediately with a `To fix:` action. Use `--verbose` to see the first failed check.
 
-During a long outage the failure is reported in full once, then the tool stays quiet and reminds you once an hour with `* Monitoring degraded for <riot_id>`, the summary of what is still failing, when it started and how many checks have failed so far. A two-day Riot outage prints one report and one reminder per hour instead of one block per check. The reminder has its own clock and does not depend on `LIVENESS_CHECK_INTERVAL`, so it keeps coming when the banner is off. When the failure clears, `* Monitoring recovered for <riot_id>` reports how long it lasted, and the quiet period starts again from there. A failure that was never reported recovers quietly.
+Continuing outages produce a `* Monitoring degraded` reminder once an hour, even when liveness reminders are disabled. `* Monitoring recovered` marks recovery.
 
-An outage that starts failing differently is still one outage. A lost connection that reads as a timeout on one check and as an unreachable host on the next prints nothing new, and a change to another kind of failure that clears on its own, such as a rate limit after an outage, is one line, `* Monitoring failure changed for <riot_id>. <what fails now>`, rather than a second full report. A change to a failure that needs you is reported in full.
+Follow any new instructions if the failure changes.
 
-A failure worth retrying, such as a timeout or a Riot outage, gets **one short retry** before the tool falls back to waiting a full polling interval, and a fresh one becomes available after the run recovers. A **rate limit** waits for the period Riot asked for, capped so a header the tool cannot vouch for cannot stall a run, and falls back to the polling interval when Riot named none. A **rejected API key** is not retried at all, since nothing about it resolves in five seconds.
+Temporary failures get one short retry before normal polling resumes. Rate limits use Riot's requested wait, subject to a safety cap. Rejected API keys need correction.
 
 Error alerts follow the same throttling. A failure worth retrying is alerted once it has lasted **5 minutes**, so a blip of a check or two reaches nobody, while a rejected API key is alerted at once. Any monitoring failure delivers **one email and one webhook per outage**, not one per check, however the failure changes along the way. The next alert waits for a check to succeed first. Turn them off with `ERROR_NOTIFICATION = False` and the webhook error setting.
 
@@ -254,6 +254,8 @@ If the tool cannot import a dependency, install the dependencies with the same P
 If a new terminal cannot find your saved settings, return to the directory used during setup or pass both `--config-file` and `--env-file` explicitly. Run `lol_monitor --doctor "<riot_id>" <region>` to see which settings are loaded.
 
 ## Invalid saved settings and state
+
+If setup fails while saving, the configuration may already have changed. Correct the reported destination problem, rerun `--setup` with the same `--config-file` and `--env-file` paths then run `--doctor` before monitoring. The configuration backup restores non-secret settings only.
 
 Timing values must be finite and within the documented range. Normal startup checks effective timing settings before monitoring. A configuration syntax error reports its file, line number and parser message without echoing source text that may contain credentials.
 

@@ -1,13 +1,5 @@
 # Setup & First Run
 
-Printed commands use short names. Activate the tool's virtual environment before running them. For a downloaded script, run them from the script directory. Recovery commands retain selected configuration and dotenv paths.
-
-Before replacing a configuration, setup copies retained inline credentials to the selected private dotenv file when that file has no value for the same key. An existing dotenv value, including an explicit empty value, keeps precedence. If preservation fails, the original configuration stays in place. Setup backups omit inline credentials.
-
-When rebuilding an existing configuration, setup keeps its saved `DOTENV_FILE` unless you pass `--env-file PATH`. A nonempty exported secret takes precedence over the dotenv file. An explicit empty value in that file still overrides the configuration, both after saving and on the next run. Quoted dotenv keys receive the same replacement confirmation as unquoted keys.
-
-Setup replaces each file separately. If saving secrets fails after the configuration was saved, setup stops and identifies the saved configuration. Correct the destination then rerun `--setup` with the same `--config-file` and `--env-file`, review the settings and run `--doctor` before monitoring. A crash between replacements can also leave a new configuration beside the previous dotenv file. The configuration backup can recover non-secret settings. Replaced secrets are not backed up.
-
 ## Before You Start
 
 Install the tool using [Installation](installation.md). You will need a Riot ID such as "Player#TAG" plus a region code such as euw1 and the [Riot API key](#riot-api-key). The wizard collects credentials through hidden prompts.
@@ -23,19 +15,23 @@ The quickest way to a working configuration is to answer a few questions:
 lol_monitor --setup
 ```
 
-It asks for the Riot ID and region to monitor, whether to save that target in the config file, how often to check while the player is in a game and while they are not, your Riot API key, whether you want email or webhook alerts and where output goes. The output questions ask whether to write the per-target log file and whether to write a CSV file, and the CSV path is asked for only after you say yes, so answering no clears a saved one. A CSV path with no extension is saved with `.csv` added. Enter accepts the shown default and Ctrl+C cancels. **Nothing is written until you choose Save**: the answers are held until the end, where a summary shows exactly what is about to be written and lets you go back and change **one section without losing the other answers**. The summary's **File destinations** section changes where the configuration and dotenv files are written. Moving the dotenv destination reviews the private settings again. Kept file credentials are saved to the new destination when you choose Save. An existing value at that destination, including an empty value, takes precedence unless you explicitly replace it. The old file is left intact.
+The wizard asks for the Riot ID and region, whether to save the target, separate polling intervals for active and idle players, your Riot API key, alerts and output files. Press Enter to accept a default. Review or change any section before choosing **Save**. Ctrl+C cancels without saving.
 
-Answers are accepted in the formats people actually paste. The Riot ID takes the game name plus the tag line written as `riot_id_name#tag`, and the region takes the short code from [Region Codes](#region-codes) rather than the display name. Intervals take **`30s`, `2m`, `1.5h`, `1h 30m`, `1d`** or a plain number of seconds. Supported units are `s`, `m`, `h` and `d`. Once the API key step has a key Riot accepts, setup asks Riot whether that account exists, so a mistyped game name or the wrong region is caught before anything is written.
+Enter the Riot ID as `riot_id_name#tag` and use a short code from [Region Codes](#region-codes). Setup checks the account with Riot once your API key is accepted. Intervals accept seconds or durations such as `30s`, `2m`, `1.5h`, `1h 30m` and `1d`.
 
 For webhook alerts, setup asks which service receives them, then takes the Discord webhook URL or an ntfy topic. A bare ntfy.sh topic name is expanded to its full URL. For ntfy it also offers a separate access token.
 
-Every answer setup cannot use offers a way out, so one value you cannot produce right now does not cost you the answers already given. A blank answer asks whether to continue without it and names what stops working, and a rejected one offers to enter it again. Declining switches the channel that needed it off, so half a mail server or a webhook with no destination is never written. Email setup signs in to the mail server before saving, so a wrong password or an unreachable host is caught during setup instead of at the first alert. No email is sent. A refused sign-in offers the mail server questions again, and if the server was only unreachable the answers are kept so `--doctor` can check them later.
+Setup explains invalid answers and lets you retry or continue with the affected feature disabled. Email setup checks sign-in without sending a message. If the mail server is unreachable, check the saved settings later with `--doctor`.
 
-Secrets are typed at a hidden prompt and go to the dotenv file. Non-secret settings go to the config file. Both destinations are checked before the first question, so an unwritable path or a directory given by mistake is reported straight away rather than after you have answered everything. `--setup` needs somewhere to put both files, so it refuses `--config-file none` and `--env-file none`. A configuration file already in place is replaced only after you agree, and setup offers to write somewhere else instead. The replaced file is backed up first. A rebuilt file starts from the settings already in place with your answers applied over them, and a setting you left alone keeps the wording the template ships. A section you decline is cleared rather than carried over, so declining email leaves no mail server behind. A secret already in the dotenv file is never replaced without asking. The dotenv file is replaced without a backup, so the secret you replaced is not left behind in a `.bak` file. When it finishes, setup offers to run [`--doctor`](troubleshooting.md#doctor-preflight) and prints the exact commands to start monitoring. It then offers to **start monitoring right away** once that doctor run passed.
+Secrets go to `.env` and other settings go to `lol_monitor.conf`. Setup asks before replacing files or saved secrets. A rerun uses saved settings as defaults. Declining a section disables it. See [Storing Secrets](configuration.md#storing-secrets) for backup details.
+
+Use `--config-file PATH` and `--env-file PATH` or the summary's **File destinations** section to choose other files. Both paths must be writable. `--config-file none` and `--env-file none` are not supported by setup.
+
+After saving, setup offers [Doctor Preflight](troubleshooting.md#doctor-preflight) and can start monitoring once the checks pass.
 
 Setup runs before any connectivity check, so a machine with no network can still be configured. If there is no terminal to answer on, setup says so and points at `--generate-config` instead of hanging.
 
-If the config file names a target in [`RIOT_ID` and `REGION`](configuration.md#target-profile), running the tool with no arguments starts monitoring that player. With no saved target, running it **with no arguments at all** prints the commands worth starting with and offers to open the wizard. Answering that offer exits 0. With no terminal to answer on there is no offer, so the run exits 1 like the argument error it replaced.
+With [`RIOT_ID` and `REGION`](configuration.md#target-profile) saved, running without arguments starts monitoring that player. Otherwise, it shows starting commands and offers the wizard in an interactive terminal.
 
 ## Quick Start
 
