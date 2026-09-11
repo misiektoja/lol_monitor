@@ -260,7 +260,21 @@ def test_startup_banner_reports_the_effective_settings(lm_module, monkeypatch, m
     output = capsys.readouterr().out
     assert "* LoL polling intervals:\t[NOT in game: 10 minutes] [in game: 20 seconds]" in output
     assert "* Include forbidden matches:\tFalse" in output
+    assert "* TLS verification:\t\tOn" in output
     assert f"Monitoring user {RIOT_ID}" in output
+
+
+# Verifies startup applies the TLS setting before the first connection, so the summary cannot report a choice that never took effect
+def test_startup_applies_the_tls_setting(lm_module, monkeypatch, monitor_calls, capsys):
+    monkeypatch.setattr(lm_module, "VERIFY_SSL", False)
+    silenced = []
+
+    monkeypatch.setattr(lm_module.urllib3, "disable_warnings", lambda category: silenced.append(category))
+
+    assert run_main(lm_module, monkeypatch, [RIOT_ID, REGION]) == 0
+
+    assert silenced, "startup never applied the TLS setting"
+    assert "* TLS verification:\t\tOff, server certificates are not checked" in capsys.readouterr().out
 
 
 # Verifies the log file is created in the working directory and named after the monitored player

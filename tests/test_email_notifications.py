@@ -7,46 +7,6 @@ from email.header import decode_header, make_header
 import pytest
 
 
-# Stands in for smtplib.SMTP and records everything the tool asks it to do
-class FakeSMTP:
-    last = None
-
-    def __init__(self, host, port, timeout=None):
-        self.host = host
-        self.port = port
-        self.timeout = timeout
-        self.started_tls = False
-        self.login_args = None
-        self.sent = None
-        self.quit_called = False
-        FakeSMTP.last = self
-
-    # Records that the connection was upgraded to TLS
-    def starttls(self, context=None):
-        self.started_tls = True
-        self.tls_context = context
-
-    # Records the credentials the tool authenticated with
-    def login(self, user, password):
-        self.login_args = (user, password)
-
-    # Records the delivered message
-    def sendmail(self, sender, receiver, message):
-        self.sent = {"sender": sender, "receiver": receiver, "message": message}
-
-    # Records that the session was closed
-    def quit(self):
-        self.quit_called = True
-
-
-@pytest.fixture
-# Replaces the SMTP client with the recording double
-def smtp_double(monkeypatch, lm_module):
-    FakeSMTP.last = None
-    monkeypatch.setattr(lm_module.smtplib, "SMTP", FakeSMTP)
-    return FakeSMTP
-
-
 # Verifies a valid notification is delivered over TLS to the configured recipient
 def test_notification_is_delivered_over_tls(lm_module, smtp_double):
     assert lm_module.send_email("LoL user is in game now", "body text", "", True) == 0

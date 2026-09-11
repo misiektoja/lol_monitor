@@ -118,6 +118,14 @@ lol_monitor <riot_id> <region> -k 60 -c 120
 | `LIVENESS_CHECK_INTERVAL` | | Seconds between liveness messages in the output. Set to 0 to disable. Default 43200 |
 | `CHECK_INTERNET_TIMEOUT` | | Seconds allowed for the startup connectivity check. Default 5 |
 
+## TLS Verification
+
+Every outbound connection verifies the server's TLS certificate: the Riot API, the Data Dragon champion data, the startup connectivity check and email delivery. Leave it that way unless you have a reason not to.
+
+`VERIFY_SSL = False` turns verification off for all of them at once. Do this only on a network that inspects TLS with its own certificate authority, such as a corporate proxy, and only when you cannot install that authority's certificate instead. With verification off, an intercepted connection looks the same as the real service, so your Riot API key can be read in transit.
+
+The startup summary reports the state on every run, as `TLS verification: On` or `Off, server certificates are not checked`.
+
 ## Output and Files
 
 | Setting | Flag | Meaning |

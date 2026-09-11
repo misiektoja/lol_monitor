@@ -60,6 +60,17 @@ class FakeClock:
         self.now += float(seconds)
 
 
+# Stands in for the session pulsefire builds on entry, so the TLS replacement has something real to replace
+class FakeClientSession:
+    def __init__(self, connector=None):
+        self.connector = connector
+        self.closed = False
+
+    # Closes the session the way aiohttp does
+    async def close(self):
+        self.closed = True
+
+
 # Replays scripted Riot API responses and records how each endpoint was called
 class FakeRiotAPIClient:
     responses: dict = {}
@@ -67,14 +78,19 @@ class FakeRiotAPIClient:
 
     def __init__(self, default_headers=None):
         self.default_headers = default_headers or {}
+        self.session = None
         FakeRiotAPIClient.calls.append({"endpoint": "__init__", "headers": self.default_headers})
 
-    # Enters the async context the tool wraps every request in
+    # Enters the async context the tool wraps every request in, building the session pulsefire builds here
     async def __aenter__(self):
+        self.session = FakeClientSession()
         return self
 
-    # Leaves the async context without swallowing anything
+    # Leaves the async context, closing whatever session the client ended up holding
     async def __aexit__(self, exc_type, exc, traceback):
+        if self.session is not None:
+            await self.session.close()
+            self.session = None
         return False
 
     # Returns a coroutine function that replays whatever was scripted for the requested endpoint
@@ -117,6 +133,46 @@ class RiotApiDouble:
     # Returns every recorded request to one endpoint
     def requests_to(self, endpoint):
         return [call for call in FakeRiotAPIClient.calls if call["endpoint"] == endpoint]
+
+
+# Stands in for smtplib.SMTP and records everything the tool asks it to do
+class FakeSMTP:
+    last = None
+
+    def __init__(self, host, port, timeout=None):
+        self.host = host
+        self.port = port
+        self.timeout = timeout
+        self.started_tls = False
+        self.login_args = None
+        self.sent = None
+        self.quit_called = False
+        FakeSMTP.last = self
+
+    # Records that the connection was upgraded to TLS
+    def starttls(self, context=None):
+        self.started_tls = True
+        self.tls_context = context
+
+    # Records the credentials the tool authenticated with
+    def login(self, user, password):
+        self.login_args = (user, password)
+
+    # Records the delivered message
+    def sendmail(self, sender, receiver, message):
+        self.sent = {"sender": sender, "receiver": receiver, "message": message}
+
+    # Records that the session was closed
+    def quit(self):
+        self.quit_called = True
+
+
+@pytest.fixture
+# Replaces the SMTP client with the recording double
+def smtp_double(monkeypatch):
+    FakeSMTP.last = None
+    monkeypatch.setattr(lm.smtplib, "SMTP", FakeSMTP)
+    return FakeSMTP
 
 
 # Exposes the imported module to every test

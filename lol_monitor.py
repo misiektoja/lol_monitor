@@ -82,6 +82,11 @@ CHECK_INTERNET_URL = 'https://europe.api.riotgames.com/'
 # Timeout used when checking initial internet connectivity; in seconds
 CHECK_INTERNET_TIMEOUT = 5
 
+# Whether to verify TLS certificates on every outbound connection, email delivery included
+# Only set this to False on a network that intercepts TLS with its own certificate authority
+# Switching it off removes the protection against an intercepted connection
+VERIFY_SSL = True
+
 # CSV file to write all game status changes
 # Can also be set using the -b flag
 CSV_FILE = ""
@@ -232,6 +237,7 @@ INCLUDE_FORBIDDEN_MATCHES = False
 LIVENESS_CHECK_INTERVAL = 0
 CHECK_INTERNET_URL = ""
 CHECK_INTERNET_TIMEOUT = 0
+VERIFY_SSL = True
 CSV_FILE = ""
 DOTENV_FILE = ""
 LOL_LOGFILE = ""
@@ -310,6 +316,7 @@ from datetime import datetime
 from dateutil import relativedelta
 import calendar
 import requests as req
+import urllib3
 import signal
 import smtplib
 import ssl
@@ -325,6 +332,7 @@ import ipaddress
 import asyncio
 import html
 try:
+    import aiohttp
     from pulsefire.clients import RiotAPIClient
 except ModuleNotFoundError:
     raise SystemExit("Error: Couldn't find the Pulsefire library !\n\nTo install it, run:\n    pip3 install pulsefire\n\nOnce installed, re-run this tool. For more help, visit:\nhttps://pulsefire.iann838.com/usage/basic/installation/")
@@ -332,7 +340,7 @@ import shlex
 import shutil
 import tempfile
 import unicodedata
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from collections import namedtuple
 from pathlib import Path
 from typing import Optional, Any, Dict, List, Mapping, Tuple, TypedDict
@@ -733,6 +741,37 @@ def write_generated_config(output_file, content, force=False, interactive=None, 
     return write_config_file(destination, content)["backup_path"], True
 
 
+# Silences the repeated certificate warning once verification is off, so the choice is reported by the startup summary instead of on every request
+def apply_tls_verification_setting():
+    if not VERIFY_SSL:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+
+# Returns the TLS context every outbound connection uses, unverified while VERIFY_SSL is off
+def tls_context():
+    context = ssl.create_default_context()
+    if not VERIFY_SSL:
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+    return context
+
+
+# Yields a Riot API client whose session honors the configured TLS verification setting
+@asynccontextmanager
+async def riot_api_client():
+    async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+        if not VERIFY_SSL:
+            # pulsefire builds its own session on entry, so an unverified connector can only be applied by replacing it
+            entered_session = getattr(client, "session", None)
+            if entered_session is None:
+                # A release that moves the session should still run, verifying, rather than fail on a missing attribute
+                print("* Warning: TLS verification stays on for the Riot API session, which this pulsefire release does not expose")
+            else:
+                client.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=tls_context()))
+                await entered_session.close()
+        yield client
+
+
 # Reports whether separator-only log lines should use ASCII on this system
 def ascii_log_separators_enabled():
     mode = str(ASCII_LOG_SEPARATORS).strip().lower()
@@ -774,7 +813,7 @@ def signal_handler(sig, frame):
 # Checks internet connectivity
 def check_internet(url=CHECK_INTERNET_URL, timeout=CHECK_INTERNET_TIMEOUT):
     try:
-        _ = req.get(url, timeout=timeout)
+        _ = req.get(url, timeout=timeout, verify=VERIFY_SSL)
         return True
     except req.RequestException as e:
         print_recovery_error(e, context="connectivity", debug=True)
@@ -925,7 +964,7 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
 
     try:
         if use_ssl:
-            ssl_context = ssl.create_default_context()
+            ssl_context = tls_context()
             smtpObj = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=smtp_timeout)
             smtpObj.starttls(context=ssl_context)
         else:
@@ -1344,7 +1383,7 @@ async def get_user_puuid(riotid: str, region: str) -> Optional[str]:
 
     riotid_name, riotid_tag = get_user_riot_name_tag(riotid)
 
-    async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+    async with riot_api_client() as client:
         try:
             account = await client.get_account_v1_by_riot_id(region=REGION_TO_CONTINENT.get(region, "europe"), game_name=riotid_name, tag_line=riotid_tag)
             puuid = account["puuid"]
@@ -1363,7 +1402,7 @@ async def get_summoner_details(puuid: str, region: str):
         "revision_date": "N/A"
     }
 
-    async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+    async with riot_api_client() as client:
         try:
             summoner = await client.get_lol_summoner_v4_by_puuid(region=region, puuid=puuid)
 
@@ -1391,7 +1430,7 @@ async def get_ranked_info(puuid: str, region: str) -> RankedInfo:
     if not puuid or puuid == "N/A":
         return ranked_info
 
-    async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+    async with riot_api_client() as client:
         try:
             league_entries = await client.get_lol_league_v4_entries_by_puuid(region=region, puuid=puuid)
 
@@ -1441,14 +1480,14 @@ def get_champion_name(champion_id: int) -> Optional[str]:
         _champion_id_to_name_cache = {}
         try:
             # Get latest Data Dragon version
-            versions_response = req.get("https://ddragon.leagueoflegends.com/api/versions.json", timeout=5)
+            versions_response = req.get("https://ddragon.leagueoflegends.com/api/versions.json", timeout=5, verify=VERIFY_SSL)
             if versions_response.status_code == 200:
                 versions = versions_response.json()
                 latest_version = versions[0]
 
                 # Get champion data
                 champions_url = f"https://ddragon.leagueoflegends.com/cdn/{latest_version}/data/en_US/champion.json"
-                champions_response = req.get(champions_url, timeout=5)
+                champions_response = req.get(champions_url, timeout=5, verify=VERIFY_SSL)
                 if champions_response.status_code == 200:
                     champions_data = champions_response.json().get("data", {})
                     for champion_name, champion_info in champions_data.items():
@@ -1483,7 +1522,7 @@ async def get_champion_mastery(puuid: str, region: str, top_n: int = 3):
     if not puuid or puuid == "N/A":
         return mastery_info
 
-    async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+    async with riot_api_client() as client:
         try:
             champion_masteries = await client.get_lol_champion_v4_top_masteries_by_puuid(region=region, puuid=puuid)
 
@@ -1516,7 +1555,7 @@ async def get_champion_mastery(puuid: str, region: str, top_n: int = 3):
 # Checks if the player is currently in game
 async def is_user_in_match(puuid: str, region: str):
 
-    async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+    async with riot_api_client() as client:
 
         try:
             current_match = await client.get_lol_spectator_v5_active_game_by_summoner(region=region, puuid=puuid)
@@ -1529,7 +1568,7 @@ async def is_user_in_match(puuid: str, region: str):
 # Prints details of the current player's match (user is in game)
 async def print_current_match(puuid: str, riotid_name: str, region: str, last_match_start_ts: int, last_match_stop_ts: int, status_notification_flag: bool):
 
-    async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+    async with riot_api_client() as client:
 
         try:
             current_match = await client.get_lol_spectator_v5_active_game_by_summoner(region=region, puuid=puuid)
@@ -1730,7 +1769,7 @@ async def get_latest_match_ids(puuid: str, region: str, count: int = 10, start: 
     all_matches = []
 
     try:
-        async with RiotAPIClient(default_headers={'X-Riot-Token': RIOT_API_KEY}) as client:
+        async with riot_api_client() as client:
             # If count <= 100, make a single request
             if count <= MAX_MATCHES_PER_REQUEST:
                 matches = await client.get_lol_match_v5_match_ids_by_puuid(
@@ -1782,7 +1821,7 @@ async def get_total_match_count(puuid: str, region: str) -> int:
     start = 0
 
     try:
-        async with RiotAPIClient(default_headers={'X-Riot-Token': RIOT_API_KEY}) as client:
+        async with riot_api_client() as client:
             while True:
                 matches = await client.get_lol_match_v5_match_ids_by_puuid(
                     region=REGION_TO_CONTINENT.get(region, 'europe'),
@@ -1815,7 +1854,7 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
     if cached_match_data:
         match = cached_match_data
     else:
-        async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+        async with riot_api_client() as client:
             try:
                 match = await client.get_lol_match_v5_match(region=REGION_TO_CONTINENT.get(region, 'europe'), id=match_id)
             except Exception as e:
@@ -2090,7 +2129,7 @@ async def print_match_history(puuid: str, riotid_name: str, region: str, matches
     processed_count = 0
     accessible_match_ids = []
 
-    async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+    async with riot_api_client() as client:
         # Process in batches
         for batch_start in range(0, len(all_fetched_ids), BATCH_SIZE):
             batch_end = min(batch_start + BATCH_SIZE, len(all_fetched_ids))
@@ -2281,7 +2320,7 @@ def resolve_executable(path):
 
 # Returns a compact snapshot of the current live match with mode, start_ts, and participants
 async def get_current_match_details(puuid: str, region: str) -> dict:
-    async with RiotAPIClient(default_headers={"X-Riot-Token": RIOT_API_KEY}) as client:
+    async with riot_api_client() as client:
         try:
             current_match = await client.get_lol_spectator_v5_active_game_by_summoner(region=region, puuid=puuid)
         except Exception:
@@ -2914,6 +2953,8 @@ def main():
             if val is not None:
                 globals()[secret] = val
 
+    apply_tls_verification_setting()
+
     if not check_internet():
         sys.exit(1)
 
@@ -3065,6 +3106,7 @@ def main():
     print(f"* CSV logging enabled:\t\t{bool(CSV_FILE)}" + (f" ({CSV_FILE})" if CSV_FILE else ""))
     print(f"* Output logging enabled:\t{not DISABLE_LOGGING}" + (f" ({FINAL_LOG_PATH})" if not DISABLE_LOGGING else ""))
     print(f"* ASCII log separators:\t\t{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})")
+    print(f"* TLS verification:\t\t{'On' if VERIFY_SSL else 'Off, server certificates are not checked'}")
     print(f"* Configuration file:\t\t{cfg_path}")
     print(f"* Dotenv file:\t\t\t{env_path or 'None'}")
     print(f"* Install method:\t\t{install_method_display_name()}\n")

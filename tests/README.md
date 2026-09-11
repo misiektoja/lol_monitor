@@ -54,6 +54,7 @@ and again before anything is published to PyPI.
 | `test_repository_metadata.py` | Governance files, citation, funding, line endings, the declared editor style, the pinned linter and release integrity |
 | `test_riot_api_client.py` | The Riot API wrappers, pagination, champion name lookup and rejected API keys |
 | `test_runtime_controls.py` | Signal-driven toggles, interval changes, secret reload and the log output filter |
+| `test_tls_verification.py` | The TLS verification switch reaching connectivity, Data Dragon, email and the Riot API client |
 | `test_time_formatting.py` | Durations, timespans and timestamp formats |
 
 ## Conventions

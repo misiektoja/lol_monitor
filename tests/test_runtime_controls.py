@@ -182,11 +182,11 @@ def test_logger_expands_tabs_in_the_log_file(lm_module, tmp_path):
 
 # Verifies a reachable endpoint reports connectivity and an unreachable one reports the failure
 def test_connectivity_check(lm_module, monkeypatch, capsys):
-    monkeypatch.setattr(lm_module.req, "get", lambda url, timeout=None: object())
+    monkeypatch.setattr(lm_module.req, "get", lambda url, timeout=None, verify=True: object())
     assert lm_module.check_internet("https://riot.example.test", 5) is True
 
     # Refuses the request the way an offline host would
-    def explode(url, timeout=None):
+    def explode(url, timeout=None, verify=True):
         raise lm_module.req.RequestException("network unreachable")
 
     monkeypatch.setattr(lm_module.req, "get", explode)

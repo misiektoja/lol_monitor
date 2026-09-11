@@ -70,6 +70,10 @@ Install it with `pip install python-dotenv`, or supply the secrets through envir
 
 The startup check could not reach `CHECK_INTERNET_URL`, which defaults to a Riot endpoint. A proxy that needs configuring, DNS that is not resolving or a firewall will all produce this. The setting can be pointed at another URL if that endpoint is blocked in your network.
 
+### `certificate verify failed`
+
+The certificate the server presented could not be traced to a trusted authority. On a corporate network this usually means a proxy is inspecting TLS with its own certificate authority, and the fix is to install that authority's certificate on this machine. `VERIFY_SSL = False` switches the check off everywhere as a last resort, with the cost described under [TLS Verification](configuration.md#tls-verification).
+
 ### `CSV file '<path>' cannot be opened for writing`
 
 The path in `CSV_FILE` or `-b` is not writable. The tool checks this at startup rather than at the first match, so the run stops before it has anything to lose.

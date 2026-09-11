@@ -262,7 +262,7 @@ def test_champion_names_are_fetched_once_and_cached(lm_module, monkeypatch):
     requested = []
 
     # Serves the version list and then the champion list
-    def fake_get(url, timeout=None):
+    def fake_get(url, timeout=None, verify=True):
         requested.append(url)
         if url.endswith("versions.json"):
             return FakeResponse(["15.19.1"])
@@ -282,7 +282,7 @@ def test_unreachable_champion_data_leaves_the_champion_unnamed(lm_module, monkey
     monkeypatch.setattr(lm_module, "_champion_id_to_name_cache", None)
 
     # Refuses the request the way an offline host would
-    def explode(url, timeout=None):
+    def explode(url, timeout=None, verify=True):
         raise RuntimeError("ddragon unreachable")
 
     monkeypatch.setattr(lm_module.req, "get", explode)
