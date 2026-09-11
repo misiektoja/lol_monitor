@@ -1549,8 +1549,8 @@ _DATE_RANGE_RE = re.compile(r"\b\w{3}\s+\d{1,2}\s+\w{3}(?:\s+\d{2,4})?[\s,]*\d{2
 _URL_RE = re.compile(r"(https?://[^\s\]]+?)(?=[.,;:!?'\")>]*(?:[\s\]]|$))")
 _BOOLEAN_TRUE_RE = re.compile(r"\bTrue\b|\bEnabled\b")
 _BOOLEAN_FALSE_RE = re.compile(r"\bFalse\b|\bDisabled\b")
-# The one startup row whose value is a word rather than a boolean, and the only setting whose off state
-# weakens a security property, so it is worth the reader noticing without asking for the full summary
+# The TLS row reports a word rather than a boolean, and its off state is the one setting that weakens
+# a security property, so the state word is coloured like a boolean
 _TLS_STATE_RE = re.compile(r"^(\* TLS verification:\s+)(On|Off)(.*)$")
 _NOTIFICATION_SUMMARY_STATE_RE = re.compile(r"^(\* Notifications \((?:email|webhook)\):\s+)(On|Off)(.*)$")
 # The two events this tool exists to report
