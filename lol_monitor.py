@@ -2482,7 +2482,7 @@ def main():
         RIOT_API_KEY = args.riot_api_key
 
     if not RIOT_API_KEY or RIOT_API_KEY == "your_riot_api_key":
-        print("* Error: RIOT_API_KEY (-r / --riot_api_key) value is empty or incorrect\n")
+        print("* Error: RIOT_API_KEY (-r / --riot-api-key) value is empty or incorrect\n")
         sys.exit(1)
 
     if args.check_interval:

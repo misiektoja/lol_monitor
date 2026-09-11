@@ -154,7 +154,7 @@ def test_placeholder_api_key_is_refused(lm_module, monkeypatch, capsys):
     monkeypatch.setattr(lm_module, "RIOT_API_KEY", "your_riot_api_key")
 
     assert run_main(lm_module, monkeypatch, [RIOT_ID, REGION]) == 1
-    assert "RIOT_API_KEY (-r / --riot_api_key) value is empty or incorrect" in capsys.readouterr().out
+    assert "RIOT_API_KEY (-r / --riot-api-key) value is empty or incorrect" in capsys.readouterr().out
 
 
 # Verifies a run without both a player and a region is refused with an explanation
