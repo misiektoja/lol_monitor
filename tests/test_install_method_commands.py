@@ -14,6 +14,7 @@ def isolated_install_detection(monkeypatch, lm_module):
     monkeypatch.delenv(lm_module.INSTALL_METHOD_ENV_VAR, raising=False)
     monkeypatch.delenv("LOL_MONITOR_IN_CONTAINER", raising=False)
     monkeypatch.setattr(lm_module, "CLI_CONFIG_PATH", None)
+    monkeypatch.setattr(lm_module, "CONFIG_DISCOVERY_DISABLED", False)
     monkeypatch.setattr(lm_module, "DOTENV_FILE", "")
     monkeypatch.setattr(lm_module.platform, "system", lambda: "Linux")
 
@@ -78,6 +79,14 @@ def test_active_paths_are_carried_into_printed_commands(lm_module, monkeypatch):
     rendered = lm_module.render_command([RIOT_ID, REGION])
 
     assert rendered == f"lol_monitor '{RIOT_ID}' {REGION} --config-file '/home/user/my tool.conf' --env-file /home/user/secrets.env"
+
+
+# Verifies a run with discovery switched off prints commands that switch it off too, so the suggestion reads the setup this run read
+def test_disabled_discovery_is_carried_into_printed_commands(lm_module, monkeypatch):
+    monkeypatch.setattr("sys.argv", ["/usr/local/bin/lol_monitor"])
+    monkeypatch.setattr(lm_module, "CONFIG_DISCOVERY_DISABLED", True)
+
+    assert lm_module.render_command([RIOT_ID, REGION]) == f"lol_monitor '{RIOT_ID}' {REGION} --config-file none"
 
 
 # Verifies a command that must stay path-free does not inherit the paths this run was given

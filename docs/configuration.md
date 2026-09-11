@@ -35,6 +35,14 @@ By default the tool looks for `lol_monitor.conf` in the current directory, then 
 lol_monitor <riot_id> <region> --config-file /path/lol_monitor_new.conf
 ```
 
+Disable the search entirely with `--config-file none`, so only the command line and the environment are read:
+
+```sh
+lol_monitor <riot_id> <region> --config-file none
+```
+
+This is worth doing in a container or a scheduled job, where a `lol_monitor.conf` left in the working directory would otherwise be picked up without anyone asking for it. The startup summary reports `Discovery disabled` when it is in effect.
+
 ## Target Profile
 
 The Riot ID and the region are positional arguments. Both are required to start monitoring:

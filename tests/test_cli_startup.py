@@ -18,6 +18,7 @@ def isolated_working_directory(tmp_path, monkeypatch):
 def isolated_startup(monkeypatch, lm_module):
     monkeypatch.setattr(lm_module, "DEFAULT_CONFIG_FILENAME", "lol_monitor_test_only.conf")
     monkeypatch.setattr(lm_module, "CLI_CONFIG_PATH", None)
+    monkeypatch.setattr(lm_module, "CONFIG_DISCOVERY_DISABLED", False)
     monkeypatch.setattr(lm_module, "DOTENV_FILE", "none")
     monkeypatch.setattr(lm_module, "check_internet", lambda *args, **kwargs: True)
 
@@ -378,6 +379,38 @@ def test_listing_reports_where_matches_are_saved(lm_module, monkeypatch, listing
 
     assert f"* Listing & saving recent matches from 1 to 2 for '{RIOT_ID}' to '{history}'" in capsys.readouterr().out
     assert listing_calls[0]["csv_file_name"] == str(history)
+
+
+# Verifies both file flags advertise the sentinel, since a switch nobody is told about is one nobody uses
+@pytest.mark.parametrize("flag", ["--config-file", "--env-file"])
+def test_both_file_flags_advertise_the_none_sentinel(lm_module, monkeypatch, capsys, flag):
+    assert run_main(lm_module, monkeypatch, ["--help"]) == 0
+
+    segments = (" " + " ".join(capsys.readouterr().out.split())).split(" --")
+    described = [segment for segment in segments if segment.startswith(f"{flag.lstrip('-')} PATH")]
+
+    assert described, f"{flag} is missing from the help output"
+    assert "disable with 'none'" in described[0]
+
+
+# Verifies 'none' switches the search off instead of naming a file, so a run cannot pick up a config left in the working directory
+@pytest.mark.parametrize("sentinel", ["none", "NONE"])
+def test_config_discovery_can_be_disabled(lm_module, monkeypatch, monitor_calls, isolated_working_directory, capsys, sentinel):
+    config = isolated_working_directory / "lol_monitor_test_only.conf"
+    config.write_text("LOL_CHECK_INTERVAL = 900\n", encoding="utf-8")
+
+    assert run_main(lm_module, monkeypatch, ["--config-file", sentinel, RIOT_ID, REGION]) == 0
+
+    assert lm_module.LOL_CHECK_INTERVAL == 150
+    assert lm_module.CONFIG_DISCOVERY_DISABLED is True
+    assert "* Configuration file:\t\tDiscovery disabled" in capsys.readouterr().out
+
+
+# Verifies switching the search off is not read as a missing file, since 'none' is an answer rather than a path
+def test_disabled_discovery_is_not_a_missing_file(lm_module, monkeypatch, monitor_calls, capsys):
+    assert run_main(lm_module, monkeypatch, ["--config-file", "none", RIOT_ID, REGION]) == 0
+
+    assert "does not exist" not in capsys.readouterr().out
 
 
 # Verifies an optional config file in the working directory is picked up without a flag

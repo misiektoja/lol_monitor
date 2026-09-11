@@ -296,6 +296,9 @@ csvfieldnames = ['Match Start', 'Match Stop', 'Duration', 'Game Mode', 'Victory'
 
 CLI_CONFIG_PATH = None
 
+# Set when --config-file is given the literal string "none", which switches off the search rather than naming a file
+CONFIG_DISCOVERY_DISABLED = False
+
 # to solve the issue: 'SyntaxError: f-string expression part cannot include a backslash'
 nl_ch = "\n"
 
@@ -423,7 +426,8 @@ def render_command(arguments=None, include_paths=True, config_path=None, env_pat
     parts = list(install_command_prefix())
     parts.extend(str(argument) for argument in (arguments or []))
     # An explicitly passed path is always rendered, while include_paths only governs falling back to the active ones
-    selected_config = config_path if config_path is not None else (CLI_CONFIG_PATH if include_paths else None)
+    active_config = CLI_CONFIG_PATH or ("none" if CONFIG_DISCOVERY_DISABLED else None)
+    selected_config = config_path if config_path is not None else (active_config if include_paths else None)
     selected_env = env_path if env_path is not None else (DOTENV_FILE if include_paths else None)
     if selected_config:
         parts.extend(["--config-file", str(selected_config)])
@@ -2698,7 +2702,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
 
 
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT, INCLUDE_FORBIDDEN_MATCHES
+    global CLI_CONFIG_PATH, CONFIG_DISCOVERY_DISABLED, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT, INCLUDE_FORBIDDEN_MATCHES
 
     if "--generate-config" in sys.argv:
         config_content = CONFIG_BLOCK.strip("\n") + "\n"
@@ -2774,7 +2778,7 @@ def main():
         "--config-file",
         dest="config_file",
         metavar="PATH",
-        help="Location of the optional config file",
+        help="Location of the optional config file (auto-search if not set, disable with 'none')",
     )
     conf.add_argument(
         "--generate-config",
@@ -2905,10 +2909,13 @@ def main():
         parser.print_help(sys.stderr)
         sys.exit(1)
 
-    if args.config_file:
+    CONFIG_DISCOVERY_DISABLED = args.config_file is not None and str(args.config_file).casefold() == "none"
+    if CONFIG_DISCOVERY_DISABLED:
+        CLI_CONFIG_PATH = None
+    elif args.config_file:
         CLI_CONFIG_PATH = os.path.expanduser(args.config_file)
 
-    cfg_path = find_config_file(CLI_CONFIG_PATH)
+    cfg_path = None if CONFIG_DISCOVERY_DISABLED else find_config_file(CLI_CONFIG_PATH)
 
     if not cfg_path and CLI_CONFIG_PATH:
         print_recovery_error(context="config", detail=f"Config file '{CLI_CONFIG_PATH}' does not exist")
@@ -3107,7 +3114,7 @@ def main():
     print(f"* Output logging enabled:\t{not DISABLE_LOGGING}" + (f" ({FINAL_LOG_PATH})" if not DISABLE_LOGGING else ""))
     print(f"* ASCII log separators:\t\t{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})")
     print(f"* TLS verification:\t\t{'On' if VERIFY_SSL else 'Off, server certificates are not checked'}")
-    print(f"* Configuration file:\t\t{cfg_path}")
+    print(f"* Configuration file:\t\t{cfg_path or ('Discovery disabled' if CONFIG_DISCOVERY_DISABLED else 'None')}")
     print(f"* Dotenv file:\t\t\t{env_path or 'None'}")
     print(f"* Install method:\t\t{install_method_display_name()}\n")
 
