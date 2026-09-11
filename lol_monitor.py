@@ -4871,7 +4871,6 @@ async def lol_monitor_user(riotid, region, csv_file_name):
     # A blip is confirmed by the short retry before it is printed, since one lost request is not an outage
     outage = OutageReporter(confirm_checks=1 if VERBOSE_MODE else 2)
     transient_retry_used = False
-    error_delivery_code = None
     last_match_start_ts = 0
     last_match_stop_ts = 0
     puuid = None
@@ -5120,7 +5119,6 @@ async def lol_monitor_user(riotid, region, csv_file_name):
 
             ingame_old = ingame
             error_alert.reset()
-            error_delivery_code = None
             transient_retry_used = False
 
             outage_lasted = outage.recovered()
@@ -5143,11 +5141,6 @@ async def lol_monitor_user(riotid, region, csv_file_name):
             sleep_interval = LOL_ACTIVE_CHECK_INTERVAL if ingame else LOL_CHECK_INTERVAL
             advice = classify_recovery_error(e)
             debug_print("Completed check", check=f"#{check_count}", user=riotid, outcome="failed", code=advice.code, error=f"{type(e).__name__}: {e}")
-            # A failure that changes family is a different failure, so each channel earns a new alert for it, while an
-            # internet outage that flaps between a timeout and an unreachable host stays one failure
-            if outage_family(advice.code) != outage_family(error_delivery_code):
-                error_alert.reset()
-                error_delivery_code = advice.code
             # A failure that has not changed is left to the liveness cadence rather than repeated every check
             outage_outcome = outage.failed(advice)
             delivery_reported = False

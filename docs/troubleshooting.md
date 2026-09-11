@@ -87,7 +87,7 @@ An outage that starts failing differently is still one outage. A lost connection
 
 A failure worth retrying, such as a timeout or a Riot outage, gets **one short retry** before the tool falls back to waiting a full polling interval, and a fresh one becomes available after the run recovers. A **rate limit** waits for the period Riot asked for, capped so a header the tool cannot vouch for cannot stall a run, and falls back to the polling interval when Riot named none. A **rejected API key** is not retried at all, since nothing about it resolves in five seconds.
 
-Error alerts follow the same throttling. A failure worth retrying is alerted once it has lasted **5 minutes**, so a blip of a check or two reaches nobody, while a rejected API key is alerted at once. Any monitoring failure delivers **one email and one webhook per failure category**, not one per check, and a failure that changes category earns each channel a new alert. A lost connection that flaps between a timeout and an unreachable host is one category. Turn them off with `ERROR_NOTIFICATION = False` and the webhook error setting.
+Error alerts follow the same throttling. A failure worth retrying is alerted once it has lasted **5 minutes**, so a blip of a check or two reaches nobody, while a rejected API key is alerted at once. Any monitoring failure delivers **one email and one webhook per outage**, not one per check, however the failure changes along the way. The next alert waits for a check to succeed first. Turn them off with `ERROR_NOTIFICATION = False` and the webhook error setting.
 
 ## When Something Goes Wrong
 

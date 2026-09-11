@@ -738,8 +738,8 @@ def test_the_guide_link_keeps_its_own_line_in_the_html_body(lm_module, riot_api,
     assert "\n" not in parts[fix_index]
 
 
-# Verifies a failure that changes category earns each channel a new alert, since it is a different failure
-def test_a_changed_failure_category_earns_a_new_alert(lm_module, riot_api, fake_clock, monkeypatch, sent_emails, capsys):
+# Verifies one outage earns one alert per channel, however the failure changes, until a check succeeds again
+def test_a_changed_failure_category_does_not_earn_a_second_alert(lm_module, riot_api, fake_clock, monkeypatch, sent_emails, capsys):
     monkeypatch.setattr(lm_module, "ERROR_NOTIFICATION", True)
     monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 1800)
 
@@ -749,7 +749,7 @@ def test_a_changed_failure_category_earns_a_new_alert(lm_module, riot_api, fake_
     # The first category has to last past the alert delay before the second one takes over
     run_checks(lm_module, riot_api, monkeypatch, changing, 12)
 
-    assert [email["subject"] for email in sent_emails] == [f"lol_monitor: monitoring error (user: {USER})", f"lol_monitor: API key error! (user: {USER})"]
+    assert [email["subject"] for email in sent_emails] == [f"lol_monitor: monitoring error (user: {USER})"]
 
 
 # Verifies each channel is tracked on its own, so a channel that failed is retried on the next check while
