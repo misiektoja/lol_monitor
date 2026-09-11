@@ -1,9 +1,29 @@
 """Tests for the parts of the interface shared with the sibling monitors, pinned here because their sources are not available to CI."""
 
+import pytest
+
 import lol_monitor as monitor
 
 RIOT_ID = "misiektoja#EUNE"
 REGION = "eun1"
+
+
+@pytest.fixture
+# Replaces the monitoring loop with a recorder so main() returns after startup
+def monitor_calls(monkeypatch, lm_module, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(lm_module, "CLI_CONFIG_PATH", None)
+    monkeypatch.setattr(lm_module, "DEFAULT_CONFIG_FILENAME", "lol_monitor_test_only.conf")
+    monkeypatch.setattr(lm_module, "DOTENV_FILE", "none")
+    monkeypatch.setattr(lm_module, "check_internet", lambda *args, **kwargs: True)
+    recorded = []
+
+    # Records the arguments the monitoring loop was started with
+    async def fake_monitor(riotid, region, csv_file_name):
+        recorded.append(riotid)
+
+    monkeypatch.setattr(lm_module, "lol_monitor_user", fake_monitor)
+    return recorded
 
 
 # Returns the leftmost column holding a glyph anywhere in a block of banner rows
@@ -98,3 +118,72 @@ class TestTheStartupBanner:
         output = capsys.readouterr().out
         assert self.BOX_TOP not in output
         assert output.strip().endswith(lm_module.VERSION)
+
+
+# The screen clear: which commands are allowed to wipe the terminal, and which have to leave what they printed on it
+class TestTheScreenClear:
+    # Verifies a command whose output is read rather than watched keeps the screen it was run from
+    @pytest.mark.parametrize("flag", ["--doctor", "--send-test-email", "--list-recent-matches", "-l", "--help", "-h"])
+    def test_a_one_shot_command_keeps_the_terminal_history(self, lm_module, monkeypatch, flag):
+        monkeypatch.setattr(lm_module.sys, "argv", ["lol_monitor", flag])
+
+        assert lm_module.keep_terminal_history() is True
+
+    # Verifies an ordinary monitoring run is still allowed to clear, since it repaints the screen as it goes
+    def test_a_monitoring_run_does_not_keep_the_terminal_history(self, lm_module, monkeypatch):
+        monkeypatch.setattr(lm_module.sys, "argv", ["lol_monitor", RIOT_ID, REGION])
+
+        assert lm_module.keep_terminal_history() is False
+
+    # Verifies a redirected run never clears, since there is no screen and the clear command reports its own missing TERM
+    def test_a_redirected_run_never_clears(self, lm_module, monkeypatch):
+        cleared = []
+        monkeypatch.setattr(lm_module.os, "system", lambda command: cleared.append(command))
+        monkeypatch.setattr(lm_module.sys, "stdout", FakeStdout(interactive=False))
+
+        lm_module.clear_screen(True)
+
+        assert cleared == []
+
+    # Verifies a terminal is still cleared when the setting asks for it, so the guard did not switch the feature off
+    def test_a_terminal_is_still_cleared(self, lm_module, monkeypatch):
+        cleared = []
+        monkeypatch.setattr(lm_module.os, "system", lambda command: cleared.append(command))
+        monkeypatch.setattr(lm_module.sys, "stdout", FakeStdout(interactive=True))
+
+        lm_module.clear_screen(True)
+
+        assert cleared == ["cls" if lm_module.platform.system() == "Windows" else "clear"]
+
+    # Verifies a real run asks to clear only when it is a monitoring run the user is watching
+    @pytest.mark.parametrize("argv,expected", [
+        ([RIOT_ID, REGION], True),
+        ([RIOT_ID, REGION, "--debug"], False),
+        (["--doctor", RIOT_ID, REGION], False),
+    ])
+    def test_only_a_watched_run_asks_to_clear_the_screen(self, lm_module, monkeypatch, monitor_calls, capsys, argv, expected):
+        from test_cli_startup import run_main
+
+        asked = []
+        monkeypatch.setattr(lm_module, "clear_screen", lambda enabled=True: asked.append(bool(enabled)))
+        monkeypatch.setattr(lm_module, "CLEAR_SCREEN", True)
+
+        run_main(lm_module, monkeypatch, argv)
+
+        assert asked == [expected]
+
+
+class FakeStdout:
+    """A stdout replacement that reports whatever the test needs isatty() to say."""
+
+    def __init__(self, interactive):
+        self.interactive = interactive
+
+    def isatty(self):
+        return self.interactive
+
+    def write(self, message):
+        return len(message)
+
+    def flush(self):
+        return

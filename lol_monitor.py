@@ -1018,6 +1018,15 @@ def print_startup_banner():
     print(f"{'':{STARTUP_BANNER_WORDMARK_COLUMN}}v{VERSION}\n")
 
 
+# Flags whose output the user reads rather than watches, so the screen they were run from has to stay scrollable
+KEEP_HISTORY_FLAGS = ("--doctor", "--send-test-email", "--list-recent-matches", "-l", "--help", "-h")
+
+
+# Returns True when the running command is a one-shot whose output has to stay scrollable
+def keep_terminal_history():
+    return any(flag in sys.argv for flag in KEEP_HISTORY_FLAGS)
+
+
 # Signal handler when user presses Ctrl+C
 def signal_handler(sig, frame):
     sys.stdout = stdout_bck
@@ -1049,6 +1058,9 @@ def check_internet(url=None, timeout=None, quiet=False):
 # Clears the terminal screen
 def clear_screen(enabled=True):
     if not enabled:
+        return
+    # A redirected stdout has no screen to clear, and the clear command reports its own missing TERM into the output
+    if not hasattr(sys.stdout, "isatty") or not sys.stdout.isatty():
         return
     try:
         if platform.system() == 'Windows':
@@ -3650,7 +3662,10 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    clear_screen(CLEAR_SCREEN)
+    # Read straight from sys.argv because argparse has not run yet, and the screen is cleared before it does
+    if "--debug" in sys.argv:
+        DEBUG_MODE = True
+    clear_screen(CLEAR_SCREEN and not keep_terminal_history() and not DEBUG_MODE)
 
     print_startup_banner()
 

@@ -182,7 +182,7 @@ The startup summary reports the state as `TLS verification: On` or `Off, server 
 | `DISABLE_LOGGING` | `-d` | Switches the log file off |
 | `ASCII_LOG_SEPARATORS` | | `"Auto"` uses ASCII separator lines on Windows only, `"On"` everywhere, `"Off"` nowhere. Terminal separators stay Unicode |
 | `HORIZONTAL_LINE` | | Width of the separator line |
-| `CLEAR_SCREEN` | | Whether the terminal is cleared at startup |
+| `CLEAR_SCREEN` | | Whether the terminal is cleared at startup. A one-shot command such as `--doctor`, `-l` or `--help`, a `--debug` run and any redirected output are never cleared |
 | `INCLUDE_FORBIDDEN_MATCHES` | `-f` | Whether matches that need an OAuth (RSO) access token are shown with a notice instead of skipped silently |
 | `CHECK_INTERNET_URL` | | Endpoint used to verify connectivity at startup |
 | `LOL_ACTIVE_CHECK_SIGNAL_VALUE` | | Seconds each `TRAP` or `ABRT` signal adds to or removes from the in-game interval |
