@@ -92,7 +92,7 @@ class OfflineRiotHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     # Keeps the fixture server silent so its logging does not land in the captured output
-    def log_message(self, fmt, *args):
+    def log_message(self, format, *args):
         return
 
 

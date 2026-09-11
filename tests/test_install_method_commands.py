@@ -1,5 +1,6 @@
 """Tests that every printed command matches the detected install method and carries the files this run was given."""
 
+from command_expectations import runtime_command
 import shlex
 import inspect
 import sys
@@ -43,7 +44,7 @@ def test_a_downloaded_script_is_detected(lm_module, monkeypatch):
 
     assert lm_module.install_method() == lm_module.INSTALL_METHOD_SCRIPT
     assert lm_module.install_method_display_name() == "downloaded script"
-    assert lm_module.render_command(["--version"]) == "python3 lol_monitor.py --version"
+    assert lm_module.render_command(["--version"]) == runtime_command("python3 lol_monitor.py --version")
 
 
 # Verifies a value only shaped like a placeholder is quoted, so pasting the rendered command cannot run a substitution
@@ -60,7 +61,7 @@ def test_a_pypi_install_is_detected(lm_module, monkeypatch):
 
     assert lm_module.install_method() == lm_module.INSTALL_METHOD_PYPI
     assert lm_module.install_method_display_name() == "PyPI install"
-    assert lm_module.render_command(["--version"]) == "lol_monitor --version"
+    assert lm_module.render_command(["--version"]) == runtime_command("lol_monitor --version")
 
 
 # Verifies detection can be pinned explicitly, which containers and packaged builds need
@@ -88,7 +89,7 @@ def test_active_paths_are_carried_into_printed_commands(lm_module, monkeypatch):
 
     rendered = lm_module.render_command([RIOT_ID, REGION])
 
-    assert rendered == f"lol_monitor '{RIOT_ID}' {REGION} --config-file '/home/user/my tool.conf' --env-file /home/user/secrets.env"
+    assert rendered == runtime_command(f"lol_monitor '{RIOT_ID}' {REGION} --config-file '/home/user/my tool.conf' --env-file /home/user/secrets.env")
 
 
 # Verifies a run with discovery switched off prints commands that switch it off too, so the suggestion reads the setup this run read
@@ -96,7 +97,7 @@ def test_disabled_discovery_is_carried_into_printed_commands(lm_module, monkeypa
     monkeypatch.setattr("sys.argv", ["/usr/local/bin/lol_monitor"])
     monkeypatch.setattr(lm_module, "CONFIG_DISCOVERY_DISABLED", True)
 
-    assert lm_module.render_command([RIOT_ID, REGION]) == f"lol_monitor '{RIOT_ID}' {REGION} --config-file none"
+    assert lm_module.render_command([RIOT_ID, REGION]) == runtime_command(f"lol_monitor '{RIOT_ID}' {REGION} --config-file none")
 
 
 # Verifies a command that must stay path-free does not inherit the paths this run was given
@@ -104,7 +105,7 @@ def test_paths_can_be_left_out(lm_module, monkeypatch):
     monkeypatch.setattr("sys.argv", ["/usr/local/bin/lol_monitor"])
     monkeypatch.setattr(lm_module, "CLI_CONFIG_PATH", "/home/user/tool.conf")
 
-    assert lm_module.render_command(["--generate-config"], include_paths=False) == "lol_monitor --generate-config"
+    assert lm_module.render_command(["--generate-config"], include_paths=False) == runtime_command("lol_monitor --generate-config")
 
 
 # Verifies an explicitly supplied path is rendered even when the active ones are left out
@@ -114,7 +115,7 @@ def test_an_explicit_path_wins_over_the_active_ones(lm_module, monkeypatch):
 
     rendered = lm_module.render_command(["--send-test-email"], include_paths=False, env_path="/home/user/chosen.env")
 
-    assert rendered == "lol_monitor --send-test-email --env-file /home/user/chosen.env"
+    assert rendered == runtime_command("lol_monitor --send-test-email --env-file /home/user/chosen.env")
 
 
 # Verifies the disabled dotenv search reaches a command that only reads, so the retry checks the setup that failed
@@ -122,7 +123,7 @@ def test_a_disabled_dotenv_search_is_carried_into_a_reading_command(lm_module, m
     monkeypatch.setattr("sys.argv", ["/usr/local/bin/lol_monitor"])
     monkeypatch.setattr(lm_module, "DOTENV_FILE", "none")
 
-    assert lm_module.render_command([RIOT_ID, REGION]) == f"lol_monitor '{RIOT_ID}' {REGION} --env-file none"
+    assert lm_module.render_command([RIOT_ID, REGION]) == runtime_command(f"lol_monitor '{RIOT_ID}' {REGION} --env-file none")
 
 
 # Verifies the sentinel stays out of a command that writes the dotenv file, since those refuse it at their own gate
@@ -133,14 +134,14 @@ def test_a_disabled_dotenv_search_stays_out_of_a_writing_command(lm_module, monk
     assert lm_module.command_writes_dotenv(["--setup"]) is True
     assert lm_module.command_writes_dotenv(["--set-riot-api-key"]) is True
     assert lm_module.command_writes_dotenv([RIOT_ID, REGION]) is False
-    assert lm_module.render_command(["--setup"]) == "lol_monitor --setup"
+    assert lm_module.render_command(["--setup"]) == runtime_command("lol_monitor --setup")
 
 
 # Verifies a placeholder stays readable, since quoting it makes it look like a value rather than a blank to fill
 def test_a_placeholder_is_never_quoted(lm_module, monkeypatch):
     monkeypatch.setattr("sys.argv", ["/usr/local/bin/lol_monitor"])
 
-    assert lm_module.render_command(["<riot_id>", "<region>"]) == "lol_monitor <riot_id> <region>"
+    assert lm_module.render_command(["<riot_id>", "<region>"]) == runtime_command("lol_monitor <riot_id> <region>")
 
 
 # Verifies arguments containing spaces are quoted for the shell the user pastes into
@@ -175,7 +176,7 @@ def test_the_dotenv_warning_names_the_command_to_re_run(lm_module, monkeypatch, 
 
     output = capsys.readouterr().out
     assert "* Warning: The dotenv file" in output
-    assert f"Then re-run: python3 lol_monitor.py '{RIOT_ID}' {REGION} --env-file {env_file}" in output
+    assert runtime_command(f"Then re-run: python3 lol_monitor.py '{RIOT_ID}' {REGION} --env-file {env_file}") in output
 
 
 # Verifies the printed-command renderer takes the family's two shared parameters before any tool-specific one

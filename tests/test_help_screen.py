@@ -1,5 +1,6 @@
 """Tests the --help screen: the shared argument groups, the shared one-shot sentences and the examples block."""
 
+from command_expectations import runtime_command
 import re
 import subprocess
 import sys
@@ -146,8 +147,8 @@ def test_every_example_command_suits_the_install(monkeypatch):
     monkeypatch.setenv(monitor.INSTALL_METHOD_ENV_VAR, "pip")
     rendered = monitor.help_examples()
 
-    assert "python3 lol_monitor.py" not in rendered
-    assert rendered.count("\n  lol_monitor ") == rendered.count("\n  # ")
+    assert runtime_command("python3 lol_monitor.py") not in rendered
+    assert rendered.count(runtime_command("\n  lol_monitor ")) == rendered.count("\n  # ")
 
 
 # Verifies a note with no command is rendered as a comment rather than as a blank command line

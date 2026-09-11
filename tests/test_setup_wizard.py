@@ -1,5 +1,6 @@
 """Tests the guided setup wizard and the input normalizers it asks its questions through."""
 
+from command_expectations import runtime_command
 import os
 import pty
 import re
@@ -1412,8 +1413,8 @@ def test_the_welcome_commands_suit_the_install(monkeypatch, capsys):
     monitor.print_welcome_screen(interactive=False)
     printed = capsys.readouterr().out
 
-    assert "    lol_monitor <riot_id> <region>\n" in printed
-    assert "python3 lol_monitor.py" not in printed
+    assert runtime_command("    lol_monitor <riot_id> <region>\n") in printed
+    assert runtime_command("python3 lol_monitor.py") not in printed
 
 
 # Verifies the suffix naming the prompt below appears only where that prompt does

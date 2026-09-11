@@ -1,5 +1,8 @@
 # Setup & First Run
 
+
+When rebuilding an existing configuration, setup keeps its saved `DOTENV_FILE` unless you pass `--env-file PATH`. A nonempty exported secret takes precedence over the dotenv file. An explicit empty value in that file still overrides the configuration, both after saving and on the next run. Quoted dotenv keys receive the same replacement confirmation as unquoted keys.
+
 ## Before You Start
 
 Install the tool using [Installation](installation.md). You will need a Riot ID such as "Player#TAG" plus a region code such as euw1 and the [Riot API key](#riot-api-key). The wizard collects credentials through hidden prompts.
