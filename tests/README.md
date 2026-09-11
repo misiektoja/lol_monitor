@@ -80,6 +80,11 @@ and again before anything is published to PyPI.
   leaked global affects whatever runs next.
 * Replace Riot Games calls and notification delivery with test doubles.
 * Never use a real Riot API key, SMTP password or webhook URL.
+* Write a fake credential so a secret scanner can tell it is fake. Keep the shape
+  the code parses, such as the `RGAPI-` prefix, then use a word saying what the
+  test does with it and pad the rest with repeated digits, as in
+  `RGAPI-exported-0000-0000-0000-000000000000`. A random-looking value is reported
+  as a leaked credential by the scan CI runs over the full history.
 
 A change to the monitoring loop, authentication or Riot Games data handling is not
 verified by this suite alone. Exercise it against a real account and say so in the
