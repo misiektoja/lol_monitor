@@ -205,7 +205,7 @@ lol_monitor --set-smtp-password
 lol_monitor --set-webhook-url
 ```
 
-`--set-riot-api-key` asks Riot for a platform status, `--set-smtp-password` signs in to the mail server without sending anything and `--set-webhook-url` checks that the link is a complete private HTTPS destination. A value that fails is not written, so the file never ends up holding a credential that does not work. The file is created with owner-only permissions, an existing value is replaced only after you confirm it, and no backup copy of the replaced credential is left behind. Add `--env-file PATH` to write somewhere other than `.env` in the current directory.
+`--set-riot-api-key` asks Riot for a platform status, `--set-smtp-password` signs in to the mail server without sending anything and `--set-webhook-url` checks that the link is a complete private HTTPS destination. A value that fails is not written, so the file never ends up holding a credential that does not work. The file is created with owner-only permissions, an existing value is replaced only after you confirm it, and no backup copy of the replaced credential is left behind. Add `--env-file PATH` to write somewhere other than `.env` in the current directory. An exported `SMTP_PASSWORD` wins over the saved one at startup, so the command says so after saving rather than leaving you with a value the next run will not read.
 
 Set environment variables with `export` on **Linux, Unix, macOS and WSL**:
 
