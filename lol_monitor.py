@@ -6910,9 +6910,13 @@ def run_setup_wizard(initial_riot_id=None, initial_region=None, config_file=None
             dotenv_result = update_dotenv_file(state.env_path, state.secret_updates)
         except SecretConfigurationError as exc:
             print_recovery_error(exc, context="file", detail=str(exc))
+            print(f"Configuration was saved to '{state.config_path}'. Setup is incomplete and monitoring was not started.")
+            print("Correct the dotenv destination then run --setup again with the same --config-file and --env-file. Review the saved settings before starting monitoring.")
             return 1
         except Exception as exc:
             print_recovery_error(exc, context="file", detail=f"Could not write secrets to '{state.env_path}'")
+            print(f"Configuration was saved to '{state.config_path}'. Setup is incomplete and monitoring was not started.")
+            print("Correct the dotenv destination then run --setup again with the same --config-file and --env-file. Review the saved settings before starting monitoring.")
             return 1
 
     print(colorize("header", "\nSaved files\n"))
