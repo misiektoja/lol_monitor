@@ -634,3 +634,34 @@ def test_each_flag_is_dispatched_to_its_own_command(lm_module, flag, runner):
     assert f'"{flag}"' in source
     assert f"args.{dest}" in source
     assert f"{runner}(env_file=" in source
+
+
+# Verifies an assignment the owner exported keeps its export, since dropping it changes what a shell sourcing the file exports
+def test_an_exported_assignment_keeps_its_export(tmp_path, lm_module):
+    destination = tmp_path / ".env"
+    destination.write_text('export SMTP_PASSWORD="old"\nOTHER=keep\n', encoding="utf-8")
+
+    lm_module.update_dotenv_file(destination, {"SMTP_PASSWORD": "new"})
+
+    assert destination.read_text(encoding="utf-8") == 'export SMTP_PASSWORD="new"\nOTHER=keep\n'
+
+
+# Verifies a line break inside a value is escaped rather than written through, since a raw one would split the assignment
+def test_a_line_break_in_a_value_cannot_split_the_assignment(tmp_path, lm_module):
+    destination = tmp_path / ".env"
+
+    lm_module.update_dotenv_file(destination, {"SMTP_PASSWORD": "one\ntwo"})
+
+    assert destination.read_text(encoding="utf-8") == 'SMTP_PASSWORD="one\\ntwo"\n'
+
+
+# Verifies the writer refuses a key this tool does not ship, so a typo cannot put an unknown name in the private file
+def test_the_writer_refuses_a_key_this_tool_does_not_ship(tmp_path, lm_module):
+    with pytest.raises(ValueError):
+        lm_module.update_dotenv_file(tmp_path / ".env", {"NOT_A_SECRET": "value"})
+
+
+# Verifies the writer refuses a value that is not text, so a mistyped caller fails before the file is touched
+def test_the_writer_refuses_a_value_that_is_not_text(tmp_path, lm_module):
+    with pytest.raises(TypeError):
+        lm_module.update_dotenv_file(tmp_path / ".env", {"SMTP_PASSWORD": 1234})
