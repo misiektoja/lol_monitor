@@ -53,22 +53,11 @@ def convert_csv_file(input_file, output_file=None):
                 print("Error: CSV file is empty or has no header.")
                 sys.exit(1)
 
-            # Normalize header
-            header_normalized = [col.strip().strip('"').strip("'") for col in header_row]
-
-            # Determine if we're reading old format (10 columns) or new format (14 columns)
-            # Check by counting actual data columns vs header columns
-            is_old_format = len(header_normalized) == len(old_columns) and all(col in header_normalized for col in old_columns)
-
-            # If header has new columns but data rows might be old format, we'll detect by row length
-            # Read first data row to check
+            # Read first data row to check the file is not header only
             first_data_row = next(reader, None)
             if first_data_row is None:
                 print("Error: CSV file has no data rows.")
                 sys.exit(1)
-
-            # Check if first row has old format (10 values) or new format (14 values)
-            actual_old_format = len(first_data_row) == len(old_columns)
 
             # Reset file and skip header
             f.seek(0)

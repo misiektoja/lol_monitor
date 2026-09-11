@@ -268,7 +268,6 @@ if sys.version_info < (3, 12):
     sys.exit(1)
 
 import time
-import string
 import os
 from datetime import datetime
 from dateutil import relativedelta
@@ -993,7 +992,7 @@ async def get_ranked_info(puuid: str, region: str) -> RankedInfo:
                         "wins": wins,
                         "losses": losses
                     }
-        except Exception as e:
+        except Exception:
             # Player might not be ranked, this is not an error
             pass
 
@@ -1077,7 +1076,7 @@ async def get_champion_mastery(puuid: str, region: str, top_n: int = 3):
                     "level": champion_level,
                     "points": champion_points
                 })
-        except Exception as e:
+        except Exception:
             # Champion mastery might not be available, this is not an error
             pass
 
@@ -1413,7 +1412,6 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
 
     try:
         match_info = match.get("info", {})
-        match_metadata = match.get("metadata", {})
 
         match_start_ts = int(match_info.get("gameStartTimestamp", 0) / 1000)
         match_stop_ts = int(match_info.get("gameEndTimestamp", 0) / 1000)
@@ -1864,7 +1862,6 @@ async def lol_monitor_user(riotid, region, csv_file_name):
     last_match_stop_ts = 0
     puuid = None
     riotid_name = ""
-    summoner_level = "N/A"
     started_announced = False
 
     try:

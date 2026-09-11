@@ -38,7 +38,6 @@ import os
 import re
 import sys
 from collections import Counter
-from datetime import datetime
 from typing import Any, Dict, List, Tuple, Optional
 
 import numpy as np
@@ -58,7 +57,6 @@ def load_matches(path: str) -> pd.DataFrame:
         s = s.lower()
         return s
 
-    original_cols = list(df.columns)
     ncols = [norm(c) for c in df.columns]
     df.columns = ncols
 
@@ -380,7 +378,7 @@ def duration_similarity_by_mode(df1: pd.DataFrame, df2: pd.DataFrame) -> float:
     if total_weight == 0:
         return 0.0
 
-    weighted_sim = sum(sim * weight for sim, weight in zip(mode_similarities, mode_weights)) / total_weight
+    weighted_sim = sum(sim * weight for sim, weight in zip(mode_similarities, mode_weights, strict=False)) / total_weight
     return weighted_sim
 
 
@@ -389,7 +387,7 @@ def guess_player_name(df: pd.DataFrame) -> Tuple[str, float]:
     freq = Counter()
     blues = df["blue_list"] if "blue_list" in df.columns else []
     reds = df["red_list"] if "red_list" in df.columns else []
-    for blue, red in zip(blues, reds):
+    for blue, red in zip(blues, reds, strict=False):
         for n in set(blue + red):
             freq[n] += 1
     if not freq:
@@ -596,7 +594,7 @@ def find_temporal_overlaps(df1: pd.DataFrame, df2: pd.DataFrame, verbose: bool =
     i2_abs = idx2[i2_rel]
 
     # Build result list
-    for a, b in zip(i1_abs, i2_abs):
+    for a, b in zip(i1_abs, i2_abs, strict=False):
         start1 = df1_start.iloc[a]
         stop1 = df1_stop.iloc[a]
         start2 = df2_start.iloc[b]
