@@ -12,6 +12,38 @@ Guide: https://misiektoja.github.io/lol_monitor/configuration/#storing-secrets
 
 `To fix:` is the one instruction worth trying first and the command in it is written for the way you installed the tool. `Guide:` appears when a page here covers the failure. The headings below are the `* Error:` line.
 
+Most setup problems are easier to find before a run starts. `--doctor` reports all of them at once, described in the next section.
+
+## Doctor Preflight
+
+Before monitoring anything, `--doctor` checks whether the setup is actually ready and reports what is not:
+
+```sh
+lol_monitor --doctor <riot_id> <region>
+```
+
+It is **read-only**: it writes no files and says so before the first check runs. It opens with the detected install method, then groups checks into **Environment**, **Configuration**, **Authentication**, **Connectivity**, **Target** and **Notifications**. Each row is marked `[PASS]`, `[WARN]`, `[FAIL]` or `[SKIP]`. Every `[WARN]` and `[FAIL]` row carries an indented `To fix:` line under its marker, plus a `Guide:` link when a page here covers that row. A `[SKIP]` row names a check that could not run and says why.
+
+The Configuration section names the configuration and dotenv files in effect and reports **which secrets came from the dotenv file and which came from the environment**, by name only. No secret value is ever printed. It reports the continent your region routes through, whether [TLS verification](configuration.md#tls-verification) is on, and warns while it is off. Settings that control timing and counts, such as the check intervals and `SMTP_PORT`, are checked for usable values and every one that fails is named in a single row.
+
+It also names the **log and CSV files monitoring would write** and reports whether each one can be created. The log file name includes the part of the Riot ID before the `#`, so it is only resolved when a Riot ID is given. Without one, the row reports the base path instead.
+
+Authentication asks Riot for the platform status of your region, which is the cheapest call that proves the key is accepted. The key itself is never printed. Target then looks up the account behind the Riot ID with the same key. When the key does not validate, or when no region is available to route the request, both lookups are skipped rather than reported as a second failure.
+
+The Notifications section **signs in to the configured SMTP server** without sending anything. The ready row lists the **alert categories** email would deliver.
+
+When email validates and you are at a terminal, doctor then offers to send **one real test message**, behind its own confirmation. Declining is the default. Nothing is sent without an explicit `y`, so a scripted or containerized run stays message-free. The `Summary` line is printed after that test finishes and counts its result, so the sentence and the exit code always describe the same run.
+
+The report ends with a **Next steps** block naming the command that starts monitoring, carrying the same `--config-file` and `--env-file` this run checked. It carries the target this run used, leaves it out when the configuration file already supplies both values and otherwise shows `<riot_id> <region>` for you to replace. While a check is failing it asks for the failures first.
+
+It exits `0` when every check passed and `1` when any check or the approved delivery test failed, so it can be used as a container healthcheck or a CI smoke test:
+
+```sh
+lol_monitor --doctor <riot_id> <region> && echo "ready"
+```
+
+Running doctor without a target checks everything except the monitored account. An explicitly selected dotenv path that does not exist is reported as a warning with the path and the recovery command.
+
 ## When Something Goes Wrong
 
 ### `No Riot API key reached the tool`

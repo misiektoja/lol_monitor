@@ -58,7 +58,7 @@ Mail on errors is on by default. Switch it off with `ERROR_NOTIFICATION = False`
 lol_monitor <riot_id> <region> -e
 ```
 
-Fill in the [SMTP settings](configuration.md#smtp-settings) first, otherwise nothing is sent.
+Fill in the [SMTP settings](configuration.md#smtp-settings) first, otherwise nothing is sent. `--doctor` signs in to the mail server without sending anything and reports which alerts would be delivered, described in [Doctor Preflight](troubleshooting.md#doctor-preflight).
 
 Messages go out in both plain text and HTML, so match details stay readable in any mail client.
 

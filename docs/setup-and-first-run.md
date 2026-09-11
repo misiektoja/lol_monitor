@@ -16,6 +16,14 @@ python3 lol_monitor.py <riot_id> <region> -r "your_riot_api_key"
 
 A Riot ID is the game name plus the tag line, written as `riot_id_name#tag`. The region is the short code from [Region Codes](#region-codes) below, not the display name.
 
+If a run does not start, check the setup before guessing at it:
+
+```sh
+lol_monitor --doctor <riot_id> <region>
+```
+
+That writes nothing and reports every part of the setup in one pass, described in [Doctor Preflight](troubleshooting.md#doctor-preflight).
+
 To list every supported command-line argument:
 
 ```sh

@@ -160,6 +160,8 @@ lol_monitor <riot_id> <region> -k 60 -c 120
 | `LIVENESS_CHECK_INTERVAL` | | Seconds between liveness messages in the output. Set to 0 to disable. Default 43200 |
 | `CHECK_INTERNET_TIMEOUT` | | Seconds allowed for the startup connectivity check. Default 5 |
 
+Riot's development key allows 100 requests every two minutes, and each check while the player is in a game spends several of them. `--doctor` warns when `LOL_ACTIVE_CHECK_INTERVAL` drops below 10 seconds, which is where the extra calls a live match report makes stop fitting.
+
 ## TLS Verification
 
 Every outbound connection verifies the server's TLS certificate: the Riot API, the Data Dragon champion data, the startup connectivity check and email delivery. Leave it that way unless you have a reason not to.
