@@ -368,7 +368,7 @@ def sent_emails(monkeypatch):
     delivered = []
 
     # Records one notification and reports success
-    def fake_send_email(subject, body, body_html, use_ssl, smtp_timeout=15, image_bytes=None, image_subtype="png", image_name=lm.EMAIL_CHAMPION_ICON_CONTENT_ID):
+    def fake_send_email(subject, body, body_html, use_ssl, smtp_timeout=15, image_bytes=None, image_subtype="png", image_name=lm.EMAIL_CHAMPION_ICON_CONTENT_ID, report_delivery=True):
         delivered.append({"subject": subject, "body": body, "body_html": body_html, "use_ssl": use_ssl, "image_bytes": image_bytes, "image_subtype": image_subtype})
         return 0
 

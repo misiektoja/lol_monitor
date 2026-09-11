@@ -685,7 +685,7 @@ def test_a_delivered_alert_is_traced_with_its_provider(discord, webhook_session,
     assert discord.send_webhook("LoL user is in game now", "body", "status", sleeper=RecordingSleeper()) == 0
 
     printed = capsys.readouterr().out
-    assert "* Webhook delivered through Discord: 'LoL user is in game now'" in printed
+    assert "* Webhook sent through Discord" in printed
     assert DISCORD_URL not in printed
 
 
@@ -698,7 +698,7 @@ def test_delivery_confirmations_can_be_turned_off(discord, webhook_session, monk
 
     assert discord.send_webhook("LoL user is in game now", "body", "status", sleeper=RecordingSleeper()) == 0
 
-    assert "Webhook delivered" not in capsys.readouterr().out
+    assert "Webhook sent through" not in capsys.readouterr().out
 
 
 # Verifies a retried delivery that succeeds reports success rather than the failure that preceded it
@@ -1133,13 +1133,13 @@ def test_each_ready_channel_is_offered_separately(discord, webhook_session, sent
 
 
 @pytest.mark.parametrize("constant,expected", [
-    ("TEST_EMAIL_SUBJECT", "lol_monitor: test email"),
+    ("TEST_EMAIL_SUBJECT", "LoL Monitor test email"),
     ("TEST_EMAIL_BODY", "This test email was sent by --send-test-email. Your SMTP settings work."),
-    ("TEST_WEBHOOK_TITLE", "lol_monitor: test webhook"),
+    ("TEST_WEBHOOK_TITLE", "LoL Monitor test webhook"),
     ("TEST_WEBHOOK_BODY", "This test notification was sent by --send-test-webhook. Your webhook settings work."),
-    ("DOCTOR_TEST_EMAIL_SUBJECT", "lol_monitor: doctor test email"),
+    ("DOCTOR_TEST_EMAIL_SUBJECT", "LoL Monitor doctor test email"),
     ("DOCTOR_TEST_EMAIL_BODY", "This test email was sent after approval in --doctor. Your SMTP delivery settings work."),
-    ("DOCTOR_TEST_WEBHOOK_TITLE", "lol_monitor: doctor test webhook"),
+    ("DOCTOR_TEST_WEBHOOK_TITLE", "LoL Monitor doctor test webhook"),
     ("DOCTOR_TEST_WEBHOOK_BODY", "This test notification was sent after approval in --doctor. Your webhook delivery settings work."),
 ])
 # Verifies each test message is worded the way every tool in this family words it, so one reader learns them once

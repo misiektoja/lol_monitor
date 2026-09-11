@@ -360,7 +360,7 @@ The block ships commented out so the tool's own colours apply and later improvem
 | `DEBUG_MODE` | `--debug` | Timestamped `[DEBUG]` traces of network activity, delivery and completed checks |
 | `DELIVERY_CONFIRMATIONS` | - | Whether verbose output confirms each delivered email and webhook alert (default `True`) |
 
-The first two are independent, so enable both to see everything. A flag always wins over the configuration file, and neither ever prints a secret value. Set `DELIVERY_CONFIRMATIONS = False` to keep verbose mode without the `* Email delivered` and `* Webhook delivered` lines, which is worth doing when alerts are frequent. What each mode reports is described in [Verbose and Debug Output](troubleshooting.md#verbose-and-debug-output).
+The first two are independent, so enable both to see everything. A flag always wins over the configuration file, and neither ever prints a secret value. Set `DELIVERY_CONFIRMATIONS = False` to keep verbose mode without the `* Email sent to ...` and `* Webhook sent through ...` lines, which is worth doing when alerts are frequent. What each mode reports is described in [Verbose and Debug Output](troubleshooting.md#verbose-and-debug-output).
 
 ## Install Method
 

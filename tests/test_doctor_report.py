@@ -611,7 +611,7 @@ def test_an_approved_delivery_test_sends_one_message(lm_module, monkeypatch, cap
 
     capsys.readouterr()
     assert len(sent_emails) == 1
-    assert sent_emails[0]["subject"] == "lol_monitor: doctor test email"
+    assert sent_emails[0]["subject"] == "LoL Monitor doctor test email"
     assert [check.status for check in report.checks] == ["PASS"]
 
 

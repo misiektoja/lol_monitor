@@ -409,7 +409,7 @@ def test_test_email_reports_success(lm_module, monkeypatch, sent_emails, capsys)
     assert run_main(lm_module, monkeypatch, ["--send-test-email"]) == 0
 
     assert len(sent_emails) == 1
-    assert sent_emails[0]["subject"] == "lol_monitor: test email"
+    assert sent_emails[0]["subject"] == "LoL Monitor test email"
     assert "Email sent successfully" in capsys.readouterr().out
 
 

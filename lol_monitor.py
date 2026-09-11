@@ -2636,15 +2636,26 @@ def smtp_connect_and_login(use_ssl, smtp_timeout=15):
         smtp_login(smtp_object, SMTP_USER, SMTP_PASSWORD)
         return smtp_object
     except Exception:
-        try:
-            smtp_object.quit()
-        except Exception:
-            pass
+        smtp_quit_quietly(smtp_object)
         raise
 
 
+# Closes an SMTP session without changing the result of an accepted or failed message
+def smtp_quit_quietly(smtp_object):
+    if smtp_object is None:
+        return
+    try:
+        smtp_object.quit()
+    except Exception as quit_error:
+        debug_print("SMTP quit", outcome="failed", error=f"{type(quit_error).__name__}: {quit_error}")
+        try:
+            smtp_object.close()
+        except Exception as close_error:
+            debug_print("SMTP close", outcome="failed", error=f"{type(close_error).__name__}: {close_error}")
+
+
 # Sends email notification
-def send_email(subject, body, body_html, use_ssl, smtp_timeout=15, image_bytes=None, image_subtype="png", image_name=EMAIL_CHAMPION_ICON_CONTENT_ID):
+def send_email(subject, body, body_html, use_ssl, smtp_timeout=15, image_bytes=None, image_subtype="png", image_name=EMAIL_CHAMPION_ICON_CONTENT_ID, report_delivery=True):
     fqdn_re = re.compile(r'(?=^.{4,253}$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}\.?$)')
     email_re = re.compile(r'[^@]+@[^@]+\.[^@]+')
 
@@ -2679,6 +2690,7 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15, image_bytes=N
         print_recovery_error(context="email", detail="The SMTP settings are incorrect (body and body_html cannot be empty at the same time)")
         return 1
 
+    smtpObj = None
     try:
         smtpObj = smtp_connect_and_login(use_ssl, smtp_timeout=smtp_timeout)
         # An inline image needs the alternative parts wrapped in a related container, so the HTML body can point at it
@@ -2707,13 +2719,15 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15, image_bytes=N
             email_msg.attach(image_part)
 
         smtpObj.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, email_msg.as_string())
-        smtpObj.quit()
         debug_print("Email delivery", recipient=RECEIVER_EMAIL, outcome="OK")
     except Exception as e:
         debug_print("Email delivery", recipient=RECEIVER_EMAIL, outcome="failed", error=f"{type(e).__name__}: {e}")
         print_recovery_error(e, context="email")
         return 1
-    verbose_delivery_print(f"Email delivered to {RECEIVER_EMAIL}: '{subject}'")
+    finally:
+        smtp_quit_quietly(smtpObj)
+    if report_delivery:
+        verbose_delivery_print(f"Email sent to {RECEIVER_EMAIL}")
     return 0
 
 
@@ -3334,7 +3348,7 @@ def _retain_webhook_secrets(deliver):
 
 @_retain_webhook_secrets
 # Sends one webhook through an isolated bounded retry path
-def send_webhook(title, description, notification_type="status", force=False, sleeper=None, image_url="", ntfy_priority=0, ntfy_tags="", discord_description=""):
+def send_webhook(title, description, notification_type="status", force=False, sleeper=None, image_url="", ntfy_priority=0, ntfy_tags="", discord_description="", report_delivery=True):
     if not force and not webhook_event_enabled(notification_type):
         return 1
     destination = str(WEBHOOK_URL or "").strip()
@@ -3392,7 +3406,8 @@ def send_webhook(title, description, notification_type="status", force=False, sl
             else:
                 response = post_webhook_request(destination=destination, json=discord_payload, headers=request_headers)
             if 200 <= response.status_code <= 299:
-                verbose_delivery_print(f"Webhook delivered through {webhook_provider_display_name(provider)}: '{webhook_values['title']}'")
+                if report_delivery:
+                    verbose_delivery_print(f"Webhook sent through {webhook_provider_display_name(provider)}")
                 debug_print("Webhook delivery", channel=provider, status=response.status_code, outcome="OK")
                 return 0
             retryable = response.status_code == 429 or 500 <= response.status_code <= 599
@@ -5520,9 +5535,9 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                 continue
 
             if advice.code == "auth.api_key_invalid":
-                m_subject = f"lol_monitor: API key error! (user: {riotid_name})"
+                m_subject = f"LoL API key error! (user: {riotid_name})"
             else:
-                m_subject = f"lol_monitor: monitoring error (user: {riotid_name})"
+                m_subject = f"LoL monitoring error (user: {riotid_name})"
             m_body = f"{advice.summary}{nl_ch}{nl_ch}To fix: {advice.fix}{nl_ch}{nl_ch}LoL Monitor will retry in {display_time(sleep_interval)}.{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
             m_body_html = (
                 f"<html><head></head><body>"
@@ -5568,13 +5583,13 @@ SECRET_ENTRY_SMTP_TIMEOUT = 5
 
 # One wording per test message, shared with every sibling monitor. The subject names the tool, since the
 # message lands beside the real alerts, and the body names the command that sent it
-TEST_EMAIL_SUBJECT = "lol_monitor: test email"
+TEST_EMAIL_SUBJECT = "LoL Monitor test email"
 TEST_EMAIL_BODY = "This test email was sent by --send-test-email. Your SMTP settings work."
-TEST_WEBHOOK_TITLE = "lol_monitor: test webhook"
+TEST_WEBHOOK_TITLE = "LoL Monitor test webhook"
 TEST_WEBHOOK_BODY = "This test notification was sent by --send-test-webhook. Your webhook settings work."
-DOCTOR_TEST_EMAIL_SUBJECT = "lol_monitor: doctor test email"
+DOCTOR_TEST_EMAIL_SUBJECT = "LoL Monitor doctor test email"
 DOCTOR_TEST_EMAIL_BODY = "This test email was sent after approval in --doctor. Your SMTP delivery settings work."
-DOCTOR_TEST_WEBHOOK_TITLE = "lol_monitor: doctor test webhook"
+DOCTOR_TEST_WEBHOOK_TITLE = "LoL Monitor doctor test webhook"
 DOCTOR_TEST_WEBHOOK_BODY = "This test notification was sent after approval in --doctor. Your webhook delivery settings work."
 
 # The passing label of the email row, pinned so the wording cannot drift from the sibling monitors
@@ -6167,7 +6182,7 @@ def doctor_offer_notification_tests(report, input_func=input, interactive=None):
     if report.email_ready:
         if doctor_ask_yes_no("Send one test email now? This will deliver a real message", input_func=input_func):
             debug_print("Doctor test email", recipient=RECEIVER_EMAIL)
-            delivered = send_email(DOCTOR_TEST_EMAIL_SUBJECT, DOCTOR_TEST_EMAIL_BODY, "", SMTP_SSL, smtp_timeout=DOCTOR_PASSIVE_TIMEOUT) == 0
+            delivered = send_email(DOCTOR_TEST_EMAIL_SUBJECT, DOCTOR_TEST_EMAIL_BODY, "", SMTP_SSL, smtp_timeout=DOCTOR_PASSIVE_TIMEOUT, report_delivery=False) == 0
             debug_print("Doctor test email", recipient=RECEIVER_EMAIL, outcome="OK" if delivered else "failed")
             if delivered:
                 check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS", "Doctor test email delivered", "One real test email was sent after confirmation")
@@ -6184,7 +6199,7 @@ def doctor_offer_notification_tests(report, input_func=input, interactive=None):
         provider = webhook_provider_display_name()
         if doctor_ask_yes_no(f"Send one test webhook through {provider} now? This will publish a real notification", input_func=input_func):
             debug_print("Doctor test webhook", channel=provider, host=webhook_destination_host())
-            delivered = send_webhook(DOCTOR_TEST_WEBHOOK_TITLE, DOCTOR_TEST_WEBHOOK_BODY, "status", force=True) == 0
+            delivered = send_webhook(DOCTOR_TEST_WEBHOOK_TITLE, DOCTOR_TEST_WEBHOOK_BODY, "status", force=True, report_delivery=False) == 0
             debug_print("Doctor test webhook", channel=provider, outcome="OK" if delivered else "failed")
             if delivered:
                 check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS", f"Doctor test webhook through {provider} delivered", "One real test webhook was sent after confirmation")
@@ -8055,7 +8070,7 @@ def main():
             sys.exit(1)
         print("* Sending test email notification ...\n")
         debug_print("Test email", sender=SENDER_EMAIL, recipient=RECEIVER_EMAIL)
-        if send_email(TEST_EMAIL_SUBJECT, TEST_EMAIL_BODY, "", SMTP_SSL, smtp_timeout=5) == 0:
+        if send_email(TEST_EMAIL_SUBJECT, TEST_EMAIL_BODY, "", SMTP_SSL, smtp_timeout=5, report_delivery=False) == 0:
             print("* Email sent successfully !")
         else:
             sys.exit(1)
@@ -8067,7 +8082,7 @@ def main():
             sys.exit(1)
         print("* Sending test webhook notification ...\n")
         debug_print("Test webhook", channel=normalized_webhook_provider() or "an unset provider", host=webhook_destination_host())
-        if send_webhook(TEST_WEBHOOK_TITLE, TEST_WEBHOOK_BODY, "status", force=True) == 0:
+        if send_webhook(TEST_WEBHOOK_TITLE, TEST_WEBHOOK_BODY, "status", force=True, report_delivery=False) == 0:
             print("* Webhook sent successfully !")
         else:
             sys.exit(1)

@@ -339,7 +339,7 @@ def test_a_rejected_api_key_is_alerted_once(lm_module, riot_api, fake_clock, mon
 
     assert "Riot rejected the configured API key" in capsys.readouterr().out
     assert len(sent_emails) == 1
-    assert sent_emails[0]["subject"] == f"lol_monitor: API key error! (user: {USER})"
+    assert sent_emails[0]["subject"] == f"LoL API key error! (user: {USER})"
 
 
 # ---------------------------------------------------------------------------
@@ -709,7 +709,7 @@ def test_a_failure_that_cannot_clear_itself_is_alerted_at_once(lm_module, riot_a
 
     run_checks(lm_module, riot_api, monkeypatch, rejected, 1)
 
-    assert [email["subject"] for email in sent_emails] == [f"lol_monitor: API key error! (user: {USER})"]
+    assert [email["subject"] for email in sent_emails] == [f"LoL API key error! (user: {USER})"]
 
 
 # Verifies any monitoring failure alerts both channels, and once per category rather than once per check
@@ -720,7 +720,7 @@ def test_a_monitoring_failure_alerts_both_channels_once(lm_module, riot_api, fak
     run_checks(lm_module, riot_api, monkeypatch, always_failing, 8)
 
     assert len(sent_emails) == 1
-    assert sent_emails[0]["subject"] == f"lol_monitor: monitoring error (user: {USER})"
+    assert sent_emails[0]["subject"] == f"LoL monitoring error (user: {USER})"
     assert "The Riot API is temporarily unavailable" in sent_emails[0]["body"]
     assert "To fix:" in sent_emails[0]["body"]
 
@@ -749,7 +749,7 @@ def test_a_changed_failure_category_does_not_earn_a_second_alert(lm_module, riot
     # The first category has to last past the alert delay before the second one takes over
     run_checks(lm_module, riot_api, monkeypatch, changing, 12)
 
-    assert [email["subject"] for email in sent_emails] == [f"lol_monitor: monitoring error (user: {USER})"]
+    assert [email["subject"] for email in sent_emails] == [f"LoL monitoring error (user: {USER})"]
 
 
 # Verifies each channel is tracked on its own, so a channel that failed is retried on the next check while
