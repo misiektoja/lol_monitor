@@ -84,6 +84,9 @@ and again before anything is published to PyPI.
 | `test_terminal_truncation.py` | Width-aware terminal truncation: what gets cut, what does not and what the log file keeps |
 | `test_time_formatting.py` | Durations, timespans and timestamp formats |
 | `test_webhook_notifications.py` | The Discord and ntfy webhook channel: what is built, what is sent, what is refused and what the private URL never reveals |
+| `test_moved_private_settings.py` | Kept credentials across dotenv destination changes and startup error handling |
+| `test_real_polling.py` | Real Riot and webhook clients across outages, completion retries and independent channels |
+| `test_csv_conversion.py` | Lossless CSV conversion, backups and operating system write failures |
 
 ## Conventions
 

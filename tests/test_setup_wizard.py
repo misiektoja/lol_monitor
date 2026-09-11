@@ -1061,7 +1061,7 @@ def test_moving_the_dotenv_destination_re_asks_the_secret_sections(tmp_path, mon
     run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY, API_KEY], transcript=transcript)
     asked = [prompt for prompt in transcript if prompt.startswith(("Riot API key:", "Configure email notifications", "Set up webhook alerts"))]
 
-    assert "The dotenv destination changed. Re-enter authentication and notification settings that may contain secrets." in capsys.readouterr().out
+    assert "The dotenv destination changed. Existing private settings will be kept in the new file when you save. Review authentication and notification settings." in capsys.readouterr().out
     assert len(asked) == 6
     assert f'RIOT_API_KEY="{API_KEY}"' in (tmp_path / "moved.env").read_text(encoding="utf-8")
 

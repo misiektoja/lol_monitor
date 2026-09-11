@@ -321,14 +321,15 @@ def test_the_ordinary_not_in_game_answer_is_traced_as_success(lm_module, monkeyp
     assert "In-game check: region=eun1, outcome=OK, in_game=False" in capsys.readouterr().out
 
 
-# Verifies any other failure is traced as degraded, since the run treats it as not in game without having checked
-def test_a_failed_in_game_check_is_traced_as_degraded(lm_module, monkeypatch, riot_api, capsys):
+# Verifies a failed primary lookup reaches outage handling without claiming the player stopped
+def test_a_failed_in_game_check_propagates(lm_module, monkeypatch, riot_api, capsys):
     monkeypatch.setattr(lm_module, "DEBUG_MODE", True)
     riot_api.script("get_lol_spectator_v5_active_game_by_summoner", TimeoutError("the request timed out"))
 
-    assert asyncio.run(lm_module.is_user_in_match("puuid", REGION)) is False
+    with pytest.raises(TimeoutError):
+        asyncio.run(lm_module.is_user_in_match("puuid", REGION))
 
-    assert "outcome=degraded, in_game=False, error=TimeoutError: the request timed out" in capsys.readouterr().out
+    assert "outcome=failed, error=TimeoutError: the request timed out" in capsys.readouterr().out
 
 
 class NotFoundError(Exception):

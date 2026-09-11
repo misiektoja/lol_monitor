@@ -254,16 +254,11 @@ def test_a_forbidden_match_can_be_reported(lm_module, riot_api, fake_clock, monk
     assert sent_emails[0]["subject"] == "LoL user misiektoja new forbidden match detected"
 
 
-# Verifies any other failure while fetching a match is reported with the match it happened on
-def test_other_match_failures_are_reported(lm_module, riot_api, fake_clock, capsys):
+# Verifies a failed match remains retryable instead of looking like a permanently skipped match
+def test_other_match_failures_propagate(lm_module, riot_api):
     riot_api.script("get_lol_match_v5_match", RuntimeError("500 Internal Server Error"))
-
-    result = asyncio.run(lm_module.process_and_print_single_match("EUN1_1", PUUID, USER, "eun1", False, None))
-
-    assert result == (0, 0)
-    printed = capsys.readouterr().out
-    assert "* Error: The Riot API is temporarily unavailable" in printed
-    assert "To fix: " in printed
+    with pytest.raises(RuntimeError, match="500"):
+        asyncio.run(lm_module.process_and_print_single_match("EUN1_1", PUUID, USER, "eun1", False, None))
 
 
 # Verifies a match is fetched from the API when the caller has nothing cached
@@ -520,13 +515,8 @@ def test_a_shortfall_of_displayable_matches_is_reported(lm_module, riot_api, fak
     assert "Not enough displayable matches found" in capsys.readouterr().out
 
 
-# Verifies a CSV row that cannot be written carries a fix rather than a bare error line
-def test_an_unwritable_csv_row_is_reported_with_a_fix(lm_module, tmp_path, capsys):
+# Verifies a failed CSV write leaves the match eligible for retry by the caller
+def test_an_unwritable_csv_row_propagates(lm_module, tmp_path):
     unreachable = tmp_path / "missing-directory" / "matches.csv"
-
-    report_match(lm_module, match_payload(), csv_file_name=str(unreachable))
-
-    printed = capsys.readouterr().out
-    assert "* Error: Failed to write to CSV file" in printed
-    assert "To fix: Check that the directory exists and is writable, or choose another path" in printed
-    assert f"Guide: {lm_module.OUTPUT_GUIDE_URL}" in printed
+    with pytest.raises(RuntimeError, match="Failed to write to CSV file"):
+        report_match(lm_module, match_payload(), csv_file_name=str(unreachable))

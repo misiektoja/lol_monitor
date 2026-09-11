@@ -665,13 +665,26 @@ def test_every_declared_secret_flag_is_offered(lm_module):
 
 # Verifies each flag is dispatched to its own command, so no secret is written by the wrong one
 @pytest.mark.parametrize("flag,runner", [("--set-riot-api-key", "run_set_riot_api_key"), ("--set-smtp-password", "run_set_smtp_password"), ("--set-webhook-url", "run_set_webhook_url")])
-def test_each_flag_is_dispatched_to_its_own_command(lm_module, flag, runner):
-    source = inspect.getsource(lm_module)
-    dest = flag.lstrip("-").replace("-", "_")
+def test_each_flag_is_dispatched_to_its_own_command(lm_module, flag, runner, tmp_path, monkeypatch):
+    config = tmp_path / "selected.conf"
+    env = tmp_path / "selected.env"
+    config.write_text('RIOT_ID="SavedPlayer#TAG"\nREGION="eun1"\nVERIFY_SSL=False\nCLEAR_SCREEN=False\n', encoding="utf-8")
+    env.write_text("", encoding="utf-8")
+    reached = []
+    for name, value in list(vars(lm_module).items()):
+        if name.isupper():
+            monkeypatch.setattr(lm_module, name, value.copy() if isinstance(value, (dict, list, set)) else value)
 
-    assert f'"{flag}"' in source
-    assert f"args.{dest}" in source
-    assert f"{runner}(env_file=" in source
+    # Records the resolved command context at the dispatch boundary without requesting a secret
+    def record(*, env_file=None):
+        reached.append((env_file, lm_module.CLI_CONFIG_PATH, lm_module.VERIFY_SSL))
+
+    monkeypatch.setattr(lm_module, runner, record)
+    monkeypatch.setattr("sys.argv", ["lol_monitor", flag, "--config-file", str(config), "--env-file", str(env)])
+    with pytest.raises(SystemExit) as stopped:
+        lm_module.main()
+    assert stopped.value.code == 0
+    assert reached == [(str(env), str(config), False)]
 
 
 # Verifies an assignment the owner exported keeps its export, since dropping it changes what a shell sourcing the file exports

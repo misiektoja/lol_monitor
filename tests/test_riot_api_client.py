@@ -2,6 +2,10 @@
 
 import asyncio
 
+from aiohttp import ClientResponseError, RequestInfo
+from multidict import CIMultiDict, CIMultiDictProxy
+from yarl import URL
+
 import pytest
 
 from conftest import Replies
@@ -191,7 +195,7 @@ def test_unavailable_mastery_is_not_an_error(lm_module, riot_api, capsys):
 
 # Verifies an active game means the player is in a match, and that every other answer reports False rather than nothing
 def test_in_game_detection(lm_module, riot_api):
-    riot_api.script("get_lol_spectator_v5_active_game_by_summoner", Replies([{"gameId": 1}, {}, RuntimeError("404 Not Found")]))
+    riot_api.script("get_lol_spectator_v5_active_game_by_summoner", Replies([{"gameId": 1}, {}, ClientResponseError(RequestInfo(URL("https://example.test"), "GET", CIMultiDictProxy(CIMultiDict()), URL("https://example.test")), (), status=404)]))
 
     assert asyncio.run(lm_module.is_user_in_match(PUUID, "eun1")) is True
     assert asyncio.run(lm_module.is_user_in_match(PUUID, "eun1")) is False
@@ -242,14 +246,11 @@ def test_the_starting_offset_is_passed_through(lm_module, riot_api):
     assert riot_api.requests_to("get_lol_match_v5_match_ids_by_puuid")[0]["queries"] == {"start": 49, "count": 1}
 
 
-# Verifies a failing match id lookup reports the error and returns nothing to process
-def test_failing_match_id_lookup_returns_nothing(lm_module, riot_api, capsys):
+# Verifies an API failure cannot be mistaken for empty history
+def test_failing_match_id_lookup_propagates(lm_module, riot_api):
     riot_api.script("get_lol_match_v5_match_ids_by_puuid", RuntimeError("429 Rate limit exceeded"))
-
-    assert asyncio.run(lm_module.get_latest_match_ids(PUUID, "eun1", count=10)) == []
-    printed = capsys.readouterr().out
-    assert "* Error: Riot is rate limiting requests" in printed
-    assert "To fix: The tool will wait and retry" in printed
+    with pytest.raises(RuntimeError, match="429"):
+        asyncio.run(lm_module.get_latest_match_ids(PUUID, "eun1", count=10))
 
 
 # Verifies the total match count walks the whole history one page at a time
@@ -266,14 +267,11 @@ def test_total_match_count_of_an_empty_history_is_zero(lm_module, riot_api):
     assert asyncio.run(lm_module.get_total_match_count(PUUID, "eun1")) == 0
 
 
-# Verifies a failing count is reported as zero with the reason printed
-def test_failing_total_match_count_is_reported(lm_module, riot_api, capsys):
+# Verifies an API failure cannot be mistaken for empty history
+def test_failing_total_match_count_propagates(lm_module, riot_api):
     riot_api.script("get_lol_match_v5_match_ids_by_puuid", RuntimeError("429 Rate limit exceeded"))
-
-    assert asyncio.run(lm_module.get_total_match_count(PUUID, "eun1")) == 0
-    printed = capsys.readouterr().out
-    assert "* Error: Riot is rate limiting requests" in printed
-    assert "To fix: The tool will wait and retry" in printed
+    with pytest.raises(RuntimeError, match="429"):
+        asyncio.run(lm_module.get_total_match_count(PUUID, "eun1"))
 
 
 # Builds a Data Dragon response double

@@ -18,7 +18,7 @@ New columns:
 python3 tools/lol_convert_csv_format.py input.csv [-o output.csv]
 ```
 
-Without `-o` the input file is overwritten. Values the old format did not record are filled with `N/A`.
+Without `-o` the input is replaced only after the complete output has been written. Any existing output is first copied to a uniquely named `.bak` file, whose path is printed. Failed reads or writes leave the destination intact. Current-format fields are preserved, including reordered columns. Files containing both legacy and current rows with a standard header are supported. Unsupported headers or row lengths identify what needs correction before any replacement. Values the old format did not record are filled with `N/A`.
 
 ## Match History Comparison Tool
 
