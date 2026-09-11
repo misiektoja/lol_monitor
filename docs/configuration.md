@@ -141,7 +141,7 @@ lol_monitor --set-webhook-url
 
 The URL is typed hidden, checked for shape, and written to the dotenv file with owner-only permissions. The command names the service it recognised so you can tell a mistyped destination from the right one.
 
-The destination decides the service. A `https://ntfy.sh/...` link is treated as ntfy and a Discord webhook link as Discord, even when `WEBHOOK_PROVIDER` says otherwise, and the run says so once at startup. Pass `--webhook-provider` to override that for a self-hosted host the tool cannot recognise.
+The destination decides the service. A `https://ntfy.sh/...` link is treated as ntfy and a Discord webhook link as Discord, even when `WEBHOOK_PROVIDER` says otherwise. While `WEBHOOK_PROVIDER` is left at its default, that detection is silent and `--verbose` reports it. A warning appears only when your configuration file sets a provider the URL disagrees with. Pass `--webhook-provider` to override that for a self-hosted host the tool cannot recognise.
 
 Send one real notification to check the setup:
 

@@ -563,6 +563,9 @@ SECRET_ACTION_FLAGS = ("--set-riot-api-key", "--set-smtp-password", "--set-webho
 # Set when --config-file is given the literal string "none", which switches off the search rather than naming a file
 CONFIG_DISCOVERY_DISABLED = False
 
+# The settings a configuration file actually assigned, so a built-in default is never mistaken for a choice
+CONFIGURED_SETTING_NAMES = set()
+
 # The exception the last connectivity check raised, so a quiet caller can classify what it did not print
 LAST_CONNECTIVITY_ERROR = None
 
@@ -2340,8 +2343,9 @@ class Logger(object):
 
     # Limits the terminal line across separate writes while leaving the log complete
     def _truncate_terminal(self, message):
-        if TRUNCATE_CHARS and not getattr(self, "_terminal_column", 0):
-            message = truncate_string_per_line(message, TRUNCATE_CHARS)
+        # The limit is fixed once at startup, so with truncation off there is no column to keep track of
+        if not TRUNCATE_CHARS:
+            return message
         try:
             from wcwidth import wcwidth
         except ImportError:
@@ -3285,7 +3289,12 @@ def apply_webhook_cli_overrides(args, parser):
         configured_provider = normalized_webhook_provider()
         if detected_provider and detected_provider != configured_provider:
             WEBHOOK_PROVIDER = detected_provider
-            print(f"* Warning: Configured webhook provider did not match the URL. Using {webhook_provider_display_name(detected_provider)}.")
+            # The built-in default is not a choice anyone made, so detection there is the documented behaviour
+            # rather than a mismatch. Only a provider the configuration actually sets is worth warning about
+            if "WEBHOOK_PROVIDER" in CONFIGURED_SETTING_NAMES:
+                print(f"* Warning: Configured webhook provider did not match the URL. Using {webhook_provider_display_name(detected_provider)}.")
+            else:
+                verbose_print(f"Webhook provider detected from the URL: {webhook_provider_display_name(detected_provider)}")
 
 
 # Reports one webhook failure through the recovery block, without revealing private URLs, tokens or response bodies
@@ -3381,8 +3390,6 @@ def send_webhook(title, description, notification_type="status", force=False, sl
                 response = post_webhook_request(destination=destination, data=ntfy_icon[0], params=dict(ntfy_params, message=ntfy_message), headers=ntfy_icon_headers)
             elif provider == "ntfy":
                 response = post_webhook_request(destination=destination, data=ntfy_message.encode("utf-8"), params=ntfy_params, headers=request_headers)
-            elif isinstance(discord_payload, str):
-                response = post_webhook_request(destination=destination, data=discord_payload, headers=request_headers)
             else:
                 response = post_webhook_request(destination=destination, json=discord_payload, headers=request_headers)
             if 200 <= response.status_code <= 299:
@@ -3616,9 +3623,16 @@ DOTENV_RELOAD_STATE = {}
 # Resolves dotenv references while keeping explicitly marked private values literal
 def resolve_dotenv_values(content, override=False, interpolate=True):
     from io import StringIO
-    from dotenv.main import with_warn_for_invalid_lines
-    from dotenv.parser import parse_stream
-    from dotenv.variables import parse_variables
+    try:
+        from dotenv.main import with_warn_for_invalid_lines
+        from dotenv.parser import parse_stream
+        from dotenv.variables import parse_variables
+    # A python-dotenv without these internals still reads the file, only without the literal marker. Writing a
+    # value that needs the marker then fails its own read-back check rather than saving something unreadable
+    except ImportError:
+        from dotenv.main import DotEnv
+        debug_print("Dotenv literal markers are unavailable in the installed python-dotenv", outcome="skipped")
+        return DotEnv(dotenv_path=None, stream=StringIO(content), override=override, interpolate=interpolate).dict()
     values = {}
     for binding in with_warn_for_invalid_lines(parse_stream(StringIO(content))):
         if binding.key is None:
@@ -5075,6 +5089,9 @@ def load_config_file(config_path, namespace=None, report_errors=True):
         # Parsed as data rather than executed, so a config file picked up from the working directory cannot run code
         parsed_values = parse_config_content(content, str(config_path), retired_settings)
         selected_namespace.update(parsed_values)
+        # Only a load that reaches the module settings records a choice, not a copy read for the wizard or a report
+        if selected_namespace is globals():
+            CONFIGURED_SETTING_NAMES.update(parsed_values)
         if retired_settings and report_errors:
             print(f"* Note: {describe_retired_settings(retired_settings, chr(39) + str(config_path) + chr(39))}")
         return True

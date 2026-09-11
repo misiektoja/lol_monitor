@@ -943,6 +943,7 @@ def test_the_master_flag_wins_over_a_destination(lm_module):
 # Verifies a provider the destination contradicts is corrected and the correction is said out loud
 def test_a_provider_the_destination_contradicts_is_corrected(lm_module, monkeypatch, capsys):
     monkeypatch.setattr(lm_module, "WEBHOOK_PROVIDER", "discord")
+    monkeypatch.setattr(lm_module, "CONFIGURED_SETTING_NAMES", {"WEBHOOK_PROVIDER"})
 
     lm_module.apply_webhook_cli_overrides(WebhookArgs(webhook_url=NTFY_URL), RecordingParser())
 
