@@ -607,3 +607,117 @@ def test_the_help_advertises_the_preflight(lm_module, monkeypatch, capsys):
     assert run_main(lm_module, monkeypatch, ["--help"]) == 0
 
     assert "--doctor" in capsys.readouterr().out
+
+
+# Verifies every webhook flag is advertised, since a switch nobody is told about is one nobody uses
+@pytest.mark.parametrize("flag", ["--webhook", "--no-webhook", "--webhook-url", "--webhook-provider", "--webhook-status", "--webhook-errors", "--no-webhook-error-notify", "--set-webhook-url", "--send-test-webhook", "--set-riot-api-key", "--set-smtp-password"])
+def test_every_webhook_and_secret_flag_is_advertised(lm_module, monkeypatch, capsys, flag):
+    assert run_main(lm_module, monkeypatch, ["--help"]) == 0
+
+    assert flag in capsys.readouterr().out
+
+
+# Verifies two secret commands together are refused rather than one silently winning
+def test_two_secret_commands_together_are_refused(lm_module, monkeypatch, capsys):
+    assert run_main(lm_module, monkeypatch, ["--set-riot-api-key", "--set-webhook-url"]) == 2
+
+    assert "--set-riot-api-key cannot be combined with --set-webhook-url" in capsys.readouterr().err
+
+
+# Verifies the two test messages cannot be asked for at once, since each one reports on its own channel
+def test_the_two_test_messages_cannot_be_asked_for_at_once(lm_module, monkeypatch, capsys):
+    assert run_main(lm_module, monkeypatch, ["--send-test-email", "--send-test-webhook"]) == 2
+
+    assert "--send-test-email cannot be combined with --send-test-webhook" in capsys.readouterr().err
+
+
+# Verifies a secret command refuses an unrelated flag, so nobody expects a monitoring option to apply to it
+def test_a_secret_command_refuses_an_unrelated_flag(lm_module, monkeypatch, capsys):
+    assert run_main(lm_module, monkeypatch, ["--set-webhook-url", "--verbose"]) == 2
+
+    assert "--set-webhook-url cannot be combined with --verbose" in capsys.readouterr().err
+
+
+# Verifies a secret command accepts the flag that names where the value goes
+def test_a_secret_command_accepts_the_destination_flag(lm_module, monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(lm_module.sys.stdin, "isatty", lambda: False)
+
+    assert run_main(lm_module, monkeypatch, ["--set-webhook-url", "--env-file", str(tmp_path / ".env")]) == 1
+
+    assert "requires an interactive terminal" in capsys.readouterr().out
+
+
+# Verifies a test webhook with nothing configured names the command that sets a destination
+def test_a_test_webhook_with_no_destination_names_the_command_that_sets_one(lm_module, monkeypatch, capsys):
+    assert run_main(lm_module, monkeypatch, ["--send-test-webhook", "--config-file", "none"]) == 1
+
+    output = capsys.readouterr().out
+    assert "* Error: No webhook destination is configured" in output
+    assert "--set-webhook-url again" in output
+
+
+# Verifies a configured test webhook is delivered and reported as sent
+def test_a_configured_test_webhook_is_delivered(lm_module, monkeypatch, capsys, webhook_session):
+    from conftest import FakeWebhookResponse
+    monkeypatch.setattr(lm_module, "WEBHOOK_PROVIDER", "ntfy")
+    webhook_session.responses.append(FakeWebhookResponse(200))
+
+    assert run_main(lm_module, monkeypatch, ["--send-test-webhook", "--config-file", "none", "--webhook-url", "https://ntfy.sh/my-private-topic"]) == 0
+
+    assert "* Webhook sent successfully !" in capsys.readouterr().out
+    assert webhook_session.posts[0]["params"]["title"] == lm_module.TEST_WEBHOOK_TITLE
+
+
+# Verifies a test webhook the service refuses exits non-zero, so a script gating on it reads the failure
+def test_a_refused_test_webhook_exits_non_zero(lm_module, monkeypatch, capsys, webhook_session):
+    from conftest import FakeWebhookResponse
+    monkeypatch.setattr(lm_module, "WEBHOOK_PROVIDER", "ntfy")
+    webhook_session.responses.append(FakeWebhookResponse(404))
+
+    assert run_main(lm_module, monkeypatch, ["--send-test-webhook", "--config-file", "none", "--webhook-url", "https://ntfy.sh/my-private-topic"]) == 1
+
+    assert "Error sending webhook" in capsys.readouterr().out
+
+
+# Verifies a test email with no mail server configured names the settings to fill in rather than failing at the server
+def test_a_test_email_with_no_mail_server_names_the_settings(lm_module, monkeypatch, capsys):
+    monkeypatch.setattr(lm_module, "SMTP_HOST", "")
+
+    assert run_main(lm_module, monkeypatch, ["--send-test-email", "--config-file", "none"]) == 1
+
+    output = capsys.readouterr().out
+    assert "The mail server settings are incomplete" in output
+    assert "Set SMTP_HOST, SMTP_USER, SENDER_EMAIL and RECEIVER_EMAIL first" in output
+
+
+# Verifies a run without a target still reaches the modes that legitimately finish without one
+@pytest.mark.parametrize("argv", [["--send-test-webhook"], ["--send-test-email"], ["--doctor"]])
+def test_the_modes_that_need_no_target_are_not_stopped_by_the_missing_one(lm_module, monkeypatch, capsys, argv):
+    assert run_main(lm_module, monkeypatch, [*argv, "--config-file", "none"]) != 0
+
+    assert "No Riot ID was provided" not in capsys.readouterr().out
+
+
+# Verifies two secret commands are named in a fixed order, so the message does not depend on which one would run first
+def test_two_secret_commands_are_named_in_a_fixed_order(lm_module, monkeypatch, capsys):
+    assert run_main(lm_module, monkeypatch, ["--set-webhook-url", "--set-smtp-password"]) == 2
+
+    assert "--set-smtp-password cannot be combined with --set-webhook-url" in capsys.readouterr().err
+
+
+# Verifies a command that is about to create the dotenv file is not warned that it does not exist
+def test_a_command_that_writes_the_dotenv_file_is_not_warned_that_it_is_missing(lm_module, monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(lm_module.sys.stdin, "isatty", lambda: False)
+
+    assert run_main(lm_module, monkeypatch, ["--set-smtp-password", "--env-file", str(tmp_path / "absent.env")]) == 1
+
+    output = capsys.readouterr().out
+    assert "does not exist" not in output
+    assert "requires an interactive terminal" in output
+
+
+# Verifies a run that only reads the dotenv file is still warned when the named file is not there
+def test_a_run_that_only_reads_the_dotenv_file_is_still_warned(lm_module, monkeypatch, capsys, tmp_path):
+    assert run_main(lm_module, monkeypatch, ["--send-test-webhook", "--config-file", "none", "--env-file", str(tmp_path / "absent.env")]) == 1
+
+    assert "does not exist" in capsys.readouterr().out

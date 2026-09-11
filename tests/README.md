@@ -37,7 +37,7 @@ and again before anything is published to PyPI.
 
 | File | Area under test |
 | --- | --- |
-| `conftest.py` | Import setup, deterministic globals and the Riot API, SMTP and clock test doubles |
+| `conftest.py` | Import setup, deterministic globals and the Riot API, SMTP, webhook and clock test doubles |
 | `test_cli_startup.py` | Command line handling, config and dotenv loading, startup validation, listing mode and the effective-settings banner |
 | `test_config_loading.py` | Declarative config parsing, retired settings and refusal of executable config content |
 | `test_config_writing.py` | Backups, atomic replacement and the prompt guarding a generated configuration file |
@@ -56,6 +56,7 @@ and again before anything is published to PyPI.
 | `test_repository_contracts.py` | Governance documents, issue templates, action pinning, release gating, the supported Python floor and the CI contract |
 | `test_repository_metadata.py` | Governance files, citation, funding, line endings, the declared editor style, the pinned linter and release integrity |
 | `test_secret_precedence.py` | Which source supplies each secret, the reload that keeps that order and how it is reported |
+| `test_secret_commands.py` | The one-shot `--set-riot-api-key`, `--set-smtp-password` and `--set-webhook-url` commands and the private dotenv file they write |
 | `test_riot_api_client.py` | The Riot API wrappers, pagination, champion name lookup and rejected API keys |
 | `test_runtime_controls.py` | Signal-driven toggles, interval changes, secret reload and the log output filter |
 | `test_tls_verification.py` | The TLS verification switch reaching connectivity, Data Dragon, email and the Riot API client |
@@ -64,6 +65,7 @@ and again before anything is published to PyPI.
 | `test_target_normalization.py` | The canonical Riot ID and region stored at the boundary and the routing continent they resolve to |
 | `test_terminal_truncation.py` | Width-aware terminal truncation: what gets cut, what does not and what the log file keeps |
 | `test_time_formatting.py` | Durations, timespans and timestamp formats |
+| `test_webhook_notifications.py` | The Discord and ntfy webhook channel: what is built, what is sent, what is refused and what the private URL never reveals |
 
 ## Conventions
 

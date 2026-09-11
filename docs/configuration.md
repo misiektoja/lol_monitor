@@ -96,9 +96,95 @@ lol_monitor --send-test-email
 
 Which events produce mail is covered under [Email Notifications](usage.md#email-notifications).
 
+## Webhook Settings
+
+Webhooks send the same alerts as email to a Discord channel or an ntfy topic. They are switched off until you set a destination:
+
+| Setting | Meaning |
+| --- | --- |
+| `WEBHOOK_ENABLED` | Master switch for the channel |
+| `WEBHOOK_PROVIDER` | `discord` or `ntfy` |
+| `WEBHOOK_URL` | The private destination, best kept in a dotenv file |
+| `WEBHOOK_USERNAME` | Discord display name, empty to use the webhook default |
+| `WEBHOOK_AVATAR_URL` | Discord avatar URL, empty to use the webhook default |
+| `WEBHOOK_STATUS_NOTIFICATION` | Send an alert when the player's status changes |
+| `WEBHOOK_ERROR_NOTIFICATION` | Send an alert on monitoring errors, on by default |
+| `WEBHOOK_HEADERS` | Extra request headers, for example ntfy options |
+| `NTFY_ACCESS_TOKEN` | Bearer token for a private ntfy topic |
+
+Save the destination without putting it in a file you might share:
+
+```sh
+lol_monitor --set-webhook-url
+```
+
+The URL is typed hidden, checked for shape, and written to the dotenv file with owner-only permissions. The command names the service it recognised so you can tell a mistyped destination from the right one.
+
+The destination decides the service. A `https://ntfy.sh/...` link is treated as ntfy and a Discord webhook link as Discord, even when `WEBHOOK_PROVIDER` says otherwise, and the run says so once at startup. Pass `--webhook-provider` to override that for a self-hosted host the tool cannot recognise.
+
+Send one real notification to check the setup:
+
+```sh
+lol_monitor --send-test-webhook
+```
+
+Email and webhooks are independent. Both can be on, and each keeps its own alert settings, so you can take errors on ntfy and status changes by mail.
+
+### ntfy
+
+`WEBHOOK_URL` is the complete topic URL, such as `https://ntfy.sh/your-private-topic`. Anyone who knows a public topic name can read it, so pick an unguessable one or use a private server with `NTFY_ACCESS_TOKEN`.
+
+The alert body is sent as a native ntfy message with the subject as its title. ntfy rejects a message over 4 KB, so a long alert is cut with a note saying that it was.
+
+Add ntfy options through `WEBHOOK_HEADERS`:
+
+```python
+WEBHOOK_HEADERS = {"X-Priority": "4", "X-Tags": "video_game"}
+```
+
+### Discord
+
+`WEBHOOK_URL` is the link from **Edit Channel -> Integrations -> Webhooks -> New Webhook -> Copy Webhook URL**. Anyone holding it can post to that channel.
+
+Alerts are sent as an embed built from `WEBHOOK_TEMPLATE`, which supports the `title`, `description`, `version`, `image_url`, `fields`, `fields_str`, `color`, `timestamp`, `username` and `avatar_url` placeholders. Mentions are disabled on every message the tool sends, whatever the template says.
+
+`WEBHOOK_TRANSFORMS` applies string methods to those values before the payload is built:
+
+```python
+WEBHOOK_TRANSFORMS = [("title", "upper"), ("description", "replace", "**", "")]
+```
+
+### Delivery
+
+A failed delivery is retried once. A rate-limited service is honoured up to five seconds and no longer, so a busy service cannot hold up a check. Redirects are never followed, so a hijacked destination cannot forward an alert somewhere else.
+
+Errors name the service and the status code, never the URL, the token inside it or the response body:
+
+```
+Error sending webhook: the service returned HTTP 401
+```
+
+Which events produce a webhook is covered under [Webhook Notifications](usage.md#webhook-notifications).
+
 ## Storing Secrets
 
-Keep `RIOT_API_KEY` and `SMTP_PASSWORD` in an environment variable or a dotenv file rather than in the configuration file.
+Keep `RIOT_API_KEY`, `SMTP_PASSWORD`, `WEBHOOK_URL` and `NTFY_ACCESS_TOKEN` in an environment variable or a dotenv file rather than in the configuration file.
+
+The tool can write the dotenv file for you. Each command reads the value hidden, checks it against the real service and only then saves it:
+
+```sh
+lol_monitor --set-riot-api-key
+```
+
+```sh
+lol_monitor --set-smtp-password
+```
+
+```sh
+lol_monitor --set-webhook-url
+```
+
+`--set-riot-api-key` asks Riot for a platform status, `--set-smtp-password` signs in to the mail server without sending anything and `--set-webhook-url` checks that the link is a complete private HTTPS destination. A value that fails is not written, so the file never ends up holding a credential that does not work. The file is created with owner-only permissions, an existing value is replaced only after you confirm it, and no backup copy of the replaced credential is left behind. Add `--env-file PATH` to write somewhere other than `.env` in the current directory.
 
 Set environment variables with `export` on **Linux, Unix, macOS and WSL**:
 
@@ -114,6 +200,7 @@ Storing them in a dotenv file is usually easier:
 ```ini
 RIOT_API_KEY="your_riot_api_key"
 SMTP_PASSWORD="your_smtp_password"
+WEBHOOK_URL="https://ntfy.sh/your-private-topic"
 ```
 
 By default the tool searches for a file named `.env` in the current directory and then upward from it.
@@ -136,7 +223,7 @@ As a fallback both values can also live in the configuration file or the source.
 
 When the same secret is available from more than one place, the tool takes the first match in this order:
 
-1. The command line, such as `-r your_riot_api_key`
+1. The command line, such as `-r your_riot_api_key` or `--webhook-url`
 2. An environment variable exported before the tool started
 3. The dotenv file
 4. The configuration file or the source

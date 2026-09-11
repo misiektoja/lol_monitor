@@ -11,7 +11,7 @@ RIOT_ID = "misiektoja#EUNE"
 REGION = "eun1"
 
 # The rows every tool in this family prints, in the order section 15.18 fixes. A tool's own rows are filtered out
-SHARED_ROW_ORDER = ("Target", "Polling intervals", "Notifications (email)", "Output", "Output logging", "Config", "Dotenv", "Liveness output", "CSV output", "Terminal truncation", "Install method", "Secrets from dotenv", "Secrets from environment", "Secrets from config file", "Secrets from command line", "TLS verification", "ASCII log separators", "Coloured output", "Verbose mode", "Debug mode", "More details")
+SHARED_ROW_ORDER = ("Target", "Polling intervals", "Notifications (email)", "Notifications (webhook)", "Output", "Output logging", "Config", "Dotenv", "Liveness output", "CSV output", "Terminal truncation", "Install method", "Secrets from dotenv", "Secrets from environment", "Secrets from config file", "Secrets from command line", "TLS verification", "ASCII log separators", "Coloured output", "Verbose mode", "Debug mode", "More details")
 
 # Where every value starts, which is what makes the column line up across tools
 VALUE_COLUMN = 32

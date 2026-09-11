@@ -36,6 +36,7 @@ lol_monitor <riot_id> <region> -r "your_riot_api_key"
 - **Detailed match reports** covering game mode, queue and map name, game type and version, victory or defeat, kills, deaths and assists, champion, achieved level, role, lane, both team rosters and banned champions
 - **Player profile information** including ranked statistics for Solo/Duo and Flex, and top champion mastery
 - **HTML email notifications** when a player starts or finishes a match, plus a match summary and error alerts
+- **Discord and ntfy webhook alerts** carrying the same events, with each channel keeping its own alert settings
 - **CSV export** of every reported match with timestamps, including custom games
 - **Flexible configuration** through config files, dotenv files, environment variables and command-line arguments
 - Possibility to **control the running copy** of the script via signals

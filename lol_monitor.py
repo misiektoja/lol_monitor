@@ -65,6 +65,92 @@ STATUS_NOTIFICATION = False
 # Can also be disabled via the -e flag
 ERROR_NOTIFICATION = True
 
+# ----------------------------
+# Webhook Notifications
+# ----------------------------
+
+# Master switch for webhook notifications through Discord or ntfy
+# The event settings below select which notifications are sent
+# Can also be enabled via the --webhook flag
+WEBHOOK_ENABLED = False
+
+# Service used to deliver webhook notifications: "discord" or "ntfy"
+# Known Discord and ntfy.sh URLs correct a mismatched configured value at runtime
+# Can also be set via the --webhook-provider flag
+WEBHOOK_PROVIDER = "discord"
+
+# Private destination used to send webhook notifications
+# Discord: Edit Channel -> Integrations -> Webhooks -> New Webhook -> Copy Webhook URL
+# ntfy: complete topic URL such as https://ntfy.sh/your-private-topic
+# Prefer --set-webhook-url, an environment variable or a dotenv file instead of storing this private URL here
+# The --webhook-url flag is available for one-run overrides but may leave the private URL in shell history
+WEBHOOK_URL = "your_webhook_url"
+
+# Discord display name (leave empty to use the webhook default)
+# Applies only when WEBHOOK_PROVIDER is "discord" (ignored by the ntfy provider)
+WEBHOOK_USERNAME = "LoL Monitor"
+
+# Discord avatar URL (leave empty to use the webhook default)
+# Applies only when WEBHOOK_PROVIDER is "discord" (ignored by the ntfy provider)
+WEBHOOK_AVATAR_URL = ""
+
+# Whether to send a webhook notification when the user's playing status changes
+# Can also be enabled via the --webhook-status flag
+WEBHOOK_STATUS_NOTIFICATION = False
+
+# Whether to send a webhook notification on monitoring errors
+# Can also be enabled via --webhook-errors or disabled via --no-webhook-error-notify
+WEBHOOK_ERROR_NOTIFICATION = True
+
+# Optional request headers for advanced webhook integrations
+# Values support the same placeholders as WEBHOOK_TEMPLATE
+WEBHOOK_HEADERS = {}
+
+# ----------------------------
+# Advanced Webhook Settings
+# ----------------------------
+
+# Discord-format webhook request payload template
+# Applies only when WEBHOOK_PROVIDER is "discord". The "ntfy" provider needs no template and ignores this
+# value: it sends the alert body as a native ntfy message with the subject as its title. Use WEBHOOK_HEADERS
+# to add ntfy options such as priority or tags
+# Supported placeholders include title, description, version, image_url, fields, fields_str, color, timestamp,
+# username and avatar_url
+WEBHOOK_TEMPLATE = {
+    "username": "{username}",
+    "avatar_url": "{avatar_url}",
+    "allowed_mentions": {
+        "parse": [],
+    },
+    "embeds": [{
+        "title": "{title}",
+        "description": "{description}",
+        "color": "{color}",
+        "footer": {
+            "text": "LoL Monitor v{version}",
+        },
+        "timestamp": "{timestamp}",
+        "thumbnail": {
+            "url": "{image_url}",
+        },
+    }],
+}
+
+# Optional transformations applied to WEBHOOK_TEMPLATE and WEBHOOK_HEADERS values
+# Tuple format: (field_to_target, method_name, *optional_arguments)
+#
+# Examples:
+#   [
+#       ("title", "upper"),
+#       ("description", "replace", "**", ""),
+#       ("description", "strip"),
+#   ]
+WEBHOOK_TRANSFORMS = []
+
+# Optional ntfy access token for Bearer authentication
+# Prefer an environment variable or dotenv file instead of storing this token here
+NTFY_ACCESS_TOKEN = ""
+
 # How often to check for player activity when the user is NOT in a game; in seconds
 # Can also be set using the -c flag
 LOL_CHECK_INTERVAL = 150  # 2,5 min
@@ -177,6 +263,7 @@ COLORED_OUTPUT = True
 #     "error": "red",
 #     "signal": "yellow",
 #     "email": "bright_cyan",
+#     "webhook": "bright_blue",
 #     # Boolean values
 #     "boolean_true": "green",
 #     "boolean_false": "red",
@@ -299,6 +386,17 @@ SENDER_EMAIL = ""
 RECEIVER_EMAIL = ""
 STATUS_NOTIFICATION = False
 ERROR_NOTIFICATION = False
+WEBHOOK_ENABLED = False
+WEBHOOK_PROVIDER = ""
+WEBHOOK_URL = ""
+WEBHOOK_USERNAME = ""
+WEBHOOK_AVATAR_URL = ""
+WEBHOOK_STATUS_NOTIFICATION = False
+WEBHOOK_ERROR_NOTIFICATION = False
+WEBHOOK_HEADERS = {}
+WEBHOOK_TEMPLATE = {}
+WEBHOOK_TRANSFORMS = []
+NTFY_ACCESS_TOKEN = ""
 LOL_CHECK_INTERVAL = 0
 LOL_ACTIVE_CHECK_INTERVAL = 0
 INCLUDE_FORBIDDEN_MATCHES = False
@@ -340,6 +438,7 @@ DOCTOR_GUIDE_URL = f"{DOCS_BASE_URL}/troubleshooting/#doctor-preflight"
 SECRETS_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#storing-secrets"
 OUTPUT_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#output-and-files"
 USAGE_GUIDE_URL = f"{DOCS_BASE_URL}/usage/"
+WEBHOOK_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#webhook-settings"
 RIOT_API_KEY_REGISTRATION_URL = "https://developer.riotgames.com"
 
 # The accepted forms of the two positionals, named once so every message that asks for them agrees
@@ -355,7 +454,7 @@ RIOT_ID_PLACEHOLDER = "<riot_id>"
 REGION_PLACEHOLDER = "<region>"
 
 # List of secret keys to load from env/config
-SECRET_KEYS = ("RIOT_API_KEY", "SMTP_PASSWORD")
+SECRET_KEYS = ("RIOT_API_KEY", "SMTP_PASSWORD", "WEBHOOK_URL", "NTFY_ACCESS_TOKEN")
 
 # Secrets whose length is a fixed, published property of the credential itself. A Riot API key is the RGAPI-
 # prefix plus a UUID, and a truncated paste is the usual way one arrives broken, so the length diagnoses that
@@ -381,11 +480,33 @@ EXPORTED_SECRET_KEYS = frozenset()
 # Secrets supplied as command line arguments, which override every other source
 COMMAND_LINE_SECRET_KEYS = frozenset()
 
+# The one-shot commands that only write a secret, so the other early-exit flags do not swallow them
+SECRET_ACTION_FLAGS = ("--set-riot-api-key", "--set-smtp-password", "--set-webhook-url")
+
 # Set when --config-file is given the literal string "none", which switches off the search rather than naming a file
 CONFIG_DISCOVERY_DISABLED = False
 
 # The exception the last connectivity check raised, so a quiet caller can classify what it did not print
 LAST_CONNECTIVITY_ERROR = None
+
+# One retry, because an alert that has already waited out a backoff is stale news
+WEBHOOK_MAX_ATTEMPTS = 2
+WEBHOOK_MAX_RETRY_AFTER_SECONDS = 5.0
+WEBHOOK_FALLBACK_RETRY_SECONDS = 1.0
+WEBHOOK_TIMEOUT_SECONDS = 10
+
+# Discord's own documented limits, applied before sending so a long value is shortened rather than rejected
+WEBHOOK_EMBED_TITLE_LIMIT = 256
+WEBHOOK_EMBED_DESCRIPTION_LIMIT = 4096
+
+# The Discord embed stripe, by what the alert reports. League of Legends gold, with a green start,
+# a grey stop and the family's shared red for a failure
+WEBHOOK_EVENT_COLORS = {"status": 0x3CB371, "error": 0xE74C3C}
+WEBHOOK_DEFAULT_COLOR = 0xC8AA6E
+
+# ntfy rejects a body over 4 KB outright, so it is cut with a marker instead
+NTFY_MESSAGE_LIMIT_BYTES = 4095
+NTFY_TRUNCATION_SUFFIX = "\n\n[Notification truncated to fit ntfy's 4 KB message limit]"
 
 # to solve the issue: 'SyntaxError: f-string expression part cannot include a backslash'
 nl_ch = "\n"
@@ -412,6 +533,7 @@ import signal
 import smtplib
 import ssl
 from email.header import Header
+from email.utils import parsedate_to_datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import argparse
@@ -420,6 +542,7 @@ import csv
 import platform
 import re
 import ipaddress
+import math
 import asyncio
 import html
 import importlib.util
@@ -428,6 +551,8 @@ try:
     from pulsefire.clients import RiotAPIClient
 except ModuleNotFoundError:
     raise SystemExit("Error: Couldn't find the Pulsefire library !\n\nTo install it, run:\n    pip3 install pulsefire\n\nOnce installed, re-run this tool. For more help, visit:\nhttps://pulsefire.iann838.com/usage/basic/installation/")
+import functools
+import getpass
 import shlex
 import shutil
 import tempfile
@@ -436,6 +561,7 @@ import unicodedata
 from contextlib import asynccontextmanager, contextmanager
 from collections import namedtuple
 from pathlib import Path
+from urllib.parse import urlsplit
 from typing import Optional, Any, Dict, List, Mapping, Tuple, TypedDict
 
 
@@ -450,6 +576,10 @@ class RankedQueueInfo(TypedDict):
 class RankedInfo(TypedDict):
     solo_duo: RankedQueueInfo
     flex: RankedQueueInfo
+
+
+# One session for every webhook delivery, so connections are reused across a long run
+WEBHOOK_SESSION = req.Session()
 
 
 # Install methods the tool can detect, used to tailor every command it prints
@@ -531,6 +661,99 @@ def render_command(arguments=None, include_paths=True, config_path=None, env_pat
 # Returns the command that installs one package with the interpreter running this tool, never a bare pip
 def pip_install_command(requirement):
     return " ".join(quote_command_argument(part) for part in (sys.executable or "python3", "-m", "pip", "install", requirement))
+
+
+# Raised when a private setting cannot be checked or saved safely
+class SecretConfigurationError(Exception):
+    pass
+
+
+# Quotes one secret value for lossless parsing by python-dotenv
+def _format_dotenv_value(value):
+    if not isinstance(value, str):
+        raise TypeError("Dotenv secret values must be strings")
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("\r", "\\r").replace("\n", "\\n")
+    return f'"{escaped}"'
+
+
+# Resolves a private dotenv destination without searching parent directories
+def resolve_secret_env_path(env_file=None, cwd=None):
+    if env_file is not None and str(env_file).casefold() == "none":
+        raise SecretConfigurationError("Private secret entry requires a dotenv destination. Replace '--env-file none' with a writable path.")
+    base_directory = Path.cwd() if cwd is None else Path(cwd)
+    destination = base_directory / ".env" if env_file is None else Path(env_file).expanduser()
+    return destination.resolve()
+
+
+# Checks whether a dotenv file already contains one named assignment
+def _dotenv_contains_key(destination, key):
+    destination_path = Path(destination)
+    if not destination_path.exists():
+        return False
+    try:
+        lines = destination_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        raise SecretConfigurationError(f"Could not read dotenv destination '{destination_path}'. Check that it is a readable UTF-8 file.")
+    assignment_pattern = re.compile(rf"^\s*(?:export\s+)?{re.escape(key)}\s*=")
+    return any(assignment_pattern.match(line) for line in lines)
+
+
+# Updates supported secrets in a dotenv file through an atomic replacement
+def update_dotenv_file(destination, updates):
+    if not hasattr(updates, "items"):
+        raise TypeError("Dotenv updates must be a mapping")
+    update_items = list(updates.items())
+    for key, value in update_items:
+        if not isinstance(key, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*", key) or key not in SECRET_KEYS:
+            raise ValueError(f"Unsupported dotenv key: {key!r}")
+        if not isinstance(value, str):
+            raise TypeError(f"Dotenv value for {key} must be a string")
+
+    destination_path = Path(destination).expanduser()
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    existing_lines = destination_path.read_text(encoding="utf-8").splitlines() if destination_path.exists() else []
+    update_keys = {key for key, _ in update_items}
+    values_by_key = dict(update_items)
+    seen_keys = set()
+    output_lines = []
+    assignment_pattern = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=")
+    for line in existing_lines:
+        match = assignment_pattern.match(line)
+        key = match.group(1) if match else None
+        if key not in update_keys:
+            output_lines.append(line)
+            continue
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        # A secret cleared by its owner is removed rather than emptied, so a disabled value cannot linger here
+        if not values_by_key[key]:
+            continue
+        output_lines.append(f"{key}={_format_dotenv_value(values_by_key[key])}")
+    for key, value in update_items:
+        if key not in seen_keys and value:
+            output_lines.append(f"{key}={_format_dotenv_value(value)}")
+            seen_keys.add(key)
+
+    content = "\n".join(output_lines)
+    if output_lines:
+        content += "\n"
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n", prefix=f".{destination_path.name}.", suffix=".tmp", dir=str(destination_path.parent), delete=False) as temporary_file:
+            temporary_path = Path(temporary_file.name)
+            temporary_file.write(content)
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+        if os.name == "posix":
+            os.chmod(str(temporary_path), 0o600)
+        # No backup is taken here: a copy of the credential being replaced is the one thing not worth keeping
+        os.replace(str(temporary_path), str(destination_path))
+        temporary_path = None
+    finally:
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink()
+    return {"path": str(destination_path), "updated_keys": tuple(key for key, _ in update_items)}
 
 
 # Returns the keys a dotenv file itself defines, used to tell a file-supplied secret from an exported one
@@ -636,6 +859,27 @@ def debug_swallowed_exception(context, exc):
     debug_print(context, outcome="failed", error=f"{type(exc).__name__}: {exc}")
 
 
+# Silences debug output while a raw secret is entered or validated, then restores the previous mode
+@contextmanager
+def debug_output_suppressed():
+    global DEBUG_MODE
+    previous_debug_mode = DEBUG_MODE
+    DEBUG_MODE = False
+    try:
+        yield
+    finally:
+        DEBUG_MODE = previous_debug_mode
+
+
+# Silences debug output for the whole of a function that handles a raw secret
+def suppresses_debug_output(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        with debug_output_suppressed():
+            return func(*args, **kwargs)
+    return wrapper
+
+
 # Applies only the explicitly supplied --verbose and --debug flags so the command line always wins over the config file
 def apply_diagnostic_cli_flags(args):
     global VERBOSE_MODE, DEBUG_MODE
@@ -675,10 +919,11 @@ def known_secret_values():
     return [value for value in (globals().get(key) for key in SECRET_KEYS) if isinstance(value, str) and len(value) >= MIN_REDACTABLE_SECRET_LENGTH and not value.startswith("your_")]
 
 
-# Redacts configured secrets and Riot credentials from one error-shaped value
-def sanitize_error_text(value):
+# Redacts configured secrets and Riot credentials from one error-shaped value, plus any value not yet stored
+def sanitize_error_text(value, extra_secrets=()):
     text = str(value or "")
-    for secret in sorted(known_secret_values(), key=len, reverse=True):
+    entered = [secret for secret in extra_secrets if isinstance(secret, str) and len(secret) >= MIN_REDACTABLE_SECRET_LENGTH]
+    for secret in sorted(known_secret_values() + entered, key=len, reverse=True):
         text = text.replace(secret, "<redacted>")
     # Anchored on the assignment, header and URL forms an error can expose, so they hold at any secret length
     patterns = (
@@ -696,13 +941,14 @@ def sanitize_error_text(value):
 RECOVERY_CODES = frozenset({
     "config.missing", "config.invalid", "config.insecure",
     "dependency.missing",
-    "secret.missing",
+    "secret.missing", "secret.entry",
     "auth.api_key_invalid",
     "network.unavailable", "network.timeout",
     "riot.rate_limited", "riot.unavailable",
     "target.missing", "target.invalid", "target.region", "target.not_found",
     "smtp.invalid", "smtp.authentication", "smtp.connection",
     "file.exists", "file.unwritable",
+    "webhook.invalid", "webhook.connection",
     "unknown",
 })
 
@@ -734,6 +980,16 @@ def recovery_fix_with_guide(fix, guide_url):
     return f"{fix}\nGuide: {guide_url}"
 
 
+# Returns the advice a cancelled secret entry reports, worded the same way by every one-shot secret command
+def secret_entry_cancelled_advice(subject, flag, guide_url):
+    return make_recovery_advice("secret.entry", f"{subject[:1].upper()}{subject[1:]} setup was cancelled and the dotenv file was not changed", recovery_fix_with_guide(f"Run {flag} again when you have the value ready", guide_url), False)
+
+
+# Returns the advice a declined secret replacement reports, which is a decision rather than a cancellation
+def secret_replacement_declined_advice(subject, flag, guide_url):
+    return make_recovery_advice("secret.entry", f"The saved {subject} was left as it is and the dotenv file was not changed", recovery_fix_with_guide(f"Run {flag} again and answer y to replace the saved value", guide_url), False)
+
+
 # Returns the HTTP status carried by an error, when it has one
 def recovery_http_status(error):
     status = getattr(error, "status", None)
@@ -758,6 +1014,32 @@ def classify_recovery_error(error=None, context="runtime", detail=""):
         if "does not exist" in message:
             return advice("config.missing", safe_detail or "The configuration file was not found", f"Create one with '{render_command(['--generate-config', DEFAULT_CONFIG_FILENAME], include_paths=False)}' or correct the --config-file path", False, CONFIG_FILE_GUIDE_URL)
         return advice("config.invalid", safe_detail or "The configuration file could not be read", f"Correct the reported line, or start from a fresh template with '{render_command(['--generate-config', DEFAULT_CONFIG_FILENAME], include_paths=False)}'", False, CONFIG_FILE_GUIDE_URL)
+
+    if context == "webhook":
+        if status == 429 or "rate limit" in message:
+            return advice("webhook.connection", "The webhook service is rate limiting deliveries", "Reduce how many alert types are enabled, or wait for the service to accept deliveries again", True, WEBHOOK_GUIDE_URL)
+        if any(term in message for term in ("must contain", "must be discord", "could not be formatted", "header", "priority", "tags")):
+            return advice("webhook.invalid", safe_detail or "The webhook configuration is not usable", f"Check WEBHOOK_URL, WEBHOOK_PROVIDER and the alert settings, then verify with '{render_command(['--send-test-webhook'])}'", False, WEBHOOK_GUIDE_URL)
+        if any(term in message for term in ("could not be reached", "connection", "timed out")):
+            return advice("webhook.connection", "The webhook service could not be reached", "Check connectivity and the webhook host, then try again", True, WEBHOOK_GUIDE_URL)
+        return advice("webhook.invalid", safe_detail or "The webhook service refused the delivery", f"Confirm the webhook still exists and the URL is current, then verify with '{render_command(['--send-test-webhook'])}'", status is not None and status >= 500, WEBHOOK_GUIDE_URL)
+
+    if context in ("set_riot_api_key", "set_smtp_password", "set_webhook_url"):
+        flag = {"set_riot_api_key": "--set-riot-api-key", "set_smtp_password": "--set-smtp-password"}.get(context, "--set-webhook-url")
+        guide = {"set_riot_api_key": RIOT_API_KEY_GUIDE_URL, "set_smtp_password": SMTP_GUIDE_URL}.get(context, WEBHOOK_GUIDE_URL)
+        if "interactive terminal" in message:
+            return advice("unknown", f"{flag} requires an interactive terminal", f"Run {flag} in a terminal window so the value stays hidden while you paste it", False, guide)
+        if "cancelled" in message:
+            return advice("secret.entry", safe_detail or "Setup was cancelled", f"Run {flag} again when you have the value ready", False, guide)
+        if any(term in message for term in ("could not save", "file permissions", "writable path", "dotenv destination")):
+            return advice("file.unwritable", safe_detail or "The private settings file could not be updated", "Check file permissions or choose another path with --env-file PATH", False, SECRETS_GUIDE_URL)
+        if context == "set_riot_api_key":
+            return advice("auth.api_key_invalid", safe_detail or "Riot rejected the entered API key", f"A development key expires 24 hours after it is issued, so copy a fresh one from {RIOT_API_KEY_REGISTRATION_URL} then run {flag} again", False, guide)
+        if context == "set_smtp_password":
+            if "settings are incomplete" in message:
+                return advice("smtp.invalid", safe_detail or "The mail server settings are incomplete", "Set SMTP_HOST, SMTP_USER, SENDER_EMAIL and RECEIVER_EMAIL first", False, guide)
+            return advice("smtp.authentication", safe_detail or "The mail server did not accept the password", f"Use an app password when the provider requires one then run {flag} again", False, guide)
+        return advice("webhook.invalid", safe_detail or "The webhook URL was not changed", f"Copy a complete Discord or ntfy webhook URL then run {flag} again", False, guide)
 
     if context == "credentials":
         return advice("secret.missing", "No Riot API key reached the tool", f"Pass it with -r, export RIOT_API_KEY or add it to a dotenv file, then run {render_command([RIOT_ID_PLACEHOLDER, REGION_PLACEHOLDER])}", False, SECRETS_GUIDE_URL)
@@ -879,6 +1161,13 @@ def read_interactively(reader, *args, **kwargs):
         return reader(*args, **kwargs)
 
 
+# Reads one hidden answer with Python's default Ctrl+C behavior. Kept apart from the visible reader so a
+# secret typed here is never confused with an ordinary answer that is later printed back to the user
+def read_secret_interactively(reader, *args, **kwargs):
+    with default_interrupt_handling():
+        return reader(*args, **kwargs)
+
+
 # Copies an existing file to a timestamped private backup before it is replaced, returning the backup path or None
 def create_timestamped_backup(destination, attempts=100):
     destination_path = Path(destination).expanduser()
@@ -969,6 +1258,19 @@ def tls_context():
     return context
 
 
+# Asks Riot for the platform status, which is the cheapest call that answers whether the key is accepted
+async def riot_api_key_probe(region):
+    async with riot_api_client() as client:
+        return await client.get_lol_status_v4_platform_data(region=region)
+
+
+# Asks Riot for the account behind one Riot ID, the same lookup monitoring makes before it starts
+async def riot_account_probe(riot_id, region):
+    riotid_name, riotid_tag = riot_id.split("#", 1)
+    async with riot_api_client() as client:
+        return await client.get_account_v1_by_riot_id(region=region_continent(region), game_name=riotid_name, tag_line=riotid_tag)
+
+
 # Yields a Riot API client whose session honors the configured TLS verification setting
 @asynccontextmanager
 async def riot_api_client():
@@ -1053,6 +1355,7 @@ DEFAULT_COLOR_THEME = {
     "error": "red",
     "signal": "yellow",
     "email": "bright_cyan",
+    "webhook": "bright_blue",
     # Boolean values
     "boolean_true": "green",
     "boolean_false": "red",
@@ -1062,7 +1365,7 @@ DEFAULT_COLOR_THEME = {
 # A block style paints a whole line and keeps the colours already inside it, so a value drawn in the block's
 # own colour would disappear inside it and the two sets are kept disjoint. Warnings are not on the block
 # list: yellow is the game mode colour, so a warning marks its own opening word instead of painting the line
-BLOCK_STYLE_PARTS = ("error", "email", "info")
+BLOCK_STYLE_PARTS = ("error", "email", "webhook", "info")
 NAME_STYLE_PARTS = ("username", "id", "champion", "game_mode", "rank", "link")
 
 ANSI_RESET = "\033[0m"
@@ -1122,7 +1425,7 @@ _BOOLEAN_FALSE_RE = re.compile(r"\bFalse\b|\bDisabled\b")
 # The one startup row whose value is a word rather than a boolean, and the only setting whose off state
 # weakens a security property, so it is worth the reader noticing without asking for the full summary
 _TLS_STATE_RE = re.compile(r"^(\* TLS verification:\s+)(On|Off)(.*)$")
-_NOTIFICATION_SUMMARY_STATE_RE = re.compile(r"^(\* Notifications \(email\):\s+)(On|Off)(.*)$")
+_NOTIFICATION_SUMMARY_STATE_RE = re.compile(r"^(\* Notifications \((?:email|webhook)\):\s+)(On|Off)(.*)$")
 # The two events this tool exists to report
 _IN_GAME_RE = re.compile(r"\bis in game now\b")
 _STOPPED_PLAYING_RE = re.compile(r"\bstopped playing\b|\bis not in game currently\b")
@@ -1376,6 +1679,8 @@ def _colorize_line(line):
         line = _apply_style_nested(line, "error")
     elif "sending email" in lowered or "email sent successfully" in lowered:
         line = _apply_style_nested(line, "email")
+    elif "sending webhook" in lowered or "webhook sent successfully" in lowered:
+        line = _apply_style_nested(line, "webhook")
 
     return line
 
@@ -1781,6 +2086,611 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
     return 0
 
 
+# The settings a sign-in needs before a password can be checked against the mail server
+MAIL_SIGN_IN_SETTINGS = ("SMTP_HOST", "SMTP_USER", "SENDER_EMAIL", "RECEIVER_EMAIL")
+MAIL_SETTINGS_INCOMPLETE_MESSAGE = "The mail server settings are incomplete"
+
+# A Riot key is not scoped to a platform, so any live one proves it. The configured region is preferred so the
+# check reaches the same host a real run does
+RIOT_API_KEY_PROBE_REGION = "euw1"
+
+
+# Returns whether every setting a mail sign-in needs holds a real value
+def mail_sign_in_settings_complete():
+    return all(doctor_value_is_set(globals().get(name)) for name in MAIL_SIGN_IN_SETTINGS)
+
+
+# Signs in to the configured mail server with one entered password, so nothing is saved that cannot deliver
+def smtp_sign_in(password, timeout=15):
+    global SMTP_PASSWORD
+
+    candidate = str(password or "")
+    if not candidate or candidate == "your_smtp_password":
+        raise SecretConfigurationError("No SMTP password was entered. The private settings file was not changed.")
+    if not mail_sign_in_settings_complete():
+        raise SecretConfigurationError(MAIL_SETTINGS_INCOMPLETE_MESSAGE)
+    previous_password = SMTP_PASSWORD
+    SMTP_PASSWORD = candidate
+    smtp_object = None
+    try:
+        smtp_object = smtp_connect_and_login(SMTP_SSL, smtp_timeout=timeout)
+    finally:
+        if smtp_object is not None:
+            try:
+                smtp_object.quit()
+            except Exception:
+                pass
+        SMTP_PASSWORD = previous_password
+    return str(SMTP_USER)
+
+
+# Validates a Riot API key against the same status endpoint the doctor uses, without exposing the key
+def validate_riot_api_key(api_key):
+    global RIOT_API_KEY
+
+    candidate = str(api_key or "").strip()
+    if not candidate or candidate.startswith("your_"):
+        return False
+    region = REGION if REGION_TO_CONTINENT.get(str(REGION or "").strip().casefold()) else RIOT_API_KEY_PROBE_REGION
+    previous_key = RIOT_API_KEY
+    RIOT_API_KEY = candidate
+    try:
+        asyncio.run(riot_api_key_probe(str(region).strip().casefold()))
+        return True
+    except Exception as exc:
+        debug_swallowed_exception("Riot API key check", exc)
+        return False
+    finally:
+        RIOT_API_KEY = previous_key
+
+
+# Privately validates and atomically stores one Riot API key
+@suppresses_debug_output
+def run_set_riot_api_key(env_file=None, interactive=None, input_func=None, getpass_func=None, validator=None):
+    destination = resolve_secret_env_path(env_file)
+    terminal_is_interactive = sys.stdin.isatty() if interactive is None else interactive
+    if not terminal_is_interactive:
+        raise SecretConfigurationError("--set-riot-api-key requires an interactive terminal. Run it in a terminal window so the API key stays hidden while you paste it.")
+    prompt = input if input_func is None else input_func
+    if _dotenv_contains_key(destination, "RIOT_API_KEY"):
+        try:
+            confirmed = read_interactively(prompt, f"Replace the saved Riot API key in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            raise RecoveryError(secret_entry_cancelled_advice("Riot API key", "--set-riot-api-key", RIOT_API_KEY_GUIDE_URL)) from None
+        if not confirmed:
+            raise RecoveryError(secret_replacement_declined_advice("Riot API key", "--set-riot-api-key", RIOT_API_KEY_GUIDE_URL))
+    hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
+    try:
+        api_key = read_secret_interactively(hidden_prompt, "Paste the Riot API key (input hidden): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        raise RecoveryError(secret_entry_cancelled_advice("Riot API key", "--set-riot-api-key", RIOT_API_KEY_GUIDE_URL)) from None
+    validate = validate_riot_api_key if validator is None else validator
+    print("* Checking the entered Riot API key before changing the private settings file ...")
+    if not validate(api_key):
+        raise SecretConfigurationError("The entered Riot API key is invalid or could not be verified. The private settings file was not changed.")
+    try:
+        update_dotenv_file(destination, {"RIOT_API_KEY": api_key})
+    except Exception:
+        raise SecretConfigurationError(f"Could not save the Riot API key in '{destination}'. Check file permissions or choose another path with --env-file.")
+    print("* Riot API key is valid")
+    print(f"* Updated private settings file: {destination}")
+    print()
+    print_labelled_command("Check setup again:", render_command(["--doctor"], include_paths=False, env_path=destination))
+    print_labelled_command("After Doctor passes, start monitoring:", render_command(command_target_arguments(RIOT_ID or None, REGION or None), include_paths=False, env_path=destination))
+    return str(destination)
+
+
+# Privately checks one SMTP password against the mail server and atomically stores it
+@suppresses_debug_output
+def run_set_smtp_password(env_file=None, interactive=None, input_func=None, getpass_func=None, sign_in=None):
+    destination = resolve_secret_env_path(env_file)
+    terminal_is_interactive = sys.stdin.isatty() if interactive is None else interactive
+    if not terminal_is_interactive:
+        raise SecretConfigurationError("--set-smtp-password requires an interactive terminal. Run it in a terminal window so the password stays hidden while you type it.")
+    # Checked before the prompts, so nobody types a password only to be told the mail server was never configured
+    if not mail_sign_in_settings_complete():
+        raise SecretConfigurationError(MAIL_SETTINGS_INCOMPLETE_MESSAGE)
+    prompt = input if input_func is None else input_func
+    if _dotenv_contains_key(destination, "SMTP_PASSWORD"):
+        try:
+            confirmed = read_interactively(prompt, f"Replace the saved SMTP password in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            raise RecoveryError(secret_entry_cancelled_advice("SMTP password", "--set-smtp-password", SMTP_GUIDE_URL)) from None
+        if not confirmed:
+            raise RecoveryError(secret_replacement_declined_advice("SMTP password", "--set-smtp-password", SMTP_GUIDE_URL))
+    print(f"* The password is checked by signing in to {SMTP_HOST} as {SMTP_USER}. Nothing is sent")
+    hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
+    try:
+        smtp_password = str(read_secret_interactively(hidden_prompt, "Enter the SMTP password (input hidden): ")).strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        raise RecoveryError(secret_entry_cancelled_advice("SMTP password", "--set-smtp-password", SMTP_GUIDE_URL)) from None
+    check = smtp_sign_in if sign_in is None else sign_in
+    try:
+        signed_in_user = check(smtp_password, timeout=SECRET_ENTRY_SMTP_TIMEOUT)
+    except SecretConfigurationError:
+        raise
+    except Exception as exc:
+        # The entered password is not stored yet, so it is named here rather than left to the configured secrets
+        raise SecretConfigurationError(f"The mail server did not accept the password: {type(exc).__name__}: {sanitize_error_text(exc, (smtp_password,))}. The private settings file was not changed.") from None
+    try:
+        update_dotenv_file(destination, {"SMTP_PASSWORD": smtp_password})
+    except Exception:
+        raise SecretConfigurationError(f"Could not save the SMTP password in '{destination}'. Check file permissions or choose another path with --env-file.")
+    print(f"* The mail server accepted the password for {signed_in_user}")
+    print(f"* Updated private settings file: {destination}")
+    print()
+    print_labelled_command("Send a test email:", render_command(["--send-test-email"], include_paths=False, env_path=destination))
+    print_labelled_command("Check setup again:", render_command(["--doctor"], include_paths=False, env_path=destination))
+    return str(destination)
+
+
+# Privately validates and atomically stores one webhook URL
+@suppresses_debug_output
+def run_set_webhook_url(env_file=None, interactive=None, input_func=None, getpass_func=None):
+    destination = resolve_secret_env_path(env_file)
+    terminal_is_interactive = sys.stdin.isatty() if interactive is None else interactive
+    if not terminal_is_interactive:
+        raise SecretConfigurationError("--set-webhook-url requires an interactive terminal. Run it in a terminal window so the webhook URL stays hidden while you paste it.")
+    prompt = input if input_func is None else input_func
+    if _dotenv_contains_key(destination, "WEBHOOK_URL"):
+        try:
+            confirmed = read_interactively(prompt, f"Replace the saved webhook URL in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            raise RecoveryError(secret_entry_cancelled_advice("webhook URL", "--set-webhook-url", WEBHOOK_GUIDE_URL)) from None
+        if not confirmed:
+            raise RecoveryError(secret_replacement_declined_advice("webhook URL", "--set-webhook-url", WEBHOOK_GUIDE_URL))
+    hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
+    try:
+        webhook_url = read_secret_interactively(hidden_prompt, "Paste the Discord or ntfy webhook URL (input hidden): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        raise RecoveryError(secret_entry_cancelled_advice("webhook URL", "--set-webhook-url", WEBHOOK_GUIDE_URL)) from None
+    if not validate_webhook_url(webhook_url):
+        raise SecretConfigurationError("That does not look like a complete HTTPS webhook URL. The private settings file was not changed.")
+    try:
+        update_dotenv_file(destination, {"WEBHOOK_URL": webhook_url})
+    except Exception:
+        raise SecretConfigurationError(f"Could not save the webhook URL in '{destination}'. Check file permissions or choose another path with --env-file.")
+    detected_provider = detect_webhook_provider(webhook_url)
+    print(f"* Webhook URL looks valid ({webhook_provider_display_name(detected_provider)})" if detected_provider else "* Webhook URL looks valid")
+    print(f"* Updated private settings file: {destination}")
+    print()
+    print_labelled_command("Send a test webhook:", render_command(["--send-test-webhook"], include_paths=False, env_path=destination))
+    print_labelled_command("Check setup again:", render_command(["--doctor"], include_paths=False, env_path=destination))
+    return str(destination)
+
+
+# Returns whether a webhook URL is a complete private HTTPS link
+def validate_webhook_url(url=None):
+    selected_url = WEBHOOK_URL if url is None else url
+    if not isinstance(selected_url, str) or not selected_url.strip():
+        return False
+    try:
+        parsed = urlsplit(selected_url.strip())
+    except ValueError:
+        return False
+    return parsed.scheme.casefold() == "https" and bool(parsed.hostname) and not parsed.username and not parsed.password and bool(parsed.path.strip("/"))
+
+
+# Accepts a complete HTTPS ntfy URL or a bare ntfy.sh topic name and returns the full URL
+def normalize_ntfy_topic_url(value):
+    if not isinstance(value, str):
+        return ""
+    normalized = value.strip()
+    if validate_webhook_url(normalized):
+        return normalized
+    if re.fullmatch(r"[-_A-Za-z0-9]{1,64}", normalized):
+        return f"https://ntfy.sh/{normalized}"
+    return ""
+
+
+# Detects Discord and public ntfy webhook providers from distinctive URL shapes
+def detect_webhook_provider(url):
+    if not validate_webhook_url(url):
+        return ""
+    try:
+        parsed = urlsplit(str(url).strip())
+    except ValueError:
+        return ""
+    hostname = parsed.hostname.casefold() if parsed.hostname else ""
+    if hostname == "ntfy.sh":
+        return "ntfy"
+    discord_host = hostname in ("discord.com", "discordapp.com") or hostname.endswith(".discord.com") or hostname.endswith(".discordapp.com")
+    discord_path = re.match(r"^/api(?:/v[0-9]+)?/webhooks/[0-9]+/[^/]+/?$", parsed.path) is not None
+    return "discord" if discord_host and discord_path else ""
+
+
+# Returns the normalized configured webhook provider or an empty string when unsupported
+def normalized_webhook_provider(provider=None):
+    selected_provider = WEBHOOK_PROVIDER if provider is None else provider
+    if not isinstance(selected_provider, str):
+        return ""
+    normalized = selected_provider.strip().casefold()
+    return normalized if normalized in ("discord", "ntfy") else ""
+
+
+# Returns the spelling each webhook service uses for itself, since the stored value is casefolded for comparisons
+def webhook_provider_display_name(provider=None):
+    normalized = normalized_webhook_provider(provider)
+    return {"discord": "Discord", "ntfy": "ntfy"}.get(normalized, normalized or "an unset provider")
+
+
+# Returns the webhook destination's host alone, so a trace can name it without exposing the private path
+def webhook_destination_host():
+    try:
+        return urlsplit(str(WEBHOOK_URL or "").strip()).hostname or ""
+    except ValueError:
+        return ""
+
+
+# Returns whether one configured webhook alert is enabled independently of the email settings
+def webhook_event_enabled(notification_type):
+    settings = {"status": WEBHOOK_STATUS_NOTIFICATION, "error": WEBHOOK_ERROR_NOTIFICATION}
+    return bool(WEBHOOK_ENABLED and settings.get(notification_type, False))
+
+
+# Returns the webhook alert types selected in the configuration, ignoring the master switch
+def _selected_webhook_notification_categories():
+    settings = ((WEBHOOK_STATUS_NOTIFICATION, "status changes"), (WEBHOOK_ERROR_NOTIFICATION, "errors"))
+    return [label for enabled, label in settings if enabled]
+
+
+# Returns enabled webhook notification category names in display order
+def _startup_webhook_notification_categories():
+    return _selected_webhook_notification_categories() if WEBHOOK_ENABLED else []
+
+
+# Parses one numeric or HTTP-date retry value into seconds
+def parse_retry_after_seconds(candidate):
+    if candidate is None or candidate == "":
+        return None
+    try:
+        seconds = float(candidate)
+        return seconds if math.isfinite(seconds) else None
+    except (TypeError, ValueError):
+        try:
+            retry_at = parsedate_to_datetime(str(candidate))
+            seconds = (retry_at - datetime.now(retry_at.tzinfo)).total_seconds()
+            return seconds if math.isfinite(seconds) else None
+        except Exception:
+            return None
+
+
+# Returns the first valid retry delay bounded between zero and a caller-selected maximum
+def bounded_retry_after_seconds(candidates, fallback, maximum):
+    for candidate in candidates:
+        seconds = parse_retry_after_seconds(candidate)
+        if seconds is not None:
+            return max(0.0, min(seconds, maximum))
+    return max(0.0, min(float(fallback), maximum))
+
+
+# Parses a webhook rate-limit delay and caps untrusted server values to a short wait
+def webhook_retry_after_seconds(response):
+    headers = getattr(response, "headers", {}) or {}
+    candidates = [headers.get("Retry-After")] if hasattr(headers, "get") else []
+    try:
+        payload = response.json()
+    except Exception:
+        payload = None
+    if isinstance(payload, dict):
+        candidates.append(payload.get("retry_after"))
+    return bounded_retry_after_seconds(candidates, WEBHOOK_FALLBACK_RETRY_SECONDS, WEBHOOK_MAX_RETRY_AFTER_SECONDS)
+
+
+# Substitutes the supported placeholders through one webhook template of any shape
+def format_payload(template, payload):
+    if isinstance(template, dict):
+        return {key: format_payload(value, payload) for key, value in template.items()}
+    if isinstance(template, list):
+        return [format_payload(value, payload) for value in template]
+    if isinstance(template, tuple):
+        return tuple(format_payload(value, payload) for value in template)
+    if isinstance(template, str):
+        if template == "{fields}":
+            return payload.get("fields", [])
+        if template == "{color}":
+            return payload.get("color", WEBHOOK_DEFAULT_COLOR)
+        try:
+            return template.format(**payload)
+        except KeyError:
+            return template
+    return template
+
+
+# Returns a configuration error for unsafe or unsupported webhook customization
+def validate_webhook_customization(provider=None):
+    selected_provider = normalized_webhook_provider(provider)
+    if selected_provider == "discord":
+        if not isinstance(WEBHOOK_USERNAME, str):
+            return "WEBHOOK_USERNAME must be a string"
+        if not isinstance(WEBHOOK_AVATAR_URL, str):
+            return "WEBHOOK_AVATAR_URL must be a string"
+        if WEBHOOK_AVATAR_URL.strip() and not validate_webhook_url(WEBHOOK_AVATAR_URL):
+            return "WEBHOOK_AVATAR_URL must contain a complete HTTPS link without embedded credentials"
+        if not isinstance(WEBHOOK_TEMPLATE, (dict, list, str)):
+            return "WEBHOOK_TEMPLATE must be a dictionary, list or string"
+    if not isinstance(WEBHOOK_TRANSFORMS, (list, tuple)):
+        return "WEBHOOK_TRANSFORMS must be a list or tuple"
+    for index, transform in enumerate(WEBHOOK_TRANSFORMS):
+        if not isinstance(transform, (list, tuple)) or len(transform) < 2 or not isinstance(transform[0], str) or not isinstance(transform[1], str):
+            return f"WEBHOOK_TRANSFORMS entry {index + 1} must contain a field name and string method name"
+        if transform[1].startswith("_") or not callable(getattr("", transform[1], None)):
+            return f"WEBHOOK_TRANSFORMS entry {index + 1} uses an unsupported string method"
+    return None
+
+
+# Applies configured string transformations to one webhook value mapping
+def apply_webhook_transforms(payload):
+    transformed = dict(payload)
+    for index, transform in enumerate(WEBHOOK_TRANSFORMS):
+        field = transform[0]
+        method_name = transform[1]
+        if field not in transformed or not isinstance(transformed[field], str):
+            continue
+        try:
+            transformed[field] = getattr(transformed[field], method_name)(*transform[2:])
+        except Exception:
+            raise ValueError(f"WEBHOOK_TRANSFORMS entry {index + 1} could not apply {field}.{method_name}")
+    return transformed
+
+
+# Builds bounded placeholder values shared by webhook templates and providers
+def build_webhook_values(title, description, notification_type, image_url=""):
+    safe_title = re.sub(r"[\r\n]+", " ", sanitize_error_text(title)).strip()[:WEBHOOK_EMBED_TITLE_LIMIT] or "LoL Monitor"
+    safe_description = re.sub(r"\r\n?", "\n", sanitize_error_text(description)).strip()[:WEBHOOK_EMBED_DESCRIPTION_LIMIT]
+    username = WEBHOOK_USERNAME.strip()[:80] if isinstance(WEBHOOK_USERNAME, str) else ""
+    avatar_url = WEBHOOK_AVATAR_URL.strip() if isinstance(WEBHOOK_AVATAR_URL, str) else ""
+    payload = {"title": safe_title, "description": safe_description, "version": VERSION, "image_url": str(image_url or ""), "fields": [], "fields_str": "", "color": WEBHOOK_EVENT_COLORS.get(notification_type, WEBHOOK_DEFAULT_COLOR), "timestamp": datetime.now().astimezone().isoformat(), "username": username, "avatar_url": avatar_url}
+    return apply_webhook_transforms(payload)
+
+
+# Builds one customized Discord-format payload while keeping mentions disabled
+def build_webhook_payload(title, description, notification_type, image_url="", payload_values=None):
+    values = build_webhook_values(title, description, notification_type, image_url) if payload_values is None else payload_values
+    try:
+        payload = format_payload(WEBHOOK_TEMPLATE, values)
+    except Exception:
+        raise ValueError("WEBHOOK_TEMPLATE could not be formatted with the supported placeholders")
+    if isinstance(payload, dict):
+        if payload.get("username") == "":
+            payload.pop("username")
+        if payload.get("avatar_url") == "":
+            payload.pop("avatar_url")
+        payload["allowed_mentions"] = {"parse": []}
+        embeds = payload.get("embeds")
+        if isinstance(embeds, list):
+            for embed in embeds:
+                if isinstance(embed, dict) and isinstance(embed.get("thumbnail"), dict) and not embed["thumbnail"].get("url"):
+                    embed.pop("thumbnail")
+    return payload
+
+
+# Truncates text to a UTF-8 byte limit without returning a partial character
+def truncate_utf8_bytes(text, max_bytes, suffix=""):
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return text
+    encoded_suffix = suffix.encode("utf-8")
+    if len(encoded_suffix) >= max_bytes:
+        return encoded_suffix[:max_bytes].decode("utf-8", errors="ignore")
+    return encoded[:max_bytes - len(encoded_suffix)].decode("utf-8", errors="ignore") + suffix
+
+
+# Builds one bounded ntfy title and message pair
+def build_ntfy_webhook_message(title, description):
+    safe_title = re.sub(r"[\r\n]+", " ", sanitize_error_text(title)).strip()[:WEBHOOK_EMBED_TITLE_LIMIT] or "LoL Monitor"
+    safe_message = truncate_utf8_bytes(re.sub(r"\r\n?", "\n", sanitize_error_text(description)).strip(), NTFY_MESSAGE_LIMIT_BYTES, NTFY_TRUNCATION_SUFFIX)
+    return safe_title, safe_message
+
+
+# Returns a validation error for unsupported ntfy priority or tag values
+def validate_ntfy_metadata(priority, tags):
+    if not isinstance(priority, int) or isinstance(priority, bool) or not 0 <= priority <= 5:
+        return "ntfy priority must be 0 to omit it or an integer from 1 through 5"
+    if not isinstance(tags, str):
+        return "ntfy tags must be a comma-separated string"
+    if "\r" in tags or "\n" in tags:
+        return "ntfy tags must not contain line breaks"
+    return None
+
+
+# Returns a safe validation error for one custom webhook header mapping
+def _validate_webhook_header_mapping(headers):
+    if not isinstance(headers, dict):
+        return "WEBHOOK_HEADERS must be a dictionary of string header names and values"
+    normalized_names = set()
+    for name, value in headers.items():
+        if not isinstance(name, str) or not re.fullmatch(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+", name):
+            return "WEBHOOK_HEADERS contains an invalid HTTP header name"
+        normalized_name = name.casefold()
+        if normalized_name in normalized_names:
+            return "WEBHOOK_HEADERS contains duplicate case-insensitive header names"
+        normalized_names.add(normalized_name)
+        if not isinstance(value, str):
+            return f"WEBHOOK_HEADERS value for {name} must be a string"
+        if "\r" in value or "\n" in value:
+            return f"WEBHOOK_HEADERS value for {name} must not contain line breaks"
+    return None
+
+
+# Returns a safe configuration error for custom webhook headers or ntfy access tokens
+def validate_webhook_headers(provider=None):
+    selected_provider = normalized_webhook_provider(provider)
+    header_error = _validate_webhook_header_mapping(WEBHOOK_HEADERS)
+    if header_error is not None:
+        return header_error
+    if selected_provider == "ntfy":
+        if not isinstance(NTFY_ACCESS_TOKEN, str):
+            return "NTFY_ACCESS_TOKEN must be a string"
+        token = NTFY_ACCESS_TOKEN.strip()
+        if "\r" in token or "\n" in token:
+            return "NTFY_ACCESS_TOKEN must not contain line breaks"
+        if token.casefold().startswith(("bearer ", "basic ")):
+            return "NTFY_ACCESS_TOKEN must contain only the access token without an Authorization scheme"
+    return None
+
+
+# Builds provider-specific headers with custom placeholders and private ntfy authentication
+def build_webhook_headers(provider, payload):
+    validation_error = validate_webhook_headers(provider)
+    if validation_error is not None:
+        raise ValueError(validation_error)
+    try:
+        formatted_headers = format_payload(WEBHOOK_HEADERS, payload)
+    except Exception:
+        raise ValueError("WEBHOOK_HEADERS could not be formatted with the supported placeholders")
+    formatted_error = _validate_webhook_header_mapping(formatted_headers)
+    if formatted_error is not None:
+        raise ValueError(formatted_error)
+    if not isinstance(formatted_headers, dict):
+        raise ValueError("WEBHOOK_HEADERS must be a dictionary of string header names and values")
+    headers = {str(name): str(value) for name, value in formatted_headers.items()}
+    if not any(name.casefold() == "user-agent" for name in headers):
+        headers["User-Agent"] = f"LoLMonitor/{VERSION}"
+    if provider == "ntfy":
+        headers = {name: value for name, value in headers.items() if name.casefold() != "content-type"}
+        headers["Content-Type"] = "text/plain; charset=utf-8"
+        token = NTFY_ACCESS_TOKEN.strip()
+        if token:
+            headers = {name: value for name, value in headers.items() if name.casefold() != "authorization"}
+            headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
+# Applies the webhook command line overrides, correcting a provider the destination contradicts
+def apply_webhook_cli_overrides(args, parser):
+    global WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_PROVIDER, WEBHOOK_STATUS_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION
+    if args.webhook_provider is not None:
+        WEBHOOK_PROVIDER = str(args.webhook_provider)
+    if args.webhook_url is not None:
+        if not validate_webhook_url(args.webhook_url):
+            parser.error("--webhook-url must contain a complete HTTPS link without embedded credentials")
+        WEBHOOK_URL = str(args.webhook_url).strip()
+        WEBHOOK_ENABLED = True
+    if args.webhook_enabled is not None:
+        WEBHOOK_ENABLED = args.webhook_enabled
+    if args.webhook_status is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_STATUS_NOTIFICATION = True
+    if args.webhook_errors is not None:
+        WEBHOOK_ERROR_NOTIFICATION = args.webhook_errors
+        if args.webhook_errors:
+            WEBHOOK_ENABLED = True
+    if args.webhook_provider is None:
+        detected_provider = detect_webhook_provider(WEBHOOK_URL)
+        configured_provider = normalized_webhook_provider()
+        if detected_provider and detected_provider != configured_provider:
+            WEBHOOK_PROVIDER = detected_provider
+            print(f"* Warning: Configured webhook provider did not match the URL. Using {webhook_provider_display_name(detected_provider)}.")
+
+
+# Prints one webhook error without revealing private URLs, tokens or response bodies
+def print_webhook_error(message):
+    print(f"Error sending webhook: {sanitize_error_text(message)}")
+
+
+# Sends one webhook request with the destination, deadline and redirect policy every delivery shares
+def post_webhook_request(**request_kwargs):
+    destination = str(WEBHOOK_URL or "").strip()
+    # Revalidated here because a dotenv reload can replace the destination after the delivery started
+    if not validate_webhook_url(destination):
+        raise req.exceptions.InvalidURL("WEBHOOK_URL must contain a complete HTTPS link")
+    return WEBHOOK_SESSION.post(destination, timeout=WEBHOOK_TIMEOUT_SECONDS, verify=VERIFY_SSL, allow_redirects=False, **request_kwargs)
+
+
+# Sends one webhook through an isolated bounded retry path
+def send_webhook(title, description, notification_type="status", force=False, sleeper=None, ntfy_priority=0, ntfy_tags=""):
+    if not force and not webhook_event_enabled(notification_type):
+        return 1
+    if not validate_webhook_url():
+        print_webhook_error("WEBHOOK_URL must contain a complete HTTPS link")
+        return 1
+    provider = normalized_webhook_provider()
+    if not provider:
+        print_webhook_error("WEBHOOK_PROVIDER must be discord or ntfy")
+        return 1
+    metadata_error = validate_ntfy_metadata(ntfy_priority, ntfy_tags) if provider == "ntfy" else None
+    if metadata_error is not None:
+        print_webhook_error(metadata_error)
+        return 1
+    customization_error = validate_webhook_customization(provider)
+    if customization_error is not None:
+        print_webhook_error(customization_error)
+        return 1
+    header_error = validate_webhook_headers(provider)
+    if header_error is not None:
+        print_webhook_error(header_error)
+        return 1
+    try:
+        webhook_values = build_webhook_values(title, description, notification_type)
+        request_headers = build_webhook_headers(provider, webhook_values)
+        discord_payload = build_webhook_payload(title, description, notification_type, "", webhook_values) if provider == "discord" else None
+    except ValueError as exc:
+        print_webhook_error(str(exc))
+        return 1
+    debug_print("Webhook delivery", event=notification_type, channel=provider, host=webhook_destination_host())
+    sleep_func = time.sleep if sleeper is None else sleeper
+    ntfy_title, ntfy_message = build_ntfy_webhook_message(str(webhook_values["title"]), str(webhook_values["description"])) if provider == "ntfy" else ("", "")
+    ntfy_params = {"title": ntfy_title}  # type: Dict[str, Any]
+    if provider == "ntfy" and ntfy_priority:
+        ntfy_params["priority"] = ntfy_priority
+    if provider == "ntfy" and ntfy_tags.strip():
+        ntfy_params["tags"] = ntfy_tags.strip()
+    for attempt in range(WEBHOOK_MAX_ATTEMPTS):
+        debug_print("Webhook delivery", channel=provider, attempt=f"{attempt + 1}/{WEBHOOK_MAX_ATTEMPTS}")
+        try:
+            if provider == "ntfy":
+                response = post_webhook_request(data=ntfy_message.encode("utf-8"), params=ntfy_params, headers=request_headers)
+            elif isinstance(discord_payload, str):
+                response = post_webhook_request(data=discord_payload, headers=request_headers)
+            else:
+                response = post_webhook_request(json=discord_payload, headers=request_headers)
+            if 200 <= response.status_code <= 299:
+                verbose_print(f"Webhook delivered through {provider} (HTTP {response.status_code})")
+                debug_print("Webhook delivery", channel=provider, status=response.status_code, outcome="OK")
+                return 0
+            retryable = response.status_code == 429 or 500 <= response.status_code <= 599
+            debug_print("Webhook delivery", channel=provider, status=response.status_code, retryable=retryable, outcome="failed")
+            if not retryable or attempt == WEBHOOK_MAX_ATTEMPTS - 1:
+                print_webhook_error(f"the service returned HTTP {response.status_code}")
+                return 1
+            delay = webhook_retry_after_seconds(response) if response.status_code == 429 else WEBHOOK_FALLBACK_RETRY_SECONDS
+            debug_print("Webhook delivery", channel=provider, retry_in=f"{delay}s")
+            sleep_func(delay)
+        except req.RequestException as exc:
+            debug_swallowed_exception("Webhook request", exc)
+            if attempt == WEBHOOK_MAX_ATTEMPTS - 1:
+                print_webhook_error("the service could not be reached")
+                return 1
+            sleep_func(WEBHOOK_FALLBACK_RETRY_SECONDS)
+    print_webhook_error("delivery failed")
+    return 1
+
+
+# Sends one alert through the enabled email and webhook channels
+def send_notification_channels(notification_type, subject, body, body_html="", email_enabled=False, webhook_enabled=None, ntfy_priority=0, ntfy_tags=""):
+    email_attempted = bool(email_enabled)
+    webhook_attempted = webhook_event_enabled(notification_type) if webhook_enabled is None else bool(webhook_enabled)
+    email_delivered = False
+    webhook_delivered = False
+    if email_attempted:
+        print(f"Sending email notification to {RECEIVER_EMAIL}")
+        email_delivered = send_email(subject, body, body_html, SMTP_SSL) == 0
+        debug_print("Email channel", event=notification_type, outcome="OK" if email_delivered else "failed")
+    if webhook_attempted:
+        print("Sending webhook notification")
+        webhook_delivered = send_webhook(subject, body, notification_type, force=True, ntfy_priority=ntfy_priority, ntfy_tags=ntfy_tags) == 0
+        debug_print("Webhook channel", event=notification_type, outcome="OK" if webhook_delivered else "failed")
+    # Delivery, not the attempt, so a channel that failed is retried while one that succeeded is not resent
+    return email_delivered, webhook_delivered
+
+
 # Initializes the CSV file
 def init_csv_file(csv_file_name):
     try:
@@ -1972,13 +2882,23 @@ def reload_secrets_signal_handler(sig, frame):
             env_path = None
             print("* python-dotenv not installed, skipping env-var reload")
 
+    global WEBHOOK_PROVIDER
+    webhook_url_changed = False
     if env_path:
         for secret in SECRET_KEYS:
             old_val = globals().get(secret)
             val = os.getenv(secret)
             if val is not None and val != old_val:
                 globals()[secret] = val
+                webhook_url_changed = webhook_url_changed or secret == "WEBHOOK_URL"
                 print(f"* Reloaded {secret} from {env_path} ({secret_fingerprint(val, secret)})")
+
+    # A reloaded destination can belong to the other service, and a Discord payload posted to an ntfy topic is rejected
+    if webhook_url_changed:
+        detected_provider = detect_webhook_provider(WEBHOOK_URL)
+        if detected_provider and detected_provider != normalized_webhook_provider():
+            WEBHOOK_PROVIDER = detected_provider
+            print(f"* Updated webhook provider to {webhook_provider_display_name(detected_provider)}")
 
     print_cur_ts("Timestamp:\t\t\t")
 
@@ -2583,9 +3503,7 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
                 f"</body></html>"
             )
 
-            if status_notification_flag:
-                print(f"Sending email notification to {RECEIVER_EMAIL}")
-                send_email(m_subject, m_body, m_body_html, SMTP_SSL)
+            send_notification_channels("status", m_subject, m_body, m_body_html, email_enabled=status_notification_flag)
 
             return match_start_ts
         else:
@@ -2723,8 +3641,8 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
                                 f"{get_cur_ts('<br>Timestamp: ')}"
                                 f"</body></html>"
                             )
-                            print(f"\nSending email notification to {RECEIVER_EMAIL}")
-                            send_email(m_subject, m_body, m_body_html, SMTP_SSL)
+                            print()
+                            send_notification_channels("status", m_subject, m_body, m_body_html, email_enabled=True)
                     return 0, 0
                 else:
                     debug_swallowed_exception("Match details", e)
@@ -2922,8 +3840,8 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
                 f"{get_cur_ts('<br>Timestamp: ')}"
                 f"</body></html>"
             )
-            print(f"\nSending email notification to {RECEIVER_EMAIL}")
-            send_email(m_subject, m_body, m_body_html, SMTP_SSL)
+            print()
+            send_notification_channels("status", m_subject, m_body, m_body_html, email_enabled=True)
 
         return match_start_ts, match_stop_ts
 
@@ -2943,8 +3861,8 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
                         f"{get_cur_ts('<br>Timestamp: ')}"
                         f"</body></html>"
                     )
-                    print(f"\nSending email notification to {RECEIVER_EMAIL}")
-                    send_email(m_subject, m_body, m_body_html, SMTP_SSL)
+                    print()
+                    send_notification_channels("status", m_subject, m_body, m_body_html, email_enabled=True)
         else:
             print(f"* An unexpected error occurred while processing match {match_id}: {e}")
 
@@ -3428,7 +4346,8 @@ async def lol_monitor_user(riotid, region, csv_file_name):
     ingame = False
     ingame_old = False
     game_finished_ts = 0
-    email_sent = False
+    error_email_sent = False
+    error_webhook_sent = False
 
     print_cur_ts("\nTimestamp:\t\t\t")
 
@@ -3535,9 +4454,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
 
                     started_announced = False
 
-                    if STATUS_NOTIFICATION:
-                        print(f"Sending email notification to {RECEIVER_EMAIL}")
-                        send_email(m_subject, m_body, m_body_html, SMTP_SSL)
+                    send_notification_channels("status", m_subject, m_body, m_body_html, email_enabled=STATUS_NOTIFICATION)
 
                     print_cur_ts("\nTimestamp:\t\t\t")
 
@@ -3563,7 +4480,8 @@ async def lol_monitor_user(riotid, region, csv_file_name):
 
             ingame_old = ingame
             alive_counter += 1
-            email_sent = False
+            error_email_sent = False
+            error_webhook_sent = False
             hint_tracker.reset()
 
             if LIVENESS_CHECK_COUNTER and alive_counter >= LIVENESS_CHECK_COUNTER:
@@ -3584,7 +4502,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
             debug_print("Monitoring check", check=f"#{check_count}", outcome="failed", code=advice.code, error=f"{type(e).__name__}: {e}")
             print(f"* Retrying in {display_time(LOL_CHECK_INTERVAL)}")
             if advice.code == "auth.api_key_invalid":
-                if ERROR_NOTIFICATION and not email_sent:
+                if (ERROR_NOTIFICATION and not error_email_sent) or (webhook_event_enabled("error") and not error_webhook_sent):
                     m_subject = f"lol_monitor: API key error! (user: {riotid_name})"
                     m_body = f"{advice.summary}: {sanitize_error_text(e)}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                     m_body_html = (
@@ -3593,9 +4511,9 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                         f"{get_cur_ts('<br><br>Timestamp: ')}"
                         f"</body></html>"
                     )
-                    print(f"Sending email notification to {RECEIVER_EMAIL}")
-                    send_email(m_subject, m_body, m_body_html, SMTP_SSL)
-                    email_sent = True
+                    email_delivered, webhook_delivered = send_notification_channels("error", m_subject, m_body, m_body_html, email_enabled=ERROR_NOTIFICATION and not error_email_sent, webhook_enabled=webhook_event_enabled("error") and not error_webhook_sent, ntfy_priority=5, ntfy_tags="warning")
+                    error_email_sent = error_email_sent or email_delivered
+                    error_webhook_sent = error_webhook_sent or webhook_delivered
             print_cur_ts("Timestamp:\t\t\t")
             debug_print("Retry wait", check=f"#{check_count}", next_check=f"{LOL_CHECK_INTERVAL}s")
             time.sleep(LOL_CHECK_INTERVAL)
@@ -3613,8 +4531,25 @@ DOCTOR_MIN_SAFE_ACTIVE_INTERVAL = 10
 # Preflight rows wait far less than a real delivery, so an unreachable host cannot stall the whole report
 DOCTOR_PASSIVE_TIMEOUT = 5
 
+# The sign-in behind --set-smtp-password is interactive, so it uses the same short deadline the report does
+SECRET_ENTRY_SMTP_TIMEOUT = 5
+
+# One wording per test message, shared with every sibling monitor. The subject names the tool, since the
+# message lands beside the real alerts, and the body names the command that sent it
+TEST_EMAIL_SUBJECT = "lol_monitor: test email"
+TEST_EMAIL_BODY = "This test email was sent by --send-test-email. Your SMTP settings work."
+TEST_WEBHOOK_TITLE = "lol_monitor: test webhook"
+TEST_WEBHOOK_BODY = "This test notification was sent by --send-test-webhook. Your webhook settings work."
+DOCTOR_TEST_EMAIL_SUBJECT = "lol_monitor: doctor test email"
+DOCTOR_TEST_EMAIL_BODY = "This test email was sent after approval in --doctor. Your SMTP delivery settings work."
+DOCTOR_TEST_WEBHOOK_TITLE = "lol_monitor: doctor test webhook"
+DOCTOR_TEST_WEBHOOK_BODY = "This test notification was sent after approval in --doctor. Your webhook delivery settings work."
+
 # The passing label of the email row, pinned so the wording cannot drift from the sibling monitors
 SMTP_READY_CHECK_LABEL = "SMTP connection and login succeeded"
+
+# The passing label of the webhook row, pinned so the wording cannot drift from the sibling monitors
+WEBHOOK_READY_CHECK_LABEL = "Webhook URL, headers and alert choices look valid"
 
 # The one label for a channel that is switched on and cannot deliver, shared with every sibling monitor
 EMAIL_UNUSABLE_CHECK_LABEL = "Email alerts are enabled but unusable"
@@ -3636,6 +4571,7 @@ class DoctorReport:
         self.target_skip_reason = ""
         # Structural flag, so offering a delivery test never depends on matching a rendered label
         self.email_ready = False
+        self.webhook_ready = False
 
 
 # Builds one doctor check, keeping construction in one place so the shape cannot drift between sections
@@ -3840,19 +4776,6 @@ def doctor_check_connectivity():
     return [make_doctor_check("Connectivity", "FAIL", "The connectivity endpoint could not be reached", f"Endpoint: {CHECK_INTERNET_URL}", advice)]
 
 
-# Asks Riot for the platform status, which is the cheapest call that answers whether the key is accepted
-async def riot_api_key_probe(region):
-    async with riot_api_client() as client:
-        return await client.get_lol_status_v4_platform_data(region=region)
-
-
-# Asks Riot for the account behind one Riot ID, the same lookup monitoring makes before it starts
-async def riot_account_probe(riot_id, region):
-    riotid_name, riotid_tag = riot_id.split("#", 1)
-    async with riot_api_client() as client:
-        return await client.get_account_v1_by_riot_id(region=region_continent(region), game_name=riotid_name, tag_line=riotid_tag)
-
-
 # Validates the Riot API key against the configured region, recording why a later lookup cannot run
 def doctor_check_authentication(report, region=None):
     if not doctor_value_is_set(RIOT_API_KEY):
@@ -3941,6 +4864,33 @@ def doctor_check_email_notifications(report):
                 debug_swallowed_exception("SMTP session close", exc)
     report.email_ready = True
     return [make_doctor_check("Notifications", "PASS", SMTP_READY_CHECK_LABEL, f"Alerts: {', '.join(enabled_categories)}. No email was sent during this passive check")]
+
+
+# Reports whether the webhook destination, provider and alert choices could deliver, without sending anything
+def doctor_check_webhook_notifications(report):
+    selected_categories = _selected_webhook_notification_categories()
+    # The error alert ships on by default, so it alone cannot mean the channel is switched on
+    deliberate_categories = [category for category in selected_categories if category != "errors"]
+    if not WEBHOOK_ENABLED and not deliberate_categories:
+        return [make_doctor_check("Notifications", "PASS", "Webhook alerts are disabled", "No webhook destination was contacted and no notification was sent")]
+    if not WEBHOOK_ENABLED:
+        advice = make_recovery_advice("webhook.invalid", "Webhook alert types are selected but webhooks are switched off", recovery_fix_with_guide("Set WEBHOOK_ENABLED to True, or turn the alert types off", WEBHOOK_GUIDE_URL), False)
+        return [make_doctor_check("Notifications", "WARN", advice.summary, "Nothing would ever be delivered", advice)]
+    if not normalized_webhook_provider():
+        advice = classify_recovery_error(context="webhook", detail="WEBHOOK_PROVIDER must be discord or ntfy")
+        return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
+    if not validate_webhook_url():
+        advice = classify_recovery_error(context="webhook", detail="WEBHOOK_URL must contain a complete HTTPS link")
+        return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
+    for validation_error in (validate_webhook_customization(normalized_webhook_provider()), validate_webhook_headers(normalized_webhook_provider())):
+        if validation_error is not None:
+            advice = classify_recovery_error(context="webhook", detail=validation_error)
+            return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
+    if not selected_categories:
+        advice = make_recovery_advice("webhook.invalid", "Webhook alerts are on but no alert types are selected", recovery_fix_with_guide("Turn on at least one webhook alert in the configuration file, or set WEBHOOK_ENABLED to False", WEBHOOK_GUIDE_URL), False)
+        return [make_doctor_check("Notifications", "WARN", advice.summary, "Nothing would ever be delivered", advice)]
+    report.webhook_ready = True
+    return [make_doctor_check("Notifications", "PASS", f"{WEBHOOK_READY_CHECK_LABEL} for {webhook_provider_display_name()}", f"Alerts: {', '.join(selected_categories)}. The private link was not displayed. No webhook was sent during this passive check")]
 
 
 # The fixed section order the report renders in, chosen so each section depends only on the ones above it
@@ -4036,7 +4986,7 @@ def doctor_progress_clear():
 
 # States what doctor will and will not do, before the first slow check starts rather than after
 def render_doctor_notice():
-    print("Running preflight checks. No files will be written. The interactive email test runs only after separate approval.\n")
+    print("Running preflight checks. No files will be written. The interactive email and webhook tests run only after separate approval.\n")
 
 
 # Prompts for explicit delivery consent and defaults safely to no
@@ -4061,25 +5011,44 @@ def doctor_ask_yes_no(question, input_func=input):
 # Offers one real delivery per ready channel, only after separate interactive approval
 def doctor_offer_notification_tests(report, input_func=input, interactive=None):
     terminal_is_interactive = (sys.stdin.isatty() and sys.stdout.isatty()) if interactive is None else interactive
-    if not terminal_is_interactive or not report.email_ready:
+    if not terminal_is_interactive or not (report.email_ready or report.webhook_ready):
         return []
     print("\n" + DOCTOR_DELIVERY_SECTION + "\n")
     print("Doctor will not write files. Each approved test sends one real message.\n")
-    if doctor_ask_yes_no("Send one test email now? This will deliver a real message", input_func=input_func):
-        debug_print("Doctor test email", recipient=RECEIVER_EMAIL)
-        delivered = send_email("lol_monitor: doctor test email", "This test email was sent after approval in --doctor. Your SMTP delivery settings work.", "", SMTP_SSL, smtp_timeout=DOCTOR_PASSIVE_TIMEOUT) == 0
-        debug_print("Doctor test email", recipient=RECEIVER_EMAIL, outcome="OK" if delivered else "failed")
-        if delivered:
-            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS", "Doctor test email delivered", "One real test email was sent after confirmation")
+    checks = []
+    if report.email_ready:
+        if doctor_ask_yes_no("Send one test email now? This will deliver a real message", input_func=input_func):
+            debug_print("Doctor test email", recipient=RECEIVER_EMAIL)
+            delivered = send_email(DOCTOR_TEST_EMAIL_SUBJECT, DOCTOR_TEST_EMAIL_BODY, "", SMTP_SSL, smtp_timeout=DOCTOR_PASSIVE_TIMEOUT) == 0
+            debug_print("Doctor test email", recipient=RECEIVER_EMAIL, outcome="OK" if delivered else "failed")
+            if delivered:
+                check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS", "Doctor test email delivered", "One real test email was sent after confirmation")
+            else:
+                advice = make_recovery_advice("smtp.connection", "Doctor test email delivery failed", recovery_fix_with_guide("Review the SMTP error above and correct the email settings", SMTP_GUIDE_URL), True)
+                check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "FAIL", advice.summary, "The approved test email could not be delivered", advice)
         else:
-            advice = make_recovery_advice("smtp.connection", "Doctor test email delivery failed", recovery_fix_with_guide("Review the SMTP error above and correct the email settings", SMTP_GUIDE_URL), True)
-            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "FAIL", advice.summary, "The approved test email could not be delivered", advice)
-    else:
-        check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "SKIP", "Test email was not sent", "You declined the real delivery test. Run doctor again and approve the email test when ready")
-    # Recorded on the report so the summary sentence and the exit code cannot disagree about the same run
-    report.checks.append(check)
-    print_doctor_check(check)
-    return [check]
+            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "SKIP", "Test email was not sent", "You declined the real delivery test. Run doctor again and approve the email test when ready")
+        checks.append(check)
+        # Recorded on the report so the summary sentence and the exit code cannot disagree about the same run
+        report.checks.append(check)
+        print_doctor_check(check)
+    if report.webhook_ready:
+        provider = webhook_provider_display_name()
+        if doctor_ask_yes_no(f"Send one test webhook through {provider} now? This will publish a real notification", input_func=input_func):
+            debug_print("Doctor test webhook", channel=provider, host=webhook_destination_host())
+            delivered = send_webhook(DOCTOR_TEST_WEBHOOK_TITLE, DOCTOR_TEST_WEBHOOK_BODY, "status", force=True) == 0
+            debug_print("Doctor test webhook", channel=provider, outcome="OK" if delivered else "failed")
+            if delivered:
+                check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS", f"Doctor test webhook through {provider} delivered", "One real test webhook was sent after confirmation")
+            else:
+                advice = make_recovery_advice("webhook.connection", f"Doctor test webhook through {provider} delivery failed", recovery_fix_with_guide("Review the webhook error above and correct the destination settings", WEBHOOK_GUIDE_URL), True)
+                check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "FAIL", advice.summary, "The approved test webhook could not be delivered", advice)
+        else:
+            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "SKIP", f"Test webhook through {provider} was not sent", "You declined the real delivery test. Run doctor again and approve the webhook test when ready")
+        checks.append(check)
+        report.checks.append(check)
+        print_doctor_check(check)
+    return checks
 
 
 # Runs every preflight check, then the approved delivery tests, returning zero only when nothing failed
@@ -4096,7 +5065,7 @@ def run_doctor(riot_id=None, region=None, config_path=None, env_path=None, targe
             ("connectivity", lambda: doctor_check_connectivity()),
             ("authentication", lambda: doctor_check_authentication(report, region)),
             ("the monitored account", lambda: doctor_check_target(report, riot_id, region, target_error)),
-            ("notifications", lambda: doctor_check_email_notifications(report)),
+            ("notifications", lambda: doctor_check_email_notifications(report) + doctor_check_webhook_notifications(report)),
         ):
             if progress is not None:
                 progress(label)
@@ -4158,7 +5127,7 @@ def startup_notification_state(categories):
 # Formats one summary row with an aligned value column, wrapping only the rollup that grows long
 def format_startup_summary_row(row):
     prefix = f"* {(row.label + ':'):<{STARTUP_SUMMARY_LABEL_WIDTH}}"
-    if row.label == "Notifications (email)":
+    if row.label in ("Notifications (email)", "Notifications (webhook)"):
         return textwrap.fill(str(row.value), width=100, initial_indent=prefix, subsequent_indent=" " * len(prefix), break_long_words=False, break_on_hyphens=False) + "\n"
     return f"{prefix}{row.value}\n"
 
@@ -4192,6 +5161,7 @@ def build_startup_summary(target=None, config_path=None, env_path=None, log_path
         StartupSummaryRow("Target", str(target) if target else "None", concise=True),
         StartupSummaryRow("Polling intervals", f"[NOT in game: {display_time(LOL_CHECK_INTERVAL)}] [in game: {display_time(LOL_ACTIVE_CHECK_INTERVAL)}]", concise=True),
         StartupSummaryRow("Notifications (email)", startup_notification_state(email_notification_categories()), concise=True),
+        StartupSummaryRow("Notifications (webhook)", startup_notification_state(_startup_webhook_notification_categories()), concise=True),
         StartupSummaryRow("Output", output_state, concise=True, full=False),
         StartupSummaryRow("Output logging", str(log_path) if logging_enabled else "Disabled"),
         StartupSummaryRow("Config", str(config_path) if config_path else ("Discovery disabled" if CONFIG_DISCOVERY_DISABLED else "None"), concise=True),
@@ -4216,6 +5186,31 @@ def build_startup_summary(target=None, config_path=None, env_path=None, log_path
         # Points at the two modes for a reader who does not know they exist, so the full view drops it
         StartupSummaryRow("More details", "use --verbose or --debug", concise=True, full=False),
     ]
+
+
+# Names one argument the way the user would have typed it, so a refused combination points at a real option
+def argument_display_name(parser, dest, argv=None):
+    typed = set(sys.argv[1:] if argv is None else argv)
+    # argparse exposes no public listing of its arguments, so the actions it holds are read directly
+    for action in getattr(parser, "_actions", ()):
+        if action.dest != dest:
+            continue
+        if not action.option_strings:
+            return str(action.metavar or dest.upper())
+        return next((option for option in action.option_strings if option in typed), action.option_strings[0])
+    return f"--{dest.replace('_', '-')}"
+
+
+# Rejects unrelated options when a hidden secret-entry action is selected
+def validate_secret_action_args(args, parser, action_dest, action_flag, permitted_extra=()):
+    permitted = {action_dest, "env_file", "no_color", *permitted_extra}
+    conflicts = []
+    for name, value in vars(args).items():
+        if name in permitted or value is None or value is False:
+            continue
+        conflicts.append(argument_display_name(parser, name))
+    if conflicts:
+        parser.error(f"{action_flag} cannot be combined with " + ", ".join(conflicts))
 
 
 def main():
@@ -4346,6 +5341,12 @@ def main():
         type=str,
         help="Riot API key"
     )
+    creds.add_argument(
+        "--set-riot-api-key",
+        dest="set_riot_api_key",
+        action="store_true",
+        help="Paste the Riot API key with input hidden and save it to the dotenv file"
+    )
 
     # Notifications
     notify = parser.add_argument_group("Notifications")
@@ -4364,10 +5365,81 @@ def main():
         help="Disable email on errors (e.g. invalid API key)"
     )
     notify.add_argument(
+        "--set-smtp-password",
+        dest="set_smtp_password",
+        action="store_true",
+        help="Enter the SMTP password with input hidden, check it against the mail server and save it"
+    )
+    notify.add_argument(
         "--send-test-email",
         dest="send_test_email",
         action="store_true",
         help="Send test email to verify SMTP settings"
+    )
+
+    # Webhook notifications
+    webhook_notify = parser.add_argument_group("Webhook notifications")
+    webhook_toggle = webhook_notify.add_mutually_exclusive_group()
+    webhook_toggle.add_argument(
+        "--webhook",
+        dest="webhook_enabled",
+        action="store_true",
+        default=None,
+        help="Enable the configured webhook alerts"
+    )
+    webhook_toggle.add_argument(
+        "--no-webhook",
+        dest="webhook_enabled",
+        action="store_false",
+        default=None,
+        help="Disable the configured webhook alerts"
+    )
+    webhook_notify.add_argument(
+        "--webhook-url",
+        dest="webhook_url",
+        metavar="URL",
+        type=str,
+        help="Use one Discord webhook or ntfy topic URL for this run (may remain in shell history)"
+    )
+    webhook_notify.add_argument(
+        "--webhook-provider",
+        dest="webhook_provider",
+        choices=("discord", "ntfy"),
+        help="Webhook request format for this run (default: configured provider)"
+    )
+    webhook_notify.add_argument(
+        "--webhook-status",
+        dest="webhook_status",
+        action="store_true",
+        default=None,
+        help="Send a webhook alert when the user's playing status changes"
+    )
+    webhook_error_toggle = webhook_notify.add_mutually_exclusive_group()
+    webhook_error_toggle.add_argument(
+        "--webhook-errors",
+        dest="webhook_errors",
+        action="store_true",
+        default=None,
+        help="Send webhook alerts when monitoring has a problem"
+    )
+    webhook_error_toggle.add_argument(
+        "--no-webhook-error-notify",
+        dest="webhook_errors",
+        action="store_false",
+        default=None,
+        help="Disable webhook alerts when monitoring has a problem"
+    )
+    webhook_notify.add_argument(
+        "--set-webhook-url",
+        dest="set_webhook_url",
+        action="store_true",
+        help="Paste the webhook URL with input hidden and save it to the dotenv file"
+    )
+    webhook_notify.add_argument(
+        "--send-test-webhook",
+        dest="send_test_webhook",
+        action="store_true",
+        help="Send one test webhook without starting monitoring"
     )
 
     # Intervals & timers
@@ -4473,6 +5545,31 @@ def main():
     # Applied here so config-load failures and startup checks can already print diagnostics
     apply_diagnostic_cli_flags(args)
 
+    selected_secret_actions = [flag for flag, selected in zip(SECRET_ACTION_FLAGS, (args.set_riot_api_key, args.set_smtp_password, args.set_webhook_url), strict=True) if selected]
+    if len(selected_secret_actions) > 1:
+        parser.error(f"{selected_secret_actions[0]} cannot be combined with {selected_secret_actions[1]}")
+
+    if args.send_test_email and args.send_test_webhook:
+        parser.error("--send-test-email cannot be combined with --send-test-webhook")
+
+    if args.set_riot_api_key:
+        validate_secret_action_args(args, parser, "set_riot_api_key", "--set-riot-api-key")
+        try:
+            run_set_riot_api_key(env_file=args.env_file)
+        except (SecretConfigurationError, RecoveryError) as exc:
+            print_recovery_error(exc, context="set_riot_api_key")
+            sys.exit(1)
+        sys.exit(0)
+
+    if args.set_webhook_url:
+        validate_secret_action_args(args, parser, "set_webhook_url", "--set-webhook-url")
+        try:
+            run_set_webhook_url(env_file=args.env_file)
+        except (SecretConfigurationError, RecoveryError) as exc:
+            print_recovery_error(exc, context="set_webhook_url")
+            sys.exit(1)
+        sys.exit(0)
+
     CONFIG_DISCOVERY_DISABLED = args.config_file is not None and str(args.config_file).casefold() == "none"
     if CONFIG_DISCOVERY_DISABLED:
         CLI_CONFIG_PATH = None
@@ -4533,7 +5630,9 @@ def main():
                 env_path = DOTENV_FILE
                 if not os.path.isfile(env_path):
                     debug_print("Dotenv file", path=env_path, outcome="skipped", reason="the file does not exist")
-                    print(f"* Warning: dotenv file '{env_path}' does not exist\n")
+                    # A command that is about to write this file is not warned that it is missing
+                    if not args.set_smtp_password:
+                        print(f"* Warning: dotenv file '{env_path}' does not exist\n")
                 else:
                     load_dotenv(env_path, override=False)
                     debug_print("Dotenv file", path=env_path, outcome="OK")
@@ -4579,6 +5678,8 @@ def main():
     if args.notify_errors is False:
         ERROR_NOTIFICATION = False
 
+    apply_webhook_cli_overrides(args, parser)
+
     if args.disable_logging is True:
         DISABLE_LOGGING = True
 
@@ -4592,10 +5693,20 @@ def main():
 
     # A target is optional only for the modes that legitimately finish without one. Checked after the dotenv
     # file is resolved, so the command this prints carries the same files the run was given
-    if (not args.riot_id or not args.region) and not (args.doctor or args.send_test_email):
+    if (not args.riot_id or not args.region) and not (args.doctor or args.send_test_email or args.send_test_webhook or args.set_smtp_password):
         missing = "No Riot ID was provided" if not args.riot_id else "No region was provided"
         print_recovery_error(context="target.missing", detail=missing)
         sys.exit(1)
+
+    if args.set_smtp_password:
+        # Runs after the config file so the mail server it signs in to is the one monitoring would use
+        validate_secret_action_args(args, parser, "set_smtp_password", "--set-smtp-password", permitted_extra=("config_file",))
+        try:
+            run_set_smtp_password(env_file=args.env_file or env_path)
+        except (SecretConfigurationError, RecoveryError) as exc:
+            print_recovery_error(exc, context="set_smtp_password")
+            sys.exit(1)
+        sys.exit(0)
 
     if args.doctor:
         doctor_exit = run_doctor(riot_id=args.riot_id, region=args.region, config_path=cfg_path, env_path=env_path, target_error=target_input_error)
@@ -4611,9 +5722,25 @@ def main():
         sys.exit(1)
 
     if args.send_test_email:
+        if not mail_sign_in_settings_complete():
+            print_recovery_error(context="set_smtp_password", detail="The mail server settings are incomplete")
+            sys.exit(1)
         print("* Sending test email notification ...\n")
-        if send_email("lol_monitor: test email", "This is test email - your SMTP settings seems to be correct !", "", SMTP_SSL, smtp_timeout=5) == 0:
+        debug_print("Test email", sender=SENDER_EMAIL, recipient=RECEIVER_EMAIL)
+        if send_email(TEST_EMAIL_SUBJECT, TEST_EMAIL_BODY, "", SMTP_SSL, smtp_timeout=5) == 0:
             print("* Email sent successfully !")
+        else:
+            sys.exit(1)
+        sys.exit(0)
+
+    if args.send_test_webhook:
+        if not validate_webhook_url():
+            print_recovery_error(context="set_webhook_url", detail="No webhook destination is configured")
+            sys.exit(1)
+        print("* Sending test webhook notification ...\n")
+        debug_print("Test webhook", channel=normalized_webhook_provider() or "an unset provider", host=webhook_destination_host())
+        if send_webhook(TEST_WEBHOOK_TITLE, TEST_WEBHOOK_BODY, "status", force=True) == 0:
+            print("* Webhook sent successfully !")
         else:
             sys.exit(1)
         sys.exit(0)

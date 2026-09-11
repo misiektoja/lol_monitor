@@ -179,6 +179,58 @@ def no_unexpected_smtp(monkeypatch):
     monkeypatch.setattr(lm.smtplib, "SMTP", RefusedSMTP)
 
 
+# Records every webhook request and replays scripted responses instead of contacting a real service
+class FakeWebhookSession:
+    def __init__(self, responses=None):
+        self.responses = list(responses or [])
+        self.posts = []
+
+    # Records one delivery and returns or raises the next scripted response
+    def post(self, url, **kwargs):
+        self.posts.append({"url": url, **kwargs})
+        if not self.responses:
+            raise AssertionError(f"this test posted {len(self.posts)} webhooks but scripted fewer responses")
+        scripted = self.responses.pop(0)
+        if isinstance(scripted, BaseException):
+            raise scripted
+        return scripted
+
+
+# Stands in for one webhook HTTP response, carrying only what the delivery path reads
+class FakeWebhookResponse:
+    def __init__(self, status_code=204, headers=None, payload=None):
+        self.status_code = status_code
+        self.headers = headers or {}
+        self._payload = payload
+
+    # Returns the scripted JSON body, or raises the way requests does when there is none
+    def json(self):
+        if self._payload is None:
+            raise ValueError("no JSON body")
+        return self._payload
+
+
+# Refuses a webhook delivery a test never asked for, so no run can reach a real webhook service
+class RefusedWebhookSession:
+    # Fails the test rather than letting an unscripted delivery leave the machine
+    def post(self, url, **kwargs):
+        raise AssertionError(f"this test posted a webhook to {url} without the webhook_session fixture")
+
+
+@pytest.fixture(autouse=True)
+# Keeps every test offline on the webhook side, whether or not it expects the code under test to deliver
+def no_unexpected_webhook(monkeypatch):
+    monkeypatch.setattr(lm, "WEBHOOK_SESSION", RefusedWebhookSession(), raising=False)
+
+
+@pytest.fixture
+# Replaces the webhook session with the recording double, scripted through its responses list
+def webhook_session(monkeypatch):
+    session = FakeWebhookSession()
+    monkeypatch.setattr(lm, "WEBHOOK_SESSION", session, raising=False)
+    return session
+
+
 @pytest.fixture
 # Replaces the SMTP client with the recording double
 def smtp_double(monkeypatch):
@@ -224,6 +276,16 @@ def deterministic_globals(monkeypatch):
     monkeypatch.setattr(lm, "TRUNCATE_CHARS", 0, raising=False)
     monkeypatch.setattr(lm, "STATUS_NOTIFICATION", False, raising=False)
     monkeypatch.setattr(lm, "ERROR_NOTIFICATION", False, raising=False)
+    monkeypatch.setattr(lm, "WEBHOOK_ENABLED", False, raising=False)
+    monkeypatch.setattr(lm, "WEBHOOK_PROVIDER", "discord", raising=False)
+    monkeypatch.setattr(lm, "WEBHOOK_URL", "", raising=False)
+    monkeypatch.setattr(lm, "WEBHOOK_USERNAME", "", raising=False)
+    monkeypatch.setattr(lm, "WEBHOOK_AVATAR_URL", "", raising=False)
+    monkeypatch.setattr(lm, "WEBHOOK_STATUS_NOTIFICATION", False, raising=False)
+    monkeypatch.setattr(lm, "WEBHOOK_ERROR_NOTIFICATION", False, raising=False)
+    monkeypatch.setattr(lm, "WEBHOOK_HEADERS", {}, raising=False)
+    monkeypatch.setattr(lm, "WEBHOOK_TRANSFORMS", [], raising=False)
+    monkeypatch.setattr(lm, "NTFY_ACCESS_TOKEN", "", raising=False)
     monkeypatch.setattr(lm, "LOL_CHECK_INTERVAL", 150, raising=False)
     monkeypatch.setattr(lm, "LOL_ACTIVE_CHECK_INTERVAL", 45, raising=False)
     monkeypatch.setattr(lm, "LOL_ACTIVE_CHECK_SIGNAL_VALUE", 30, raising=False)

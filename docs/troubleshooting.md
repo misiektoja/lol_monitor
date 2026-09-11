@@ -30,9 +30,9 @@ It also names the **log and CSV files monitoring would write** and reports wheth
 
 Authentication asks Riot for the platform status of your region, which is the cheapest call that proves the key is accepted. The key itself is never printed. Target then looks up the account behind the Riot ID with the same key. When the key does not validate, or when no region is available to route the request, both lookups are skipped rather than reported as a second failure.
 
-The Notifications section **signs in to the configured SMTP server** without sending anything. The ready row lists the **alert categories** email would deliver.
+The Notifications section **signs in to the configured SMTP server** without sending anything, then checks the webhook destination, its headers and its alert choices without contacting the service. The private webhook URL is never displayed. Each ready row lists the **alert categories** that channel would deliver.
 
-When email validates and you are at a terminal, doctor then offers to send **one real test message**, behind its own confirmation. Declining is the default. Nothing is sent without an explicit `y`, so a scripted or containerized run stays message-free. The `Summary` line is printed after that test finishes and counts its result, so the sentence and the exit code always describe the same run.
+When a channel validates and you are at a terminal, doctor then offers to send **one real test message** through it, behind its own confirmation. Each channel is asked about separately, so approving the email test never sends a webhook. Declining is the default. Nothing is sent without an explicit `y`, so a scripted or containerized run stays message-free. The `Summary` line is printed after those tests finish and counts their results, so the sentence and the exit code always describe the same run.
 
 The report ends with a **Next steps** block naming the command that starts monitoring, carrying the same `--config-file` and `--env-file` this run checked. It carries the target this run used, leaves it out when the configuration file already supplies both values and otherwise shows `<riot_id> <region>` for you to replace. While a check is failing it asks for the failures first.
 
@@ -151,6 +151,40 @@ lol_monitor --send-test-email
 
 If any SMTP setting is still a shipped placeholder, email is switched off at startup and no message is attempted. Run with `--verbose` to have startup name the settings that are missing, or use `--doctor`, which reports the same thing in its Notifications section. See [SMTP Settings](configuration.md#smtp-settings).
 
+### Nothing arrives by webhook
+
+Send one real notification and read what happens:
+
+```sh
+lol_monitor --send-test-webhook
+```
+
+`--doctor` reports the same setup without sending anything. A destination that is not a complete HTTPS link, an unsupported provider, an invalid header or a transform naming a method that does not exist all fail the report by name. See [Webhook Settings](configuration.md#webhook-settings).
+
+### `Error sending webhook: the service returned HTTP <code>`
+
+The service answered and refused the delivery. `401` or `403` usually means the webhook was deleted or the ntfy topic needs a token, `404` means the Discord webhook no longer exists and `413` means the message was too large for the service. The URL is never printed with the error, so check the saved destination with `--doctor` rather than reading it back from the screen.
+
+### `Error sending webhook: the service could not be reached`
+
+The host did not answer. The delivery is retried once and then reported. Monitoring continues, so a webhook outage never stops a run.
+
+### `Warning: Configured webhook provider did not match the URL`
+
+`WEBHOOK_PROVIDER` says one service and `WEBHOOK_URL` points at the other. The URL wins, since a Discord payload posted to an ntfy topic is rejected. Set `--webhook-provider` explicitly if you are using a self-hosted host the tool cannot recognise.
+
+### `That does not look like a complete HTTPS webhook URL`
+
+`--set-webhook-url` refuses anything that is not a complete `https://` link with a path, and anything carrying a username or password in the URL. Copy the whole link from the service rather than the topic name or the channel name.
+
+### `<flag> requires an interactive terminal`
+
+`--set-riot-api-key`, `--set-smtp-password` and `--set-webhook-url` read the value hidden, which needs a terminal. In a script or a container write the dotenv file directly instead.
+
+### `The mail server settings are incomplete`
+
+`--set-smtp-password` signs in before it saves, so it needs `SMTP_HOST`, `SMTP_USER`, `SENDER_EMAIL` and `RECEIVER_EMAIL` first. Fill those in, then run it again.
+
 ### A match is missing from the output
 
 Some matches need an OAuth (RSO) access token that the tool does not hold. By default those are skipped without a notice. Set `INCLUDE_FORBIDDEN_MATCHES = True` or pass `-f` to see a notice where each one was skipped.
@@ -167,4 +201,4 @@ Include the version and the exact message you saw:
 lol_monitor --version
 ```
 
-Never paste a Riot API key, an SMTP password or the contents of a dotenv file into an issue. Where to report what is covered in [SUPPORT.md](https://github.com/misiektoja/lol_monitor/blob/main/SUPPORT.md).
+Never paste a Riot API key, an SMTP password, a webhook URL or the contents of a dotenv file into an issue. Where to report what is covered in [SUPPORT.md](https://github.com/misiektoja/lol_monitor/blob/main/SUPPORT.md).

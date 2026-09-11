@@ -88,6 +88,30 @@ Example email:
 
 ![lol_monitor email notification](https://raw.githubusercontent.com/misiektoja/lol_monitor/main/assets/lol_monitor_email_notifications.png)
 
+## Webhook Notifications
+
+The same alerts can go to a Discord channel or an ntfy topic. Point the tool at a destination and switch the channel on:
+
+```sh
+lol_monitor <riot_id> <region> --webhook --webhook-status
+```
+
+`--webhook-status` sends an alert when the player's status changes and `--webhook-errors` sends one on monitoring errors. Either flag switches the channel on by itself, so the shortest form is one flag. `--no-webhook` switches the whole channel off for one run and `--no-webhook-error-notify` silences only the error alert.
+
+Save the destination once with `--set-webhook-url` rather than passing it on every run, since a URL on the command line stays in your shell history. `--webhook-url` is there for a one-off run.
+
+Email and webhooks are independent. A run can use one, both or neither, and each keeps its own alert settings.
+
+Check the setup by sending one real notification:
+
+```sh
+lol_monitor --send-test-webhook
+```
+
+`--doctor` reports whether the destination, the headers and the alert choices are usable without contacting the service, then offers to send one real notification after a separate confirmation.
+
+The settings behind all of this are covered under [Webhook Settings](configuration.md#webhook-settings).
+
 ## CSV Export
 
 Set `CSV_FILE` or pass `-b` to append every reported match to a CSV file:

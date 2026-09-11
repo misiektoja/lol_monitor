@@ -5,7 +5,7 @@ import inspect
 
 import pytest
 
-CONTEXTS = ("config", "credentials", "target.missing", "target.region", "target", "connectivity", "email", "file", "file.exists", "runtime")
+CONTEXTS = ("config", "credentials", "target.missing", "target.region", "target", "connectivity", "email", "webhook", "set_riot_api_key", "set_smtp_password", "set_webhook_url", "file", "file.exists", "runtime")
 
 
 @pytest.fixture(autouse=True)
@@ -334,3 +334,18 @@ def test_every_guide_link_points_at_the_documentation_site(lm_module):
     assert guides, "the module declares no guide links"
     for name, url in guides.items():
         assert url.startswith(f"{lm_module.DOCS_BASE_URL}/"), f"{name} does not point at the documentation site"
+
+
+# Verifies every context the tool passes to the classifier is one this file exercises, so a new branch cannot go untested
+def test_every_context_the_tool_uses_is_covered(lm_module):
+    used = set()
+    for node in ast.walk(ast.parse(inspect.getsource(lm_module))):
+        if not isinstance(node, ast.Call) or getattr(node.func, "id", "") not in ("classify_recovery_error", "print_recovery_error", "render_recovery_error"):
+            continue
+        for keyword in node.keywords:
+            if keyword.arg == "context" and isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, str):
+                used.add(keyword.value.value)
+        if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str):
+            used.add(node.args[1].value)
+
+    assert used <= set(CONTEXTS), f"contexts this file never exercises: {sorted(used - set(CONTEXTS))}"

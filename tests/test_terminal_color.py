@@ -341,12 +341,27 @@ def test_a_labelled_row_is_not_read_as_a_heading(colored):
     assert not rendered.startswith(colored["section"])
 
 
-# Verifies the notification summary row colours its state word rather than the categories beside it
+# Verifies both notification summary rows colour their state word rather than the categories beside it
+@pytest.mark.parametrize("channel", ["email", "webhook"])
 @pytest.mark.parametrize("state,part", [("On", "boolean_true"), ("Off", "boolean_false")])
-def test_the_notification_row_colours_its_state(colored, state, part):
-    rendered = monitor._colorize_line(f"* Notifications (email):        {state} (status changes)" if state == "On" else f"* Notifications (email):        {state}")
+def test_the_notification_row_colours_its_state(colored, channel, state, part):
+    label = f"* Notifications ({channel}):".ljust(32)
+    rendered = monitor._colorize_line(f"{label}{state} (status changes)" if state == "On" else f"{label}{state}")
 
     assert f"{colored[part]}{state}{monitor.ANSI_RESET}" in rendered
+
+
+# Verifies a delivery line is painted in the colour of the channel that sent it, so two channels read apart
+@pytest.mark.parametrize("line,part", [
+    ("Sending email notification to alerts@example.test", "email"),
+    ("* Email sent successfully !", "email"),
+    ("Sending webhook notification", "webhook"),
+    ("* Webhook sent successfully !", "webhook"),
+])
+def test_each_delivery_line_is_painted_in_its_channel_colour(colored, line, part):
+    rendered = monitor._colorize_line(line)
+
+    assert rendered.startswith(colored[part])
 
 
 # Verifies the one setting whose off state weakens a security property says so in colour
