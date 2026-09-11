@@ -12,9 +12,12 @@
 
 Powerful tool for real-time monitoring of **LoL (League of Legends) players' activities**.
 
+<p align="center">
+   <img src="https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/assets/lol_monitor.png" alt="lol_monitor_screenshot" width="90%"/>
+</p>
+
 **Full documentation: [misiektoja.github.io/lol_monitor](https://misiektoja.github.io/lol_monitor/)**
 
-<a id="-quick-install"></a>
 <a id="-quick-install-run"></a>
 ### 🚀 Quick Install & Run
 
@@ -35,10 +38,6 @@ lol_monitor --setup
 The wizard asks for the target, authentication, polling intervals and optional notifications. Review the settings before saving them. See [Setup & First Run](https://misiektoja.github.io/lol_monitor/setup-and-first-run/) for the service-specific steps.
 
 For the manual single-file method, dependencies and upgrade commands, see [Installation](https://misiektoja.github.io/lol_monitor/installation/).
-
-<p align="center">
-   <img src="https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/assets/lol_monitor.png" alt="lol_monitor_screenshot" width="90%"/>
-</p>
 
 ## Features
 
@@ -67,7 +66,6 @@ For the manual single-file method, dependencies and upgrade commands, see [Insta
 * **Flexible settings**: Use config files, dotenv files, environment variables and command-line options.
 * **Runtime controls**: Adjust the running monitor through supported signals.
 
-<a id="common-commands"></a>
 ## Common Commands
 
 Use [Quick Install & Run](#-quick-install-run) for first-time setup. These examples use the PyPI command. See [Command Format by Installation Method](https://misiektoja.github.io/lol_monitor/usage/#command-format) for manual-script equivalents.

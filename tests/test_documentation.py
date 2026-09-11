@@ -147,6 +147,7 @@ def test_user_facing_flags_are_documented(flag):
 
 # Flags belonging to programs this project does not own, each named so the exemption cannot grow silently
 THIRD_PARTY_FLAGS = {
+    "--refresh",
     "--strict",  # mkdocs build --strict, the documentation gate described on the testing page
 }
 
