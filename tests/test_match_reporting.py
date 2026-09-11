@@ -176,6 +176,23 @@ def test_the_match_summary_email_carries_the_result(lm_module, fake_clock, sent_
     assert "<b>misiektoja</b> (Ahri)" in message["body_html"]
 
 
+# Verifies the finished match alert carries the champion icon, since the embed thumbnail is the one place a
+# webhook shows which champion the match was played on
+def test_the_match_summary_webhook_carries_the_champion_icon(lm_module, fake_clock, monkeypatch, webhook_session):
+    from conftest import FakeWebhookResponse
+    monkeypatch.setattr(lm_module, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(lm_module, "WEBHOOK_PROVIDER", "discord")
+    monkeypatch.setattr(lm_module, "WEBHOOK_URL", "https://discord.com/api/webhooks/123/abc")
+    monkeypatch.setattr(lm_module, "WEBHOOK_STATUS_NOTIFICATION", True)
+    monkeypatch.setattr(lm_module, "_ddragon_version_cache", "15.19.1")
+    webhook_session.responses.append(FakeWebhookResponse(204))
+
+    report_match(lm_module, match_payload(), notify=True)
+
+    thumbnail = webhook_session.posts[0]["json"]["embeds"][0]["thumbnail"]
+    assert thumbnail == {"url": "https://ddragon.leagueoflegends.com/cdn/15.19.1/img/champion/Ahri.png"}
+
+
 # Verifies nothing is emailed while status notifications are off
 def test_no_email_without_status_notifications(lm_module, fake_clock, sent_emails):
     report_match(lm_module, match_payload())
@@ -305,6 +322,23 @@ def test_a_missing_start_time_falls_back_to_now(lm_module, riot_api, fake_clock,
     riot_api.script("get_lol_spectator_v5_active_game_by_summoner", live_match_payload(gameStartTime=0))
 
     assert asyncio.run(lm_module.print_current_match(PUUID, USER, "eun1", TS - 7200, TS - 3600, False)) == int(fake_clock.time())
+
+
+# Verifies the in-game alert carries the champion icon too, since it is announced from a different code path
+def test_the_in_game_webhook_carries_the_champion_icon(lm_module, riot_api, fake_clock, known_champions, monkeypatch, webhook_session):
+    from conftest import FakeWebhookResponse
+    monkeypatch.setattr(lm_module, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(lm_module, "WEBHOOK_PROVIDER", "discord")
+    monkeypatch.setattr(lm_module, "WEBHOOK_URL", "https://discord.com/api/webhooks/123/abc")
+    monkeypatch.setattr(lm_module, "WEBHOOK_STATUS_NOTIFICATION", True)
+    monkeypatch.setattr(lm_module, "_ddragon_version_cache", "15.19.1")
+    riot_api.script("get_lol_spectator_v5_active_game_by_summoner", live_match_payload())
+    webhook_session.responses.append(FakeWebhookResponse(204))
+
+    asyncio.run(lm_module.print_current_match(PUUID, USER, "eun1", TS - 7200, TS - 3600, True))
+
+    thumbnail = webhook_session.posts[0]["json"]["embeds"][0]["thumbnail"]
+    assert thumbnail == {"url": "https://ddragon.leagueoflegends.com/cdn/15.19.1/img/champion/Ahri.png"}
 
 
 # Verifies the in-game email names the player and carries the rosters in both bodies

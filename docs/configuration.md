@@ -152,6 +152,8 @@ WEBHOOK_HEADERS = {"X-Priority": "4", "X-Tags": "video_game"}
 
 Alerts are sent as an embed built from `WEBHOOK_TEMPLATE`, which supports the `title`, `description`, `version`, `image_url`, `fields`, `fields_str`, `color`, `timestamp`, `username` and `avatar_url` placeholders. Mentions are disabled on every message the tool sends, whatever the template says.
 
+`image_url` holds the champion icon on the alerts that name a champion, the in-game announcement and the finished match summary, taken from the Data Dragon release the run read its champion names from. The default template shows it as the embed thumbnail. Alerts with no champion leave it empty and the thumbnail is dropped rather than sent blank.
+
 `WEBHOOK_TRANSFORMS` applies string methods to those values before the payload is built:
 
 ```python

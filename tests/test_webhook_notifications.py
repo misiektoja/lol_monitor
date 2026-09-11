@@ -292,6 +292,40 @@ def test_the_unset_display_fields_are_dropped_rather_than_sent_empty(discord):
     assert "thumbnail" not in payload["embeds"][0]
 
 
+# Verifies a champion icon reaches the embed thumbnail the template has always carried, which was sent empty
+# and dropped on every alert until an alert had an icon to put in it
+def test_a_champion_icon_reaches_the_embed_thumbnail(discord, monkeypatch):
+    monkeypatch.setattr(discord, "_ddragon_version_cache", "15.19.1")
+    icon = discord.champion_image_url("Ahri")
+
+    payload = discord.build_webhook_payload("subject", "body", "status", icon)
+
+    assert icon == "https://ddragon.leagueoflegends.com/cdn/15.19.1/img/champion/Ahri.png"
+    assert payload["embeds"][0]["thumbnail"] == {"url": icon}
+
+
+# Verifies the icon a delivered alert carries is the one the caller passed, since the value is built per alert
+# rather than read from a setting
+def test_the_icon_an_alert_carries_reaches_the_delivered_payload(discord, monkeypatch, webhook_session):
+    from conftest import FakeWebhookResponse
+    monkeypatch.setattr(discord, "_ddragon_version_cache", "15.19.1")
+    webhook_session.responses.append(FakeWebhookResponse(204))
+
+    assert discord.send_webhook("subject", "body", "status", force=True, image_url=discord.champion_image_url("Lux")) == 0
+
+    sent = webhook_session.posts[0]["json"]
+    assert sent["embeds"][0]["thumbnail"] == {"url": "https://ddragon.leagueoflegends.com/cdn/15.19.1/img/champion/Lux.png"}
+
+
+# Verifies an icon URL is built only from a known release and a plain champion name, since anything else would
+# be interpolated into a URL this tool then sends to a third-party service
+@pytest.mark.parametrize("version,champion", [("", "Ahri"), ("15.19.1", "../../../etc/passwd"), ("15.19.1", "Ahri/../x"), ("15.19.1", "Kai'Sa"), ("15.19.1", ""), ("15.19.1", None), ("../evil", "Ahri"), ("latest", "Ahri")])
+def test_an_icon_url_is_refused_unless_both_halves_are_plain(lm_module, monkeypatch, version, champion):
+    monkeypatch.setattr(lm_module, "_ddragon_version_cache", version)
+
+    assert lm_module.champion_image_url(champion) == ""
+
+
 # Verifies a configured display name and avatar do reach the payload
 def test_a_configured_display_name_and_avatar_reach_the_payload(discord, monkeypatch):
     monkeypatch.setattr(discord, "WEBHOOK_USERNAME", "LoL Monitor")

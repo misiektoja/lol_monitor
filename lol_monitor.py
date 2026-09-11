@@ -2686,7 +2686,7 @@ def post_webhook_request(**request_kwargs):
 
 
 # Sends one webhook through an isolated bounded retry path
-def send_webhook(title, description, notification_type="status", force=False, sleeper=None, ntfy_priority=0, ntfy_tags=""):
+def send_webhook(title, description, notification_type="status", force=False, sleeper=None, image_url="", ntfy_priority=0, ntfy_tags=""):
     if not force and not webhook_event_enabled(notification_type):
         return 1
     if not validate_webhook_url():
@@ -2709,7 +2709,7 @@ def send_webhook(title, description, notification_type="status", force=False, sl
         print_webhook_error(header_error)
         return 1
     try:
-        webhook_values = build_webhook_values(title, description, notification_type)
+        webhook_values = build_webhook_values(title, description, notification_type, image_url)
         request_headers = build_webhook_headers(provider, webhook_values)
         discord_payload = build_webhook_payload(title, description, notification_type, "", webhook_values) if provider == "discord" else None
     except ValueError as exc:
@@ -2755,7 +2755,7 @@ def send_webhook(title, description, notification_type="status", force=False, sl
 
 
 # Sends one alert through the enabled email and webhook channels
-def send_notification_channels(notification_type, subject, body, body_html="", email_enabled=False, webhook_enabled=None, ntfy_priority=0, ntfy_tags=""):
+def send_notification_channels(notification_type, subject, body, body_html="", email_enabled=False, webhook_enabled=None, image_url="", ntfy_priority=0, ntfy_tags=""):
     email_attempted = bool(email_enabled)
     webhook_attempted = webhook_event_enabled(notification_type) if webhook_enabled is None else bool(webhook_enabled)
     email_delivered = False
@@ -2766,7 +2766,7 @@ def send_notification_channels(notification_type, subject, body, body_html="", e
         debug_print("Email channel", event=notification_type, outcome="OK" if email_delivered else "failed")
     if webhook_attempted:
         print("Sending webhook notification")
-        webhook_delivered = send_webhook(subject, body, notification_type, force=True, ntfy_priority=ntfy_priority, ntfy_tags=ntfy_tags) == 0
+        webhook_delivered = send_webhook(subject, body, notification_type, force=True, image_url=image_url, ntfy_priority=ntfy_priority, ntfy_tags=ntfy_tags) == 0
         debug_print("Webhook channel", event=notification_type, outcome="OK" if webhook_delivered else "failed")
     # Delivery, not the attempt, so a channel that failed is retried while one that succeeded is not resent
     return email_delivered, webhook_delivered
@@ -3330,25 +3330,32 @@ async def get_ranked_info(puuid: str, region: str) -> RankedInfo:
     return ranked_info
 
 
+# The Riot asset host the champion names and the champion icons both come from
+DDRAGON_BASE_URL = "https://ddragon.leagueoflegends.com"
+
 # Gets champion ID to name mapping from Data Dragon
 _champion_id_to_name_cache = None
+
+# The Data Dragon release the champion names were read from, so an icon URL points at that same release
+_ddragon_version_cache = ""
 
 
 # Gets champion name from champion ID using Data Dragon
 def get_champion_name(champion_id: int) -> Optional[str]:
-    global _champion_id_to_name_cache
+    global _champion_id_to_name_cache, _ddragon_version_cache
 
     if _champion_id_to_name_cache is None:
         _champion_id_to_name_cache = {}
         try:
             # Get latest Data Dragon version
-            versions_response = req.get("https://ddragon.leagueoflegends.com/api/versions.json", timeout=5, verify=VERIFY_SSL)
+            versions_response = req.get(f"{DDRAGON_BASE_URL}/api/versions.json", timeout=5, verify=VERIFY_SSL)
             if versions_response.status_code == 200:
                 versions = versions_response.json()
                 latest_version = versions[0]
+                _ddragon_version_cache = str(latest_version)
 
                 # Get champion data
-                champions_url = f"https://ddragon.leagueoflegends.com/cdn/{latest_version}/data/en_US/champion.json"
+                champions_url = f"{DDRAGON_BASE_URL}/cdn/{latest_version}/data/en_US/champion.json"
                 champions_response = req.get(champions_url, timeout=5, verify=VERIFY_SSL)
                 if champions_response.status_code == 200:
                     champions_data = champions_response.json().get("data", {})
@@ -3368,6 +3375,17 @@ def get_champion_name(champion_id: int) -> Optional[str]:
         return None
 
     return _champion_id_to_name_cache.get(champion_id)
+
+
+# Returns the Data Dragon icon URL for one champion, or nothing when the run has no release or no usable name
+def champion_image_url(champion_name):
+    # Both halves are checked rather than escaped, since anything outside these shapes is not a Data Dragon
+    # asset path and has no business being interpolated into a URL the tool then sends to a webhook
+    if not isinstance(champion_name, str) or not re.fullmatch(r"[A-Za-z0-9]{1,40}", champion_name):
+        return ""
+    if not re.fullmatch(r"\d[\d.]{0,15}", _ddragon_version_cache):
+        return ""
+    return f"{DDRAGON_BASE_URL}/cdn/{_ddragon_version_cache}/img/champion/{champion_name}.png"
 
 
 # Returns name when available, otherwise fall back to numeric identifier
@@ -3614,7 +3632,7 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
                 f"</body></html>"
             )
 
-            send_notification_channels("status", m_subject, m_body, m_body_html, email_enabled=status_notification_flag)
+            send_notification_channels("status", m_subject, m_body, m_body_html, email_enabled=status_notification_flag, image_url=champion_image_url(u_champion_name))
 
             return match_start_ts
         else:
@@ -3952,7 +3970,7 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
                 f"</body></html>"
             )
             print()
-            send_notification_channels("status", m_subject, m_body, m_body_html, email_enabled=True)
+            send_notification_channels("status", m_subject, m_body, m_body_html, email_enabled=True, image_url=champion_image_url(u_champion_name))
 
         return match_start_ts, match_stop_ts
 
