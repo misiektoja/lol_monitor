@@ -811,3 +811,16 @@ def test_no_setup_screen_prints_a_plain_link():
             plain.append(f"{owner}:{node.lineno}")
 
     assert plain == []
+
+
+# Verifies the early peek carries the theme, since --help is printed and exited from inside argparse before the config load
+def test_the_early_output_config_carries_the_help_theme(monkeypatch, tmp_path):
+    (tmp_path / "lol_monitor.conf").write_text('COLOR_THEME = {"help_heading": "bright_red"}\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(monitor, "COLOR_THEME", {})
+    monkeypatch.setattr(monitor, "CONFIG_DISCOVERY_DISABLED", False)
+    monkeypatch.setattr(monitor.sys, "argv", ["lol_monitor", "--help"])
+
+    monitor.apply_early_output_config()
+
+    assert monitor.COLOR_THEME == {"help_heading": "bright_red"}

@@ -342,7 +342,7 @@ COLOR_THEME = {
 
 A style is a space-separated list of one colour and any attributes. Colours are `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white` and their `bright_` forms. Attributes are `bold`, `dim`, `underline` and `blink`. An empty string leaves that part uncoloured, and an unknown name is ignored.
 
-The block ships commented out so the tool's own colours apply and later improvements reach existing configuration files. Once you uncomment it, the parts inside it are pinned to whatever you saved, so delete the block again to go back to the current defaults.
+The block ships commented out so the tool's own colours apply and later improvements reach existing configuration files. Overrides you added are written back as a real block when setup rebuilds the file, so they are not lost. Once you uncomment it, the parts inside it are pinned to whatever you saved, so delete the block again to go back to the current defaults.
 
 ## Diagnostics
 

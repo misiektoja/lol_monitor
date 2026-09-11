@@ -438,8 +438,11 @@ DISABLE_LOGGING = False
 ASCII_LOG_SEPARATORS = "Auto"
 TRUNCATE_CHARS = 0
 HORIZONTAL_LINE = 0
+# Counts the reports printed so far, so a check can tell whether it said anything before the banner claims it was quiet
+REPORTS_PRINTED = 0
 CLEAR_SCREEN = False
 COLORED_OUTPUT = True
+COLOR_THEME: dict = {}
 VERBOSE_MODE = False
 DEBUG_MODE = False
 DELIVERY_CONFIRMATIONS = True
@@ -3269,6 +3272,8 @@ def get_cur_ts(ts_str=""):
 
 # Prints the current date/time in human readable format with separator; eg. Sun 21 Apr 2024, 15:08:45
 def print_cur_ts(ts_str=""):
+    global REPORTS_PRINTED
+    REPORTS_PRINTED += 1
     print(get_cur_ts(str(ts_str)))
     print("─" * HORIZONTAL_LINE)
 
@@ -4646,6 +4651,18 @@ def _config_template_defaults():
     return defaults
 
 
+# Renders an explicit assignment for a setting the template ships commented out, so overrides the user wrote
+# survive a rewrite instead of being replaced by the commented default
+def _rendered_commented_setting(variable, values):
+    value = values.get(variable)
+    if not isinstance(value, dict) or not value:
+        return []
+    lines = ["", f"{variable} = {{"]
+    lines.extend(f"    {repr(str(name))}: {repr(str(setting))}," for name, setting in value.items())
+    lines.append("}")
+    return lines
+
+
 # Renders one configuration file from the built-in template with the chosen values substituted in
 def generate_config_with_current_values(config_values):
     tree = ast.parse(CONFIG_BLOCK, "<built-in-config>", "exec")
@@ -4666,6 +4683,8 @@ def generate_config_with_current_values(config_values):
     lines = CONFIG_BLOCK.strip("\n").split("\n")
     # The template keeps its own leading blank line, so template line numbers are one ahead of this list
     offset = 1 if CONFIG_BLOCK.startswith("\n") else 0
+    commented_pattern = re.compile(r"^#\s*([A-Z][A-Z0-9_]*)\s*=\s*\{$")
+    commented_block = ""
     skip_until = 0
     output = []
     for number, line in enumerate(lines, 1):
@@ -4675,6 +4694,13 @@ def generate_config_with_current_values(config_values):
         replaced = next((name for name, (start, _end, _value) in replacements.items() if start == template_line), None)
         if replaced is None:
             output.append(line)
+            stripped = line.strip()
+            commented_match = commented_pattern.match(stripped)
+            if commented_match and commented_match.group(1) in COMMENTED_CONFIG_SETTINGS:
+                commented_block = commented_match.group(1)
+            elif commented_block and stripped == "# }":
+                output.extend(_rendered_commented_setting(commented_block, config_values))
+                commented_block = ""
             continue
         start, end, rendered = replacements[replaced]
         output.append(f"{replaced} = {rendered}")
@@ -4703,7 +4729,7 @@ def early_config_file_argument(arguments=None):
 # load. The startup banner and the screen clear both run before argparse, so colour has to be resolved here
 # or a configured COLORED_OUTPUT would only take effect after the first output was already written
 def apply_early_output_config() -> None:
-    global CLEAR_SCREEN, COLORED_OUTPUT
+    global CLEAR_SCREEN, COLORED_OUTPUT, COLOR_THEME
     try:
         cli_path = early_config_file_argument()
         if cli_path is not None and cli_path.strip().casefold() == "none":
@@ -4721,8 +4747,10 @@ def apply_early_output_config() -> None:
         CLEAR_SCREEN = values["CLEAR_SCREEN"]
     if isinstance(values.get("COLORED_OUTPUT"), bool):
         COLORED_OUTPUT = values["COLORED_OUTPUT"]
+    # --help is printed and exited from inside argparse, long before the config load, so the help_* overrides
+    # have to be here or they could never colour the one screen they name. Unusable styles are dropped downstream
     if isinstance(values.get("COLOR_THEME"), dict):
-        globals()["COLOR_THEME"] = values["COLOR_THEME"]
+        COLOR_THEME = values["COLOR_THEME"]
 
 
 # Parses allowlisted literal config assignments without executing any file content
@@ -5019,6 +5047,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
     check_count = 0
 
     while True:
+        reports_before_check = REPORTS_PRINTED
 
         try:
 
@@ -5150,12 +5179,13 @@ async def lol_monitor_user(riotid, region, csv_file_name):
             outage_lasted = outage.recovered()
             if outage_lasted is not None:
                 print_outage_recovery(riotid, outage_lasted)
-                # The quiet period restarts here, or the recovery line is followed straight away by a healthy banner
-                alive_since = int(time.time())
 
             debug_print("Completed check", check=f"#{check_count}", user=riotid, outcome="OK", in_game=ingame)
 
-            if LIVENESS_REMINDER_SECONDS and int(time.time()) - alive_since >= LIVENESS_REMINDER_SECONDS:
+            # The banner speaks for a quiet check, so anything this one reported restarts the clock instead of being contradicted by it
+            if REPORTS_PRINTED != reports_before_check:
+                alive_since = int(time.time())
+            elif LIVENESS_REMINDER_SECONDS and int(time.time()) - alive_since >= LIVENESS_REMINDER_SECONDS:
                 print_liveness_banner(f"Monitoring healthy for {riotid}. The user is {'in a match' if ingame else 'not in a match'} with no match change since the last check")
                 alive_since = int(time.time())
 
@@ -6473,7 +6503,12 @@ def _wizard_normalize_csv_path(answer):
 # Collects the log and CSV output destinations monitoring would write
 def _wizard_collect_output_section(state, input_func=None):
     state.config_values["DISABLE_LOGGING"] = not _wizard_ask_yes_no("Write the normal per-target log file?", default=not bool(state.config_values.get("DISABLE_LOGGING")), input_func=input_func)
-    state.config_values["CSV_FILE"] = _wizard_normalize_csv_path(_wizard_ask_text("Optional CSV output path (blank disables it)", default=str(state.config_values.get("CSV_FILE") or ""), input_func=input_func))
+    saved_csv = str(state.config_values.get("CSV_FILE") or "")
+    # Asked as its own question, since Enter on the path prompt takes the shown default and so could never clear a saved one
+    if _wizard_ask_yes_no("Write a CSV file of the changes?", default=bool(saved_csv), input_func=input_func):
+        state.config_values["CSV_FILE"] = _wizard_normalize_csv_path(_wizard_ask_text("CSV output path", default=saved_csv, required=True, input_func=input_func))
+    else:
+        state.config_values["CSV_FILE"] = ""
 
 
 # Changes where setup writes, re-asking the sections that hold secrets when the dotenv destination moves

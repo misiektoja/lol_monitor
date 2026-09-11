@@ -647,7 +647,7 @@ def test_abandoning_a_refused_sign_in_switches_email_off(tmp_path, monkeypatch, 
     monkeypatch.setattr(monitor, "_wizard_verify_smtp", lambda values, password: monitor.classify_recovery_error(monitor.smtplib.SMTPAuthenticationError(535, b"denied"), "email"))
     mail = ["smtp.gmail.com", "587", "y", "monitoring@example.test", "monitoring@example.test", "alerts@example.test"]
     answers = minimal_answers()
-    answers[5:6] = ["y"] + mail + ["n", "1", "n"]
+    answers[5:] = ["y"] + mail + ["n", "n", "y", "n", "1", "n"]
     run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY, "mail-password"])
 
     assert "Email notifications stay off until the mail server accepts the settings." in capsys.readouterr().out
@@ -845,7 +845,7 @@ def test_the_webhook_question_defaults_to_the_saved_switch(tmp_path, monkeypatch
 # Verifies the output section records the log choice and the CSV destination it was given
 def test_the_output_section_records_the_log_and_csv_choices(tmp_path, monkeypatch, wizard_globals):
     answers = minimal_answers()
-    answers[7:9] = ["n", str(tmp_path / "games.csv")]
+    answers[7:9] = ["n", "y", str(tmp_path / "games.csv")]
     run_wizard(tmp_path, monkeypatch, answers)
 
     values = monitor.parse_config_content((tmp_path / "lol_monitor.conf").read_text(encoding="utf-8"))
@@ -1584,7 +1584,7 @@ PTY_RULES = [
     (r"Configure email notifications", "n\n"),
     (r"Set up webhook alerts", "n\n"),
     (r"Write the normal per-target log file", "\n"),
-    (r"Optional CSV output path", "\n"),
+    (r"Write a CSV file of the changes", "\n"),
     (r"^Choose \[1-", "1\n"),
     (r"Run doctor now", "n\n"),
 ]
@@ -1637,3 +1637,20 @@ def test_the_effective_secret_follows_the_startup_precedence(tmp_path, monkeypat
     assert monitor.effective_secret_after_setup("SMTP_PASSWORD", env_path, {"SMTP_PASSWORD": "accepted"}) == ("exported", True)
     monkeypatch.delenv("SMTP_PASSWORD", raising=False)
     assert monitor.effective_secret_after_setup("SMTP_PASSWORD", tmp_path / "absent.env", {}) == ("from-config-file", False)
+
+
+# Verifies an explicit colour theme survives a config rebuild, since the template ships the setting commented out
+def test_a_rebuilt_config_keeps_an_explicit_color_theme():
+    values = dict(monitor._config_template_defaults())
+    values["COLOR_THEME"] = {"header": "bright_red"}
+
+    rendered = monitor.generate_config_with_current_values(values)
+
+    assert monitor.parse_config_content(rendered, "<generated>")["COLOR_THEME"] == {"header": "bright_red"}
+
+
+# Verifies the shipped default stays commented out, so a rebuild does not pin a theme the user never chose
+def test_a_rebuilt_config_leaves_the_default_theme_commented():
+    rendered = monitor.generate_config_with_current_values(dict(monitor._config_template_defaults()))
+
+    assert "\nCOLOR_THEME = {" not in rendered

@@ -189,6 +189,7 @@ SHARED_SENTENCES = (
     "After Doctor passes, start monitoring:",
     "Another config destination or leave empty to cancel",
     "Authenticate this ntfy topic with a separate access token?",
+    "CSV output path",
     "Change Discord or ntfy details and events.",
     "Change SMTP details and email events.",
     "Change the configuration or dotenv output path.",
@@ -222,7 +223,6 @@ SHARED_SENTENCES = (
     "One or more numeric settings are invalid",
     "One real test email was sent after confirmation",
     "One real test webhook was sent after confirmation",
-    "Optional CSV output path (blank disables it)",
     "Paste the ntfy access token only",
     "Paste the ntfy topic URL or ntfy.sh topic name",
     "Review the SMTP error above and correct the email settings",
@@ -270,6 +270,7 @@ SHARED_SENTENCES = (
     "Which webhook alerts should be sent?",
     "Which webhook service should receive alerts?",
     "Write the displayed settings to the selected files.",
+    "Write a CSV file of the changes?",
     "Write the normal per-target log file?",
     "You declined the real delivery test. Run doctor again and approve the email test when ready",
     "You declined the real delivery test. Run doctor again and approve the webhook test when ready",
@@ -284,7 +285,7 @@ class TestTheSharedWording:
 
     # Verifies the pinned list did not quietly shrink, which is how a removed sentence would slip through
     def test_the_shared_wording_covers_the_whole_contract(self):
-        assert len(SHARED_SENTENCES) == 88
+        assert len(SHARED_SENTENCES) == 89
         assert len(set(SHARED_SENTENCES)) == len(SHARED_SENTENCES)
 
 
