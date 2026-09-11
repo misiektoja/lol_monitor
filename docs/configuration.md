@@ -182,11 +182,31 @@ The startup summary reports the state as `TLS verification: On` or `Off, server 
 | `DISABLE_LOGGING` | `-d` | Switches the log file off |
 | `ASCII_LOG_SEPARATORS` | | `"Auto"` uses ASCII separator lines on Windows only, `"On"` everywhere, `"Off"` nowhere. Terminal separators stay Unicode |
 | `HORIZONTAL_LINE` | | Width of the separator line |
+| `COLORED_OUTPUT` | `--no-color` | Whether terminal output is coloured. See [Coloured Output](#coloured-output) |
 | `CLEAR_SCREEN` | | Whether the terminal is cleared at startup. A one-shot command such as `--doctor`, `-l` or `--help`, a `--debug` run and any redirected output are never cleared |
 | `INCLUDE_FORBIDDEN_MATCHES` | `-f` | Whether matches that need an OAuth (RSO) access token are shown with a notice instead of skipped silently |
 | `CHECK_INTERNET_URL` | | Endpoint used to verify connectivity at startup |
 | `LOL_ACTIVE_CHECK_SIGNAL_VALUE` | | Seconds each `TRAP` or `ABRT` signal adds to or removes from the in-game interval |
 | `REGION_TO_CONTINENT` | | Maps each region code to its routing continent |
+
+## Coloured Output
+
+Colour is on by default and marks what a value is rather than decorating the line: player names, identifiers, champions, ranks, dates, links and the `[PASS]`/`[WARN]`/`[FAIL]`/`[SKIP]` markers each get their own colour. The log file is never coloured, so a log attached to a bug report stays plain text.
+
+Colour switches itself off when the output is not a terminal you are watching. That covers redirected or piped output, a `NO_COLOR` environment variable of any value, a `TERM` of `dumb` or empty and a `--no-color` run. The startup summary reports the resolved state next to the setting, so `False (setting: True)` means colour was configured but the terminal did not qualify.
+
+To change a colour, uncomment the `COLOR_THEME` block in your configuration file and edit the parts you want. Every part you leave out keeps its built-in colour:
+
+```python
+COLOR_THEME = {
+    "username": "bright_cyan underline",
+    "error": "red",
+}
+```
+
+A style is a space-separated list of one colour and any attributes. Colours are `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white` and their `bright_` forms. Attributes are `bold`, `dim`, `underline` and `blink`. An empty string leaves that part uncoloured, and an unknown name is ignored.
+
+The block ships commented out so the tool's own colours apply and later improvements reach existing configuration files. Once you uncomment it, the parts inside it are pinned to whatever you saved, so delete the block again to go back to the current defaults.
 
 ## Diagnostics
 

@@ -60,6 +60,7 @@ and again before anything is published to PyPI.
 | `test_runtime_controls.py` | Signal-driven toggles, interval changes, secret reload and the log output filter |
 | `test_tls_verification.py` | The TLS verification switch reaching connectivity, Data Dragon, email and the Riot API client |
 | `test_startup_summary.py` | The startup summary: the shared row order, the two views and what each one shows |
+| `test_terminal_color.py` | The colour engine: the theme, which colour lands on which token and where colour is applied |
 | `test_target_normalization.py` | The canonical Riot ID and region stored at the boundary and the routing continent they resolve to |
 | `test_time_formatting.py` | Durations, timespans and timestamp formats |
 

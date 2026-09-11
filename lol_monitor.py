@@ -134,6 +134,47 @@ HORIZONTAL_LINE = 113
 # Whether to clear the terminal screen after starting the tool
 CLEAR_SCREEN = True
 
+# Whether terminal output is coloured
+# Colour is switched off automatically when the output is not a terminal, when NO_COLOR is set
+# and when the --no-color flag is passed. Log files are never coloured
+COLORED_OUTPUT = True
+
+# Colour used for each part of the output, shipped commented out so the tool's own defaults apply
+# and a later change to them reaches you. Uncomment and edit any line to override one part
+# Styles combine a colour with optional attributes, for example "bright_cyan underline"
+# COLOR_THEME = {
+#     # Headings and commands the tool tells you to run
+#     "header": "bright_cyan",
+#     "section": "bright_white",
+#     # Identity
+#     "username": "bright_cyan underline",
+#     "id": "bright_magenta",
+#     # Playing status values
+#     "status_active": "green",
+#     "status_inactive": "red",
+#     # Match information
+#     "champion": "bright_yellow",
+#     "game_mode": "yellow",
+#     "rank": "bright_green",
+#     "duration": "green",
+#     # Dates
+#     "date": "magenta",
+#     "date_range": "magenta",
+#     # Timestamps
+#     "timestamp_label": "",
+#     "timestamp_value": "cyan",
+#     # Notices
+#     "info": "cyan",
+#     "warning": "yellow",
+#     "error": "red",
+#     "signal": "yellow",
+#     "email": "bright_cyan",
+#     # Boolean values
+#     "boolean_true": "green",
+#     "boolean_false": "red",
+#     "link": "blue underline",
+# }
+
 # Value used by signal handlers increasing/decreasing the check for player activity
 # when user is in-game (LOL_ACTIVE_CHECK_INTERVAL); in seconds
 LOL_ACTIVE_CHECK_SIGNAL_VALUE = 30  # 30 seconds
@@ -266,6 +307,7 @@ DEBUG_MODE = False
 ASCII_LOG_SEPARATORS = "Auto"
 HORIZONTAL_LINE = 0
 CLEAR_SCREEN = False
+COLORED_OUTPUT = True
 LOL_ACTIVE_CHECK_SIGNAL_VALUE = 0
 REGION_TO_CONTINENT = {}
 
@@ -967,26 +1009,438 @@ def build_log_path(base_path, suffix):
     return log_path
 
 
+# The only escape sequence this tool emits is an SGR colour or style change, so it is the only one worth keeping
+SGR_SEQUENCE_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+# Internal flag and style map for colour handling
+COLOR_ENABLED = False
+_COLOR_STYLES: dict = {}
+
+# Default built-in colour theme. Values can be overridden via COLOR_THEME in the configuration file
+DEFAULT_COLOR_THEME = {
+    # Headings and commands the tool tells you to run
+    "header": "bright_cyan",
+    "section": "bright_white",
+    # Identity
+    "username": "bright_cyan underline",
+    "id": "bright_magenta",
+    # Playing status values
+    "status_active": "green",
+    "status_inactive": "red",
+    # Match information
+    "champion": "bright_yellow",
+    "game_mode": "yellow",
+    "rank": "bright_green",
+    "duration": "green",
+    # Dates
+    "date": "magenta",
+    "date_range": "magenta",
+    # Timestamps
+    "timestamp_label": "",
+    "timestamp_value": "cyan",
+    # Notices
+    "info": "cyan",
+    "warning": "yellow",
+    "error": "red",
+    "signal": "yellow",
+    "email": "bright_cyan",
+    # Boolean values
+    "boolean_true": "green",
+    "boolean_false": "red",
+    "link": "blue underline",
+}
+
+# A block style paints a whole line and keeps the colours already inside it, so a value drawn in the block's
+# own colour would disappear inside it and the two sets are kept disjoint. Warnings are not on the block
+# list: yellow is the game mode colour, so a warning marks its own opening word instead of painting the line
+BLOCK_STYLE_PARTS = ("error", "email", "info")
+NAME_STYLE_PARTS = ("username", "id", "champion", "game_mode", "rank", "link")
+
+ANSI_RESET = "\033[0m"
+
+# Mapping of style names to ANSI SGR codes
+_STYLE_CODES = {
+    "bold": "1",
+    "dim": "2",
+    "underline": "4",
+    "blink": "5",
+    "black": "30",
+    "red": "31",
+    "green": "32",
+    "yellow": "33",
+    "blue": "34",
+    "magenta": "35",
+    "cyan": "36",
+    "white": "37",
+    "bright_black": "90",
+    "bright_red": "91",
+    "bright_green": "92",
+    "bright_yellow": "93",
+    "bright_blue": "94",
+    "bright_magenta": "95",
+    "bright_cyan": "96",
+    "bright_white": "97",
+}
+
+# Output labels whose value is coloured with one theme style, longest label first so a prefix cannot win
+_LABEL_STYLES = (
+    (("Riot ID (name#tag):", "Summoner name:", "Target:"), "username"),
+    (("Riot PUUID:", "Match ID:"), "id"),
+    (("Champion:",), "champion"),
+    (("Game mode:", "Game type:", "Queue:", "Map:"), "game_mode"),
+    (("Match duration:", "Match finished:"), "duration"),
+)
+
+# Pre-compiled regexes used for line-level colourisation
+# The monitored player named inside a sentence, tagged only after the words that introduce one
+_USER_TAG_RE = re.compile(r"((?:LoL user|Monitoring user|for user))([\t ]+)([^\s,.:!']+)")
+# A labelled or key=value 'user' field names its value directly, which is the shape the debug trace uses
+_USER_FIELD_RE = re.compile(r"(\buser)(:[\t ]+|=)([^\s,]+)")
+# One roster entry: the player who was in the match and the champion they played
+_ROSTER_ENTRY_RE = re.compile(r"^(-\s+)(.+?)(\s+\()([^()]+)(\)\s*)$")
+# One champion mastery entry, whose name column is padded to a fixed width before the level it reports
+_MASTERY_ENTRY_RE = re.compile(r"^(\s+\d+\.\s+)([^:]+)(:\s+Level\s+\d+\b)")
+# A ranked standing, which is a tier and division or the word for having none
+_RANK_RE = re.compile(r"\b(?:IRON|BRONZE|SILVER|GOLD|PLATINUM|EMERALD|DIAMOND|MASTER|GRANDMASTER|CHALLENGER)(?:\s+(?:I|II|III|IV))?\b|\bUnranked\b")
+_DURATION_RE = re.compile(r"~?\b[0-9]{1,20}[ \t]{1,20}(?:seconds?|minutes?|hours?|days?|weeks?|months?|years?)\b", re.IGNORECASE)
+_LONG_DATE_RE = re.compile(r"\b(?:\w{3}\s+)?\d{1,2}\s+\w{3}(?:\s+\d{2,4})?[\s,]*\d{2}:\d{2}(:\d{2})?(\s*[AP]M)?\b", re.IGNORECASE)
+_TIME_ONLY_RE = re.compile(r"(?<![\w:])(~?(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?(?:\s*[AP]M)?)(?![\w:])", re.IGNORECASE)
+_DATE_RANGE_RE = re.compile(r"\b\w{3}\s+\d{1,2}\s+\w{3}(?:\s+\d{2,4})?[\s,]*\d{2}:\d{2}(:\d{2})?(\s*[AP]M)?\s*-\s*\d{2}:\d{2}(:\d{2})?(\s*[AP]M)?\b", re.IGNORECASE)
+# Sentence punctuation, a closing bracket or a closing quote right after a link is not part of it
+_URL_RE = re.compile(r"(https?://[^\s\]]+?)(?=[.,;:!?'\")>]*(?:[\s\]]|$))")
+_BOOLEAN_TRUE_RE = re.compile(r"\bTrue\b|\bEnabled\b")
+_BOOLEAN_FALSE_RE = re.compile(r"\bFalse\b|\bDisabled\b")
+# The one startup row whose value is a word rather than a boolean, and the only setting whose off state
+# weakens a security property, so it is worth the reader noticing without asking for the full summary
+_TLS_STATE_RE = re.compile(r"^(\* TLS verification:\s+)(On|Off)(.*)$")
+_NOTIFICATION_SUMMARY_STATE_RE = re.compile(r"^(\* Notifications \(email\):\s+)(On|Off)(.*)$")
+# The two events this tool exists to report
+_IN_GAME_RE = re.compile(r"\bis in game now\b")
+_STOPPED_PLAYING_RE = re.compile(r"\bstopped playing\b|\bis not in game currently\b")
+# Words that report a problem. The same word used as a key in a 'key=value' diagnostic detail names a setting
+# such as 'timeout=15', so it leaves its line unpainted
+_ERROR_KEYWORD_RE = re.compile(r"\b(?:failures?|failed|timeout)\b(?!\s*=)")
+# A debug trace line records what the tool tried, including attempts that fail and are then handled, so it
+# keeps its own colours instead of being painted as the failure it reports
+_DEBUG_LINE_RE = re.compile(r"^\[debug \d{2}:\d{2}:\d{2}\]")
+# Doctor status markers, coloured with the theme parts the report already names for them
+_DOCTOR_MARK_RE = re.compile(r"^\[(PASS|WARN|FAIL|SKIP)\]")
+# A heading that opens a block of report rows, written as a label with nothing after it
+_SECTION_HEADING_RE = re.compile(r"^(?:Ranked Information|Banned champions|User last played match):?$")
+# The doctor report's own headings, which sit on a line of their own. A test pins these against DOCTOR_SECTIONS
+_REPORT_TITLE_RE = re.compile(r"^(?:Doctor|Summary|Next steps)$")
+_REPORT_SECTION_RE = re.compile(r"^(?:Environment|Configuration|Authentication|Connectivity|Target|Notifications)$")
+# A quoted value, with at least one word character so a run of ASCII art between two apostrophes is not read
+# as a name. The closing quote has to be followed by whitespace, punctuation or the end of the line, so a
+# name's own apostrophe does not end it early: "Tom Clancy's Rainbow Six Siege"
+_QUOTED_CONTENT_RE = re.compile(r"(')([^\n]*?\w[^\n]*?)(')(?=[\s.,;:!?)\]]|$)")
+# A quoted value is only a name where the words before it introduce one, since most quoted values this tool
+# prints are file paths, region codes and setting names
+_QUOTED_NAME_CONTEXT_RE = re.compile(r"\b(?:for|user)\s+$", re.IGNORECASE)
+# Quoted values shaped like a file name or a filesystem path stay plain, since a log or CSV destination is
+# not a name
+_QUOTED_FILE_LIKE_RE = re.compile(r"^[~.]?[\\/]|^[A-Za-z]:[\\/]|\.[A-Za-z0-9]{1,8}$")
+# A quoted '<name>' inside a printed command is the placeholder the reader has to replace, not a name
+_QUOTED_PLACEHOLDER_RE = re.compile(r"^<[^<>]*>$")
+# A quoted command-line option is an instruction to retype, not a name
+_QUOTED_OPTION_RE = re.compile(r"^-")
+# A quoted piece of a URL. Only a leading '?' or '&' counts, so a name may end in a question mark
+_QUOTED_URL_PART_RE = re.compile(r"^[?&]|://")
+# The opening word of a warning and the name of a reported signal, marked instead of painting the line
+_WARNING_LABEL_RE = re.compile(r"^\*+\s*(Warning:|Note:|Caution:)")
+_SIGNAL_NAME_RE = re.compile(r"(?<=^\* Signal )(\w+)(?= received$)")
+
+
+# Builds an ANSI escape sequence from a style description string
+def _build_ansi_sequence(style_str):
+    if not style_str:
+        return ""
+    codes = [_STYLE_CODES[part] for part in re.split(r"[+ ]+", style_str.strip().lower()) if part in _STYLE_CODES]
+    return f"\033[{';'.join(codes)}m" if codes else ""
+
+
+# Detects whether the given output stream likely supports ANSI colours
+def _stream_supports_color(stream):
+    if not hasattr(stream, "isatty") or not stream.isatty():
+        return False
+    if os.getenv("NO_COLOR"):
+        return False
+    if os.getenv("TERM", "").lower() in ("", "dumb", "unknown"):
+        return False
+    # A piped stdin usually means the run is inside a pipeline such as tee, where escapes would reach a file
+    if hasattr(sys.stdin, "isatty") and not sys.stdin.isatty():
+        return False
+    return True
+
+
+# Initializes colour handling from the configured theme and the capabilities of the given stream
+def init_color_output(stream):
+    global COLOR_ENABLED, _COLOR_STYLES
+    COLOR_ENABLED = bool(globals().get("COLORED_OUTPUT", False)) and _stream_supports_color(stream)
+    if not COLOR_ENABLED:
+        _COLOR_STYLES = {}
+        return
+    user_theme = globals().get("COLOR_THEME") if isinstance(globals().get("COLOR_THEME"), dict) else {}
+    theme = {**DEFAULT_COLOR_THEME, **(user_theme or {})}
+    _COLOR_STYLES = {name: sequence for name, sequence in ((name, _build_ansi_sequence(style)) for name, style in theme.items()) if sequence}
+
+
+# Applies a configured colour style, named by the logical part, to the given text
+def colorize(part, text):
+    if not COLOR_ENABLED:
+        return text
+    start = _COLOR_STYLES.get(part)
+    return f"{start}{text}{ANSI_RESET}" if start else text
+
+
+# Returns a coloured representation of a textual playing status, leaving an unrecognised one plain
+def colorize_status(status_text):
+    status = (status_text or "").strip().lower()
+    if status in ("yes", "active", "in game"):
+        return colorize("status_active", status_text)
+    if status in ("no", "inactive", "offline"):
+        return colorize("status_inactive", status_text)
+    return status_text
+
+
+# Splits a recognized output label from its value without applying a backtracking expression
+def _split_output_label(value, labels):
+    body = value.rstrip("\n")
+    cursor = len(body) - len(body.lstrip())
+    if body[cursor:cursor + 1] == "*":
+        cursor += 1
+        cursor += len(body[cursor:]) - len(body[cursor:].lstrip())
+    for label in labels:
+        if not body.startswith(label, cursor):
+            continue
+        value_start = cursor + len(label)
+        value_start += len(body[value_start:]) - len(body[value_start:].lstrip())
+        if value_start == cursor + len(label):
+            return None
+        return body[:value_start], body[value_start:]
+    return None
+
+
+# Applies a block style while preserving the highlights already inside the line
+def _apply_style_nested(line, style_name):
+    start_style = _COLOR_STYLES.get(style_name)
+    if not start_style:
+        return line
+    # Each internal reset returns to the block style instead of to plain, so one value cannot end the block
+    line = f"{start_style}{line}{ANSI_RESET}"
+    line = line.replace(ANSI_RESET, f"{ANSI_RESET}{start_style}")
+    if line.endswith(f"{ANSI_RESET}{start_style}"):
+        line = line[:-len(start_style)]
+    return line
+
+
+# Applies one substitution only to the parts of a line that are not already inside a colour span, so a later
+# rule cannot reclaim text an earlier rule has already coloured
+def _sub_outside_color(pattern, replacement, line):
+    if ANSI_RESET not in line:
+        return pattern.sub(replacement, line)
+    parts = []
+    position = 0
+    inside = False
+    for match in SGR_SEQUENCE_RE.finditer(line):
+        segment = line[position:match.start()]
+        parts.append(segment if inside else pattern.sub(replacement, segment))
+        parts.append(match.group(0))
+        inside = match.group(0) != ANSI_RESET
+        position = match.end()
+    trailing = line[position:]
+    parts.append(trailing if inside else pattern.sub(replacement, trailing))
+    return "".join(parts)
+
+
+# Colours one quoted value as a name, unless what is between the quotes says it is something else
+def _colorize_quoted_name(match, style_name):
+    name = match.group(2)
+    if _QUOTED_FILE_LIKE_RE.search(name) or _QUOTED_PLACEHOLDER_RE.match(name) or _QUOTED_OPTION_RE.match(name) or _QUOTED_URL_PART_RE.search(name):
+        return match.group(0)
+    # What sits right before the quote decides whether this is a name at all
+    if not _QUOTED_NAME_CONTEXT_RE.search(match.string[:match.start()]):
+        return match.group(0)
+    return f"{match.group(1)}{colorize(style_name, name)}{match.group(3)}"
+
+
+# Applies colour rules to a single output line
+def _colorize_line(line):
+    lowered = line.lower()
+
+    # The notification summary row carries its own On/Off state word
+    notification_match = _NOTIFICATION_SUMMARY_STATE_RE.match(line)
+    if notification_match:
+        prefix, state, suffix = notification_match.groups()
+        return f"{prefix}{colorize('boolean_true' if state == 'On' else 'boolean_false', state)}{suffix}"
+
+    # The TLS row reports its state as a word rather than as a boolean
+    tls_match = _TLS_STATE_RE.match(line)
+    if tls_match:
+        prefix, state, suffix = tls_match.groups()
+        return f"{prefix}{colorize('boolean_true' if state == 'On' else 'boolean_false', state)}{suffix}"
+
+    # Doctor status markers keep the rest of their line plain so long labels stay readable
+    doctor_match = _DOCTOR_MARK_RE.match(line)
+    if doctor_match:
+        return colorize(DOCTOR_MARK_STYLES[doctor_match.group(1)], doctor_match.group(0)) + line[doctor_match.end():]
+
+    # A heading names what follows rather than reporting a value
+    body = line.rstrip("\n")
+    newline = "\n" if line.endswith("\n") else ""
+    if _REPORT_TITLE_RE.match(body):
+        return colorize("header", body) + newline
+    if _SECTION_HEADING_RE.match(body) or _REPORT_SECTION_RE.match(body):
+        return colorize("section", body) + newline
+
+    # Timestamp lines get a dimmed label and a coloured value
+    labeled_value = _split_output_label(line, ("Liveness check, timestamp:", "Timestamp:"))
+    if labeled_value:
+        label, rest = labeled_value
+        return f"{colorize('timestamp_label', label)}{colorize('timestamp_value', rest)}" + ("\n" if line.endswith("\n") else "")
+
+    # Any '<something> URL:' row is a link, checked before the label table so a URL row is not read as a name
+    if _split_output_label(line, ("URL:",)) or " URL:" in line:
+        return _sub_outside_color(_URL_RE, lambda mo: colorize("link", mo.group(0)), line)
+
+    # Rows whose value reports whether something happened
+    labeled_value = _split_output_label(line, ("Victory:",))
+    if labeled_value:
+        label, status = labeled_value
+        return f"{label}{colorize_status(status)}" + ("\n" if line.endswith("\n") else "")
+
+    # Labelled match and account rows keep their label plain and colour only the value
+    for labels, style_name in _LABEL_STYLES:
+        labeled_value = _split_output_label(line, labels)
+        if not labeled_value:
+            continue
+        label, rest = labeled_value
+        return f"{label}{colorize(style_name, rest)}" + ("\n" if line.endswith("\n") else "")
+
+    # One roster entry names a player and the champion they played
+    roster_match = _ROSTER_ENTRY_RE.match(line.rstrip("\n"))
+    if roster_match:
+        colored = f"{roster_match.group(1)}{colorize('username', roster_match.group(2))}{roster_match.group(3)}{colorize('champion', roster_match.group(4))}{roster_match.group(5)}"
+        return colored + ("\n" if line.endswith("\n") else "")
+
+    # One champion mastery entry names the champion before the level and the points it reports
+    line = _sub_outside_color(_MASTERY_ENTRY_RE, lambda mo: f"{mo.group(1)}{colorize('champion', mo.group(2))}{mo.group(3)}", line)
+
+    # Highlight the monitored player named inside a sentence
+    line = _sub_outside_color(_USER_TAG_RE, lambda mo: f"{mo.group(1)}{mo.group(2)}{colorize('username', mo.group(3))}", line)
+    line = _sub_outside_color(_USER_FIELD_RE, lambda mo: f"{mo.group(1)}{mo.group(2)}{colorize('username', mo.group(3))}", line)
+
+    # Highlight how long something took
+    line = _sub_outside_color(_DURATION_RE, lambda mo: colorize("duration", mo.group(0)), line)
+
+    # Highlight a date range before a single date, so a range is not split into two dates
+    line = _sub_outside_color(_DATE_RANGE_RE, lambda mo: colorize("date_range", mo.group(0)), line)
+    line = _sub_outside_color(_LONG_DATE_RE, lambda mo: colorize("date", mo.group(0)), line)
+    line = _sub_outside_color(_TIME_ONLY_RE, lambda mo: colorize("date", mo.group(0)), line)
+
+    # Highlight links
+    line = _sub_outside_color(_URL_RE, lambda mo: colorize("link", mo.group(0)), line)
+
+    # Highlight a ranked standing and a quoted name
+    line = _sub_outside_color(_RANK_RE, lambda mo: colorize("rank", mo.group(0)), line)
+    line = _sub_outside_color(_QUOTED_CONTENT_RE, lambda mo: _colorize_quoted_name(mo, "username"), line)
+
+    # Highlight boolean values
+    line = _sub_outside_color(_BOOLEAN_TRUE_RE, lambda mo: colorize("boolean_true", mo.group(0)), line)
+    line = _sub_outside_color(_BOOLEAN_FALSE_RE, lambda mo: colorize("boolean_false", mo.group(0)), line)
+
+    # Mark the opening word of a warning and the name of a reported signal, rather than painting the line
+    line = _sub_outside_color(_WARNING_LABEL_RE, lambda mo: mo.group(0)[:mo.start(1) - mo.start(0)] + colorize("warning", mo.group(1)), line)
+    line = _sub_outside_color(_SIGNAL_NAME_RE, lambda mo: colorize("signal", mo.group(0)), line)
+
+    # Highlight the two events this tool exists to report
+    line = _sub_outside_color(_IN_GAME_RE, lambda mo: colorize("status_active", mo.group(0)), line)
+    line = _sub_outside_color(_STOPPED_PLAYING_RE, lambda mo: colorize("status_inactive", mo.group(0)), line)
+
+    # Block highlighting, applied last so the colours above survive the nesting logic
+    is_debug_line = bool(_DEBUG_LINE_RE.match(lowered))
+    is_error = not is_debug_line and (bool(_ERROR_KEYWORD_RE.search(lowered)) or ("* error" in lowered and "[errors =" not in lowered))
+
+    if lowered.lstrip().startswith("to fix:"):
+        line = _apply_style_nested(line, "info")
+    elif is_error:
+        line = _apply_style_nested(line, "error")
+    elif "sending email" in lowered or "email sent successfully" in lowered:
+        line = _apply_style_nested(line, "email")
+
+    return line
+
+
+# Applies colourisation to multi-line text, preserving line breaks
+def apply_color_to_text(text):
+    if not COLOR_ENABLED or not isinstance(text, str):
+        return text
+    parts = []
+    for chunk in text.splitlines(keepends=True):
+        if chunk.endswith(("\n", "\r")):
+            stripped = chunk.rstrip("\r\n")
+            parts.append(_colorize_line(stripped) + chunk[len(stripped):])
+        else:
+            parts.append(_colorize_line(chunk))
+    return "".join(parts)
+
+
+# Returns the underlying terminal behind any number of colouring stream wrappers
+def unwrap_terminal_stream(stream):
+    while isinstance(stream, ColorStream):
+        stream = stream.terminal
+    return stream
+
+
+# Colour-aware stdout wrapper installed before the logging policy is known, so output written
+# before then is coloured exactly once by the same rules the Logger uses afterwards
+class ColorStream(object):
+    def __init__(self, stream):
+        self.terminal = stream
+
+    def write(self, message):
+        self.terminal.write(apply_color_to_text(message))
+        self.terminal.flush()
+
+    # Writes one message to the terminal while matching the Logger interface
+    def terminal_only(self, message):
+        self.write(message)
+
+    # Discards log-only output, since this stream is used exactly when there is no log file
+    def log_only(self, message):
+        return
+
+    def flush(self):
+        self.terminal.flush()
+
+    # Forwards the remaining stream attributes to the wrapped terminal
+    def __getattr__(self, name):
+        return getattr(self.terminal, name)
+
+
 # Logger class to output messages to stdout and log file
 class Logger(object):
     def __init__(self, filename):
-        self.terminal = sys.stdout
+        # The early colouring stream is unwrapped so colour is applied exactly once. Writing through it would
+        # colourise every line twice, and the second pass no longer sees the label it already coloured
+        self.terminal = unwrap_terminal_stream(sys.stdout)
         self.logfile = open(filename, "a", buffering=1, encoding="utf-8")
 
     def write(self, message):
-        self.terminal.write(message)
-        self.logfile.write(normalize_log_separators(message.expandtabs(8)))
+        # Colour codes are stripped on the way to the file, so a log stays plain text
+        self.logfile.write(normalize_log_separators(ANSI_ESCAPE_RE.sub("", message).expandtabs(8)))
+        self.terminal.write(apply_color_to_text(message))
         self.terminal.flush()
         self.logfile.flush()
 
     # Writes text the log file should keep but the terminal has already shown, or does not need
     def log_only(self, message):
-        self.logfile.write(normalize_log_separators(message.expandtabs(8)))
+        self.logfile.write(normalize_log_separators(ANSI_ESCAPE_RE.sub("", message).expandtabs(8)))
         self.logfile.flush()
 
     # Writes text meant for the reader at the terminal, which the log file has its own version of
     def terminal_only(self, message):
-        self.terminal.write(message)
+        self.terminal.write(apply_color_to_text(message))
         self.terminal.flush()
 
     def flush(self):
@@ -1014,8 +1468,10 @@ STARTUP_BANNER_WORDMARK_COLUMN = 21
 
 # Prints the ASCII startup banner with a separately aligned version
 def print_startup_banner():
-    print(STARTUP_BANNER)
-    print(f"{'':{STARTUP_BANNER_WORDMARK_COLUMN}}v{VERSION}\n")
+    # Coloured line by line: one span around the whole block would leave every line after the first plain,
+    # and a per-line span also keeps the apostrophes in the art out of the quoted-name rule
+    print("\n".join(colorize("header", line) if line else line for line in STARTUP_BANNER.splitlines()))
+    print(colorize("info", f"{'':{STARTUP_BANNER_WORDMARK_COLUMN}}v{VERSION}") + "\n")
 
 
 # Flags whose output the user reads rather than watches, so the screen they were run from has to stay scrollable
@@ -2541,11 +2997,57 @@ def find_config_file(cli_path=None):
 # Settings an older version wrote that this version no longer defines, ignored instead of rejected
 RETIRED_CONFIG_SETTINGS = frozenset(("LOL_HANGED_INGAME_INTERVAL", ))
 
+# Settings the template ships commented out, so a configuration file that sets one is still accepted
+COMMENTED_CONFIG_SETTINGS = frozenset({"COLOR_THEME"})
+
 
 # Collects the setting names the built-in configuration template defines
 def _config_allowed_names():
     template_tree = ast.parse(CONFIG_BLOCK, "<built-in-config>", "exec")
-    return frozenset(statement.targets[0].id for statement in template_tree.body if isinstance(statement, ast.Assign) and len(statement.targets) == 1 and isinstance(statement.targets[0], ast.Name))
+    return frozenset(statement.targets[0].id for statement in template_tree.body if isinstance(statement, ast.Assign) and len(statement.targets) == 1 and isinstance(statement.targets[0], ast.Name)) | COMMENTED_CONFIG_SETTINGS
+
+
+# Keeps argparse from colouring its own help, so the help screen is coloured by this tool alone and
+# --no-color is not left with a second palette to silence. From Python 3.14 argparse colours help by default
+def argparse_color_kwargs() -> Dict[str, Any]:
+    return {"color": False} if sys.version_info >= (3, 14) else {}
+
+
+# Returns the --config-file value from the raw arguments, before argparse has run
+def early_config_file_argument(arguments=None):
+    values = list(sys.argv[1:] if arguments is None else arguments)
+    for index, argument in enumerate(values):
+        if argument == "--config-file" and index + 1 < len(values):
+            return values[index + 1]
+        if argument.startswith("--config-file="):
+            return argument.split("=", 1)[1]
+    return None
+
+
+# Applies the configuration settings that take effect before argument parsing, leaving errors to the later
+# load. The startup banner and the screen clear both run before argparse, so colour has to be resolved here
+# or a configured COLORED_OUTPUT would only take effect after the first output was already written
+def apply_early_output_config() -> None:
+    global CLEAR_SCREEN, COLORED_OUTPUT
+    try:
+        cli_path = early_config_file_argument()
+        if cli_path is not None and cli_path.strip().casefold() == "none":
+            # Config discovery is disabled for this run, so there is nothing to peek at
+            return
+        config_path = find_config_file(os.path.expanduser(cli_path) if cli_path else None)
+        if not config_path:
+            return
+        # Reading a config no longer runs it, so this early peek cannot have side effects
+        values = parse_config_content(Path(config_path).read_text(encoding="utf-8"), str(config_path))
+    except Exception:
+        # A broken or unreadable config is reported with full detail once the arguments are parsed
+        return
+    if isinstance(values.get("CLEAR_SCREEN"), bool):
+        CLEAR_SCREEN = values["CLEAR_SCREEN"]
+    if isinstance(values.get("COLORED_OUTPUT"), bool):
+        COLORED_OUTPUT = values["COLORED_OUTPUT"]
+    if isinstance(values.get("COLOR_THEME"), dict):
+        globals()["COLOR_THEME"] = values["COLOR_THEME"]
 
 
 # Parses allowlisted literal config assignments without executing any file content
@@ -3414,7 +3916,7 @@ def doctor_terminal_stream():
     stream = sys.stdout
     while isinstance(stream, Logger):
         stream = stream.terminal
-    return stream
+    return unwrap_terminal_stream(stream)
 
 
 # Shows one transient doctor step, only on an interactive terminal
@@ -3616,6 +4118,8 @@ def build_startup_summary(target=None, config_path=None, env_path=None, log_path
         # Concise while it is off, since a run that stopped checking certificates is worth saying without a flag
         StartupSummaryRow("TLS verification", "On" if VERIFY_SSL else "Off, server certificates are not checked", concise=not VERIFY_SSL),
         StartupSummaryRow("ASCII log separators", f"{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})"),
+        # The resolved state, not the setting: colour also switches itself off when the output is not a terminal
+        StartupSummaryRow("Coloured output", f"{COLOR_ENABLED} (setting: {COLORED_OUTPUT})"),
         StartupSummaryRow("Verbose mode", str(VERBOSE_MODE), concise=bool(VERBOSE_MODE)),
         StartupSummaryRow("Debug mode", str(DEBUG_MODE), concise=bool(DEBUG_MODE)),
         # Points at the two modes for a reader who does not know they exist, so the full view drops it
@@ -3624,7 +4128,7 @@ def build_startup_summary(target=None, config_path=None, env_path=None, log_path
 
 
 def main():
-    global CLI_CONFIG_PATH, CONFIG_DISCOVERY_DISABLED, COMMAND_LINE_SECRET_KEYS, EXPORTED_SECRET_KEYS, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT, INCLUDE_FORBIDDEN_MATCHES, DEBUG_MODE
+    global CLI_CONFIG_PATH, CONFIG_DISCOVERY_DISABLED, COMMAND_LINE_SECRET_KEYS, EXPORTED_SECRET_KEYS, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT, INCLUDE_FORBIDDEN_MATCHES, DEBUG_MODE, COLORED_OUTPUT
 
     if "--generate-config" in sys.argv:
         config_content = CONFIG_BLOCK.strip("\n") + "\n"
@@ -3662,16 +4166,26 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Read straight from sys.argv because argparse has not run yet, and the screen is cleared before it does
+    apply_early_output_config()
+
+    # Read straight from sys.argv because argparse has not run yet, and the banner is printed before it does
+    if "--no-color" in sys.argv:
+        COLORED_OUTPUT = False
     if "--debug" in sys.argv:
         DEBUG_MODE = True
+
+    init_color_output(stdout_bck)
+    # Everything printed before the logging policy is known still goes through one colour pass
+    sys.stdout = ColorStream(stdout_bck)
+
     clear_screen(CLEAR_SCREEN and not keep_terminal_history() and not DEBUG_MODE)
 
     print_startup_banner()
 
     parser = argparse.ArgumentParser(
         prog="lol_monitor",
-        description=(f"Monitor a League of Legends user's playing status and send customizable email alerts [ {PROJECT_URL}/ ]"), formatter_class=argparse.RawTextHelpFormatter
+        description=(f"Monitor a League of Legends user's playing status and send customizable email alerts [ {PROJECT_URL}/ ]"), formatter_class=argparse.RawTextHelpFormatter,
+        **argparse_color_kwargs()
     )
 
     # Positional
@@ -3847,6 +4361,13 @@ def main():
         action="store_true",
         default=None,
         help="Print timestamped diagnostic detail including outbound calls and failure causes (overrides DEBUG_MODE)"
+    )
+    opts.add_argument(
+        "--no-color",
+        dest="no_color",
+        action="store_true",
+        default=None,
+        help="Switch off coloured terminal output (overrides COLORED_OUTPUT)"
     )
 
     args = parser.parse_args()
