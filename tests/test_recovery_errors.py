@@ -5,7 +5,7 @@ import inspect
 
 import pytest
 
-CONTEXTS = ("config", "credentials", "target.missing", "target.region", "target", "connectivity", "email", "webhook", "set_riot_api_key", "set_smtp_password", "set_webhook_url", "file", "file.exists", "runtime")
+CONTEXTS = ("config", "credentials", "target.missing", "target.region", "target", "connectivity", "email", "webhook", "set_riot_api_key", "set_smtp_password", "set_webhook_url", "file", "file.exists", "file.unwritable", "runtime")
 
 
 @pytest.fixture(autouse=True)

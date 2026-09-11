@@ -555,6 +555,7 @@ import functools
 import getpass
 import shlex
 import shutil
+import subprocess
 import tempfile
 import textwrap
 import unicodedata
@@ -3089,6 +3090,34 @@ def normalize_riot_id(value):
     return f"{name}#{tag}"
 
 
+# Parses one duration written as plain seconds or with s/m/h/d units, returning whole seconds
+def parse_duration_input(value):
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return int(value) if value > 0 else None
+    if not isinstance(value, str):
+        return None
+    text = value.strip().casefold().replace(",", ".")
+    if not text:
+        return None
+    units = {"s": 1, "sec": 1, "secs": 1, "second": 1, "seconds": 1,
+             "m": 60, "min": 60, "mins": 60, "minute": 60, "minutes": 60,
+             "h": 3600, "hr": 3600, "hrs": 3600, "hour": 3600, "hours": 3600,
+             "d": 86400, "day": 86400, "days": 86400}
+    matches = re.findall(r"(\d+(?:\.\d+)?)\s*([a-z]*)", text)
+    # Anything the pattern did not fully consume is rejected, so "5x" or "abc" cannot read as a bare number
+    if not matches or re.sub(r"(\d+(?:\.\d+)?)\s*([a-z]*)", "", text).strip():
+        return None
+    total = 0.0
+    for amount, unit in matches:
+        if unit and unit not in units:
+            return None
+        total += float(amount) * units.get(unit, 1)
+    seconds = int(round(total))
+    return seconds if seconds > 0 else None
+
+
 # Returns one region code in the lower-case form the routing table is keyed by, so EUN1 and eun1 are the same region
 def normalize_region(value):
     if isinstance(value, bool) or value is None:
@@ -4004,6 +4033,56 @@ COMMENTED_CONFIG_SETTINGS = frozenset({"COLOR_THEME"})
 def _config_allowed_names():
     template_tree = ast.parse(CONFIG_BLOCK, "<built-in-config>", "exec")
     return frozenset(statement.targets[0].id for statement in template_tree.body if isinstance(statement, ast.Assign) and len(statement.targets) == 1 and isinstance(statement.targets[0], ast.Name)) | COMMENTED_CONFIG_SETTINGS
+
+
+# Returns the value the built-in configuration template ships for every setting it assigns
+@functools.lru_cache(maxsize=1)
+def _config_template_defaults():
+    defaults = {}
+    for statement in ast.parse(CONFIG_BLOCK, "<built-in-config>", "exec").body:
+        if not isinstance(statement, ast.Assign) or len(statement.targets) != 1 or not isinstance(statement.targets[0], ast.Name):
+            continue
+        try:
+            defaults[statement.targets[0].id] = ast.literal_eval(statement.value)
+        except ValueError:
+            continue
+    return defaults
+
+
+# Renders one configuration file from the built-in template with the chosen values substituted in
+def generate_config_with_current_values(config_values):
+    tree = ast.parse(CONFIG_BLOCK, "<built-in-config>", "exec")
+    template_defaults = _config_template_defaults()
+    replacements = {}
+    for statement in tree.body:
+        if not isinstance(statement, ast.Assign) or len(statement.targets) != 1 or not isinstance(statement.targets[0], ast.Name):
+            continue
+        name = statement.targets[0].id
+        # A secret belongs in the dotenv file, so its template placeholder stays even when the running values hold the real one
+        if name not in config_values or name in SECRET_KEYS:
+            continue
+        # A setting still holding what the template ships keeps the template's own lines, so a multi-line
+        # value such as WEBHOOK_TEMPLATE is not collapsed into one unreadable line by a wizard that changed nothing
+        if name in template_defaults and config_values[name] == template_defaults[name] and type(config_values[name]) is type(template_defaults[name]):
+            continue
+        replacements[name] = (statement.lineno, getattr(statement, "end_lineno", statement.lineno), repr(config_values[name]))
+    lines = CONFIG_BLOCK.strip("\n").split("\n")
+    # The template keeps its own leading blank line, so template line numbers are one ahead of this list
+    offset = 1 if CONFIG_BLOCK.startswith("\n") else 0
+    skip_until = 0
+    output = []
+    for number, line in enumerate(lines, 1):
+        template_line = number + offset
+        if template_line < skip_until:
+            continue
+        replaced = next((name for name, (start, _end, _value) in replacements.items() if start == template_line), None)
+        if replaced is None:
+            output.append(line)
+            continue
+        start, end, rendered = replacements[replaced]
+        output.append(f"{replaced} = {rendered}")
+        skip_until = end + 1
+    return "\n".join(output) + "\n"
 
 
 # Keeps argparse from colouring its own help, so the help screen is coloured by this tool alone and
@@ -5095,6 +5174,918 @@ def command_target_arguments(riot_id=None, region=None, riot_id_saved=False, reg
     return [riot_id, region]
 
 
+# Returns a saved value fit to show as a prompt default, so a shipped placeholder is never offered back
+def _wizard_default(value):
+    return str(value) if doctor_value_is_set(value if isinstance(value, str) else str(value or "")) else ""
+
+
+# Prints the shared line telling the user how defaults and cancelling work
+def _wizard_print_default_guidance():
+    print("Press Enter to accept the shown default. Ctrl+C cancels.\n")
+
+
+# Reads one setup line, colorized like the sibling monitors. Cancelling propagates to the one
+# handler in run_setup_wizard, which reports that nothing was written
+def _wizard_input(prompt_text, input_func=None):
+    prompt = input if input_func is None else input_func
+    try:
+        return read_interactively(prompt, colorize("info", prompt_text))
+    except (EOFError, KeyboardInterrupt):
+        # The interrupted prompt owns the line break, so every handler prints its message alone
+        print()
+        raise
+
+
+# Asks one yes or no question with a visible default
+def _wizard_ask_yes_no(question, default=True, input_func=None):
+    hint = "[Y/n]" if default else "[y/N]"
+    while True:
+        answer = _wizard_input(f"{question} {hint}: ", input_func=input_func).strip().casefold()
+        if not answer:
+            return default
+        if answer in ("y", "yes"):
+            return True
+        if answer in ("n", "no"):
+            return False
+        print("  Please answer 'y' or 'n'.")
+
+
+# Offers the one way out after an entry the wizard cannot use, so declining keeps every answer already given
+def _wizard_offer_retry(label, consequence="", input_func=None):
+    if consequence:
+        return not _wizard_ask_yes_no(f"Continue without the {label}? {consequence}", default=False, input_func=input_func)
+    return _wizard_ask_yes_no(f"Try entering the {label} again?", default=True, input_func=input_func)
+
+
+# Asks one free-text question, returning the shown default when the answer is empty
+def _wizard_ask_text(question, default="", required=False, input_func=None):
+    suffix = f" [{default}]" if default else ""
+    while True:
+        answer = _wizard_input(f"{question}{suffix}: ", input_func=input_func).strip()
+        if not answer:
+            answer = default
+        if answer or not required:
+            return answer
+        print("  This value is required.")
+        if not _wizard_offer_retry(question, input_func=input_func):
+            return ""
+
+
+# Asks one numbered multiple-choice question and returns the chosen index
+def _wizard_ask_choice(question, options, default_index=0, input_func=None):
+    print()
+    print(question)
+    for index, (label, description) in enumerate(options, 1):
+        marker = " (default)" if index - 1 == default_index else ""
+        print(f"  {colorize('username', str(index))}. {label}{colorize('info', marker)}")
+        if description:
+            for line in description.splitlines():
+                print(f"     {line}")
+    while True:
+        answer = _wizard_input(f"Choose [1-{len(options)}]: ", input_func=input_func).strip()
+        if not answer:
+            return default_index
+        if answer.isdigit() and 1 <= int(answer) <= len(options):
+            return int(answer) - 1
+        print(f"  Enter a number between 1 and {len(options)}.")
+
+
+# Trims the parenthetical hint from a question, so the retry offer that repeats it stays one readable line
+def _wizard_retry_label(question):
+    return question.split(" (")[0].strip()
+
+
+# Asks until the user provides a positive whole number or accepts the default
+def _wizard_ask_positive_int(question, default, maximum=None, input_func=None):
+    while True:
+        answer = _wizard_ask_text(question, default=str(default), required=True, input_func=input_func)
+        # An empty answer means the retry offer was declined, so the default stands instead of asking again
+        if not answer:
+            return int(default)
+        try:
+            parsed = int(answer)
+        except ValueError:
+            parsed = 0
+        if parsed > 0 and (maximum is None or parsed <= maximum):
+            return parsed
+        print(f"  Enter a whole number from 1 through {maximum}." if maximum is not None else "  Enter a positive whole number.")
+        # A value the helper cannot use is a rejected entry, so it gets the same way out an empty one gets
+        if not _wizard_offer_retry(_wizard_retry_label(question), input_func=input_func):
+            print(f"  Keeping {default}.")
+            return int(default)
+
+
+# Renders a wizard duration as raw seconds plus a readable form, so the stored config value stays visible
+def _wizard_format_duration(seconds):
+    remaining = seconds
+    parts = []
+    for suffix, count in (("d", 86400), ("h", 3600), ("m", 60), ("s", 1)):
+        value, remaining = divmod(remaining, count)
+        if value:
+            parts.append(f"{value}{suffix}")
+    raw = f"{seconds}s"
+    readable = " ".join(parts) or raw
+    return raw if readable == raw else f"{raw} - {readable}"
+
+
+# Asks one duration, accepting the formats people actually type
+def _wizard_ask_duration(question, default, input_func=None):
+    prompt_text = f"{question} [{_wizard_format_duration(default)}]: "
+    while True:
+        answer = _wizard_input(prompt_text, input_func=input_func).strip()
+        if not answer:
+            return default
+        seconds = parse_duration_input(answer)
+        if seconds is not None:
+            return seconds
+        print("  Enter a positive duration such as 120, 2m, 1.5h, 1h 30m or 1d.")
+        if not _wizard_offer_retry(_wizard_retry_label(question), input_func=input_func):
+            print(f"  Keeping {_wizard_format_duration(default)}.")
+            return default
+
+
+# Asks one secret through a hidden prompt with debug output off, so it never reaches the screen, the shell history or the debug stream
+def _wizard_ask_secret(question, getpass_func=None):
+    hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
+    try:
+        # Colorized like the visible prompts, so a hidden answer does not look like a different question
+        with debug_output_suppressed():
+            return str(read_secret_interactively(hidden_prompt, colorize("info", f"{question}: "))).strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        raise
+
+
+# Checks one setup destination without creating or modifying it, so an unwritable path is caught before any question
+def _wizard_validate_destination(path, label):
+    destination = Path(path).expanduser().resolve()
+    if destination.exists() and destination.is_dir():
+        raise ValueError(f"{label} must be a file path, not a directory")
+    parent = nearest_existing_parent(destination)
+    if not parent.is_dir():
+        raise ValueError(f"{label} does not have a usable parent directory")
+    if not os.access(str(parent), os.W_OK):
+        raise ValueError(f"{label} is not writable through parent '{parent}'")
+    return destination
+
+
+# Resolves both setup destinations, refusing the disabled settings that leave nowhere to write
+def _wizard_destinations(config_file=None, env_file=None):
+    if config_file is not None and str(config_file).casefold() == "none":
+        raise ValueError("--setup requires a config destination. Replace '--config-file none' with a writable path")
+    if env_file is not None and str(env_file).casefold() == "none":
+        raise ValueError("--setup requires a dotenv destination. Replace '--env-file none' with a writable path")
+    config_path = Path(config_file).expanduser() if config_file is not None else Path.cwd() / DEFAULT_CONFIG_FILENAME
+    env_path = Path(env_file).expanduser() if env_file is not None else Path.cwd() / ".env"
+    return _wizard_validate_destination(config_path, "Configuration destination"), _wizard_validate_destination(env_path, "Dotenv destination")
+
+
+# Confirms replacing an existing config before any question is asked, so a long run cannot end in a surprise
+def _wizard_choose_config_destination(config_path, input_func=None):
+    selected = Path(config_path)
+    while selected.exists() and not _wizard_ask_yes_no(f"Configuration file '{selected}' exists. A timestamped backup is kept. Rebuild it from your answers, starting from its current settings?", default=False, input_func=input_func):
+        alternative = _wizard_ask_text("Another config destination or leave empty to cancel", input_func=input_func)
+        if not alternative:
+            return None
+        try:
+            selected = _wizard_validate_destination(alternative, "Configuration destination")
+        except ValueError as exc:
+            print(f"  {exc}.")
+    return selected
+
+
+# Queues one secret for the save step, asking first when the dotenv file already assigns it
+def _wizard_queue_secret(state, key, value, input_func=None):
+    if not value:
+        return False
+    if _dotenv_contains_key(state.env_path, key) and not _wizard_ask_yes_no(f"The dotenv file already contains {key}. Replace that value?", default=False, input_func=input_func):
+        print(f"  Existing {key} will be retained without being displayed or rewritten.")
+        return False
+    state.secret_updates[key] = value
+    return True
+
+
+# Reports whether a usable secret is already saved, without reading its value into the transcript
+def _wizard_existing_secret(key, env_path):
+    value = None
+    path = Path(env_path)
+    if path.is_file():
+        try:
+            from dotenv import dotenv_values
+            value = dotenv_values(path, interpolate=False).get(key)
+        except Exception:
+            value = None
+    if value is None:
+        value = os.environ.get(key)
+    return doctor_value_is_set(value)
+
+
+# Holds every wizard answer until the user explicitly saves, so nothing is written during questioning
+class WizardSetupState:
+    # Starts from the values already in effect, which become both the defaults and the revert target
+    def __init__(self, config_path, env_path, baseline_values):
+        self.config_path = Path(config_path)
+        self.env_path = Path(env_path)
+        self.baseline_values = dict(baseline_values)
+        self.config_values = dict(baseline_values)
+        self.secret_updates = {}
+        self.riot_id = ""
+        self.region = ""
+        self.persist_target = True
+        self.target_verified = False
+
+
+# The mail server settings the wizard collects, and how long its sign-in check waits for the server
+WIZARD_SMTP_CONFIG_KEYS = ("SMTP_HOST", "SMTP_PORT", "SMTP_SSL", "SMTP_USER", "SENDER_EMAIL", "RECEIVER_EMAIL")
+WIZARD_SMTP_TIMEOUT = 5
+
+# The email and webhook alert settings the wizard offers, in the order the questions are asked
+WIZARD_EMAIL_NOTIFICATION_KEYS = ("STATUS_NOTIFICATION", "ERROR_NOTIFICATION")
+WIZARD_WEBHOOK_NOTIFICATION_KEYS = ("WEBHOOK_STATUS_NOTIFICATION", "WEBHOOK_ERROR_NOTIFICATION")
+
+# Each editable section: internal name, menu label and description, then the keys reverted when it is re-entered
+WIZARD_SECTIONS = (
+    ("Target", "Target", "Change the Riot ID and region that are monitored.", ("RIOT_ID", "REGION"), ()),
+    ("Polling", "Polling interval", "Change how often Riot is checked.", ("LOL_CHECK_INTERVAL", "LOL_ACTIVE_CHECK_INTERVAL"), ()),
+    ("Authentication", "Authentication", "Enter the Riot API key again.", (), ("RIOT_API_KEY",)),
+    ("Email", "Email notifications", "Change SMTP details and email events.", WIZARD_SMTP_CONFIG_KEYS + WIZARD_EMAIL_NOTIFICATION_KEYS, ("SMTP_PASSWORD",)),
+    ("Webhook", "Webhook alerts", "Change Discord or ntfy details and events.", ("WEBHOOK_ENABLED", "WEBHOOK_PROVIDER") + WIZARD_WEBHOOK_NOTIFICATION_KEYS, ("WEBHOOK_URL", "NTFY_ACCESS_TOKEN")),
+    ("Output", "Output files", "Change the log and CSV destinations.", ("DISABLE_LOGGING", "CSV_FILE"), ()),
+    ("Destinations", "File destinations", "Change the configuration or dotenv output path.", (), ()),
+)
+
+
+# Restores one section to the values setup started with and drops any secret it had queued
+def _wizard_reset_section(state, config_keys, secret_keys):
+    for key in config_keys:
+        if key in state.baseline_values:
+            state.config_values[key] = state.baseline_values[key]
+        else:
+            state.config_values.pop(key, None)
+    for key in secret_keys:
+        state.secret_updates.pop(key, None)
+
+
+# Returns one declined section to the built-in template values, so nothing the user turned down is written
+def _wizard_clear_section(state, config_keys, secret_keys=()):
+    defaults = _config_template_defaults()
+    for key in config_keys:
+        if key in defaults:
+            state.config_values[key] = defaults[key]
+        else:
+            state.config_values.pop(key, None)
+    for key in secret_keys:
+        state.secret_updates.pop(key, None)
+
+
+# Mirrors the settled target into the config values, so an unpersisted target is left out of the file
+def _wizard_apply_target(state):
+    state.config_values["RIOT_ID"] = state.riot_id if state.persist_target and state.riot_id else ""
+    state.config_values["REGION"] = state.region if state.persist_target and state.region else ""
+
+
+# Asks for the monitored Riot ID and its region, storing both in the one form everything else reads
+def _wizard_collect_target_section(state, initial_riot_id=None, initial_region=None, input_func=None):
+    state.target_verified = False
+    riot_id_question = f"Riot ID to monitor ({RIOT_ID_FORMS})"
+    region_question = f"Region ({REGION_FORMS})"
+    state.riot_id = ""
+    while True:
+        answer = _wizard_ask_text(riot_id_question, default=str(initial_riot_id or state.config_values.get("RIOT_ID") or ""), required=True, input_func=input_func)
+        if not answer:
+            # The question already offered another attempt and it was declined, so the section ends instead of asking again
+            break
+        try:
+            state.riot_id = normalize_riot_id(answer)
+            break
+        except ValueError as exc:
+            print(f"  {exc}")
+            if not _wizard_offer_retry(_wizard_retry_label(riot_id_question), input_func=input_func):
+                break
+    if not state.riot_id:
+        print("  No target selected. Nothing can be monitored until one is set. Run --setup again or pass the target on the command line.")
+        state.region = ""
+        _wizard_apply_target(state)
+        return
+    while True:
+        answer = _wizard_ask_text(region_question, default=str(initial_region or state.config_values.get("REGION") or ""), required=True, input_func=input_func)
+        if not answer:
+            break
+        normalized = normalize_region(answer)
+        if REGION_TO_CONTINENT.get(normalized):
+            state.region = normalized
+            break
+        print(f"  '{answer}' is not a region this tool knows. Use the short code rather than the display name.")
+        if not _wizard_offer_retry(_wizard_retry_label(region_question), input_func=input_func):
+            break
+    if not state.region:
+        print("  No region selected. Nothing can be monitored until one is set. Run --setup again or pass the region on the command line.")
+        state.riot_id = ""
+        _wizard_apply_target(state)
+        return
+    state.persist_target = _wizard_ask_yes_no("Persist this target in the generated config?", default=state.persist_target, input_func=input_func)
+    _wizard_apply_target(state)
+
+
+# Asks Riot whether the collected account exists, using the key the wizard just accepted
+def _wizard_verify_target(state):
+    api_key = state.secret_updates.get("RIOT_API_KEY") or state.config_values.get("RIOT_API_KEY")
+    previous_key = RIOT_API_KEY
+    globals()["RIOT_API_KEY"] = api_key
+    try:
+        asyncio.run(riot_account_probe(state.riot_id, state.region))
+        return True
+    except Exception as exc:
+        debug_swallowed_exception("Wizard target check", exc)
+        return False
+    finally:
+        globals()["RIOT_API_KEY"] = previous_key
+
+
+# Checks the collected target against Riot once a key is available, so a typo is caught before anything is written
+def _wizard_confirm_target(state, input_func=None):
+    while state.riot_id and state.region and not state.target_verified:
+        api_key = state.secret_updates.get("RIOT_API_KEY") or state.config_values.get("RIOT_API_KEY")
+        if not doctor_value_is_set(api_key):
+            print(f"  '{state.riot_id}' was not checked with Riot, which needs an API key. Run --doctor once one is set.")
+            return
+        print("  Checking the Riot ID with Riot ...")
+        if _wizard_verify_target(state):
+            state.target_verified = True
+            print(f"  Riot found {state.riot_id} on {state.region}.")
+            return
+        print(f"  Riot has no account for '{state.riot_id}' on '{state.region}'. Check the game name, the tag line and the region.")
+        if not _wizard_offer_retry("target", "Nothing can be monitored until one is set", input_func=input_func):
+            _wizard_clear_section(state, ("RIOT_ID", "REGION"))
+            state.riot_id = ""
+            state.region = ""
+            return
+        print()
+        _wizard_collect_target_section(state, input_func=input_func)
+
+
+# Asks how often the tool checks, in whichever duration format the user prefers
+def _wizard_collect_polling_section(state, input_func=None):
+    state.config_values["LOL_CHECK_INTERVAL"] = _wizard_ask_duration("Riot polling interval while not in game (seconds or use s/m/h/d)", int(state.config_values.get("LOL_CHECK_INTERVAL") or LOL_CHECK_INTERVAL), input_func=input_func)
+    state.config_values["LOL_ACTIVE_CHECK_INTERVAL"] = _wizard_ask_duration("Riot polling interval while in game (seconds or use s/m/h/d)", int(state.config_values.get("LOL_ACTIVE_CHECK_INTERVAL") or LOL_ACTIVE_CHECK_INTERVAL), input_func=input_func)
+
+
+# Asks for the Riot API key through a hidden prompt and validates it against Riot before accepting it
+def _wizard_collect_auth_section(state, input_func=None, getpass_func=None, validator=None):
+    print(f"Create or view your Riot API key: {RIOT_API_KEY_REGISTRATION_URL}")
+    existing = doctor_value_is_set(state.config_values.get("RIOT_API_KEY"))
+    if existing and not _wizard_ask_yes_no("Replace the Riot API key already configured?", default=False, input_func=input_func):
+        return
+    validate = validate_riot_api_key if validator is None else validator
+    while True:
+        api_key = _wizard_ask_secret("Riot API key", getpass_func=getpass_func)
+        if not api_key:
+            # Monitoring cannot run without it, so leaving it unset has to be a decision rather than a fallthrough
+            if not _wizard_offer_retry("Riot API key", "Nothing can be monitored until one is set", input_func=input_func):
+                return
+            continue
+        # Riot is contacted here, which takes long enough to look like a hang without a notice
+        print("  Checking the key with Riot ...")
+        if validate(api_key):
+            state.secret_updates["RIOT_API_KEY"] = api_key
+            print("  Riot accepted the key.")
+            return
+        print("  Riot rejected that key. A development key expires 24 hours after it is issued.")
+        # A key Riot keeps rejecting cannot be corrected from inside the loop, so the wizard must be leavable here too
+        if not _wizard_offer_retry("Riot API key", input_func=input_func):
+            return
+
+
+# Switches every email alert off together, so an abandoned answer cannot leave half a mail server configured
+def _wizard_disable_email(state):
+    _wizard_clear_section(state, WIZARD_SMTP_CONFIG_KEYS, ("SMTP_PASSWORD",))
+    # Only the alerts the wizard offers are cleared, so alerts enabled by hand survive a declined email section
+    for key in WIZARD_EMAIL_NOTIFICATION_KEYS:
+        state.config_values[key] = False
+
+
+# Signs in to the collected mail server without sending anything, so a refused login is caught during setup
+def _wizard_verify_smtp(values, password):
+    names = WIZARD_SMTP_CONFIG_KEYS + ("SMTP_PASSWORD",)
+    previous = {name: globals()[name] for name in names}
+    smtp_object = None
+    try:
+        globals().update(values)
+        # A blank answer keeps the password already stored, which is the one the sign-in must then prove
+        globals()["SMTP_PASSWORD"] = password or previous["SMTP_PASSWORD"]
+        smtp_object = smtp_connect_and_login(SMTP_SSL, smtp_timeout=WIZARD_SMTP_TIMEOUT)
+        return None
+    except Exception as exc:
+        return classify_recovery_error(exc, "email")
+    finally:
+        if smtp_object is not None:
+            try:
+                smtp_object.quit()
+            except Exception:
+                pass
+        globals().update(previous)
+
+
+# Reports the outcome of the sign-in check: True to continue, False to ask again, None to switch email off
+def _wizard_smtp_sign_in_accepted(values, password, input_func=None):
+    print("  Checking the sign-in with the mail server ...")
+    advice = _wizard_verify_smtp(values, password)
+    if advice is None:
+        print("  The mail server accepted the sign-in. No email was sent.")
+        return True
+    print(f"  {advice.summary}: {advice.detail}" if advice.detail else f"  {advice.summary}")
+    print(f"  To fix: {advice.fix}")
+    if _wizard_offer_retry("mail server settings", input_func=input_func):
+        return False
+    if advice.retryable:
+        # Being offline is the usual reason a correct setup fails here, so the answers are kept rather than discarded
+        print("  The settings were kept without being checked. Run --doctor to check the sign-in again.")
+        return True
+    print("  Email notifications stay off until the mail server accepts the settings.")
+    return None
+
+
+# Reports whether one required mail server answer was abandoned, switching the channel off when it was
+def _wizard_email_answer_missing(state, key):
+    if state.config_values.get(key):
+        return False
+    print("  Email notifications stay off until every mail server setting is answered.")
+    _wizard_disable_email(state)
+    return True
+
+
+# Reports whether the saved settings already send email, so a rerun proposes keeping the channel it has
+def _wizard_email_enabled(config_values):
+    # The error alert ships switched on, so on its own it counts only once a mail server has been named
+    for key in WIZARD_EMAIL_NOTIFICATION_KEYS:
+        if key != "ERROR_NOTIFICATION" and bool(config_values.get(key)):
+            return True
+    return bool(config_values.get("ERROR_NOTIFICATION")) and doctor_value_is_set(config_values.get("SMTP_HOST"))
+
+
+# Asks which alerts one channel should send, offering the recommended preset before the per-alert questions
+def _wizard_collect_alert_preset(question, recommended_description, keys, questions, input_func=None):
+    # Every alert this tool has is in the recommended preset, so an 'Every supported event' entry would repeat it
+    preset = _wizard_ask_choice(question, [
+        ("Status changes and errors, recommended", recommended_description),
+        ("Custom", "Choose each notification type separately."),
+    ], input_func=input_func)
+    if preset == 0:
+        return {name: True for name in keys}
+    print()
+    return {name: _wizard_ask_yes_no(text, default=False, input_func=input_func) for name, text in questions}
+
+
+# Asks whether to send email alerts and collects only the settings that choice needs
+def _wizard_collect_email_section(state, input_func=None, getpass_func=None):
+    if not _wizard_ask_yes_no("Configure email notifications?", default=_wizard_email_enabled(state.config_values), input_func=input_func):
+        _wizard_disable_email(state)
+        return
+    while True:
+        state.config_values["SMTP_HOST"] = _wizard_ask_text("SMTP host", default=_wizard_default(state.config_values.get("SMTP_HOST")), required=True, input_func=input_func)
+        if _wizard_email_answer_missing(state, "SMTP_HOST"):
+            return
+        state.config_values["SMTP_PORT"] = _wizard_ask_positive_int("SMTP port", int(state.config_values.get("SMTP_PORT") or 587), maximum=65535, input_func=input_func)
+        state.config_values["SMTP_SSL"] = _wizard_ask_yes_no("Enable TLS/SSL for SMTP?", default=bool(state.config_values.get("SMTP_SSL")), input_func=input_func)
+        state.config_values["SMTP_USER"] = _wizard_ask_text("SMTP username", default=_wizard_default(state.config_values.get("SMTP_USER")), required=True, input_func=input_func)
+        if _wizard_email_answer_missing(state, "SMTP_USER"):
+            return
+        state.config_values["SENDER_EMAIL"] = _wizard_ask_text("Sender email", default=_wizard_default(state.config_values.get("SENDER_EMAIL")), required=True, input_func=input_func)
+        if _wizard_email_answer_missing(state, "SENDER_EMAIL"):
+            return
+        state.config_values["RECEIVER_EMAIL"] = _wizard_ask_text("Receiver email", default=_wizard_default(state.config_values.get("RECEIVER_EMAIL")), required=True, input_func=input_func)
+        if _wizard_email_answer_missing(state, "RECEIVER_EMAIL"):
+            return
+        password = _wizard_ask_secret("SMTP password", getpass_func=getpass_func)
+        if password:
+            _wizard_queue_secret(state, "SMTP_PASSWORD", password, input_func=input_func)
+        outcome = _wizard_smtp_sign_in_accepted({name: state.config_values[name] for name in WIZARD_SMTP_CONFIG_KEYS}, password, input_func=input_func)
+        if outcome is None:
+            _wizard_disable_email(state)
+            return
+        if outcome:
+            break
+    state.config_values.update(_wizard_collect_alert_preset(
+        "Which email notifications should be enabled?",
+        "Emails when the player starts or stops a match, and when monitoring has a problem.",
+        WIZARD_EMAIL_NOTIFICATION_KEYS,
+        (("STATUS_NOTIFICATION", "Email when the player starts or stops a match?"), ("ERROR_NOTIFICATION", "Email on monitoring errors?")),
+        input_func=input_func,
+    ))
+
+
+# Switches the channel and every alert it owns off together, so a half-configured webhook cannot be written
+def _wizard_disable_webhook(state):
+    _wizard_clear_section(state, ("WEBHOOK_PROVIDER",), ("WEBHOOK_URL", "NTFY_ACCESS_TOKEN"))
+    state.config_values["WEBHOOK_ENABLED"] = False
+    state.config_values.update({name: False for name in WIZARD_WEBHOOK_NOTIFICATION_KEYS})
+
+
+# Collects an optional ntfy access token without displaying it or contacting the service
+def _wizard_collect_ntfy_access_token(state, input_func=None, getpass_func=None):
+    if _wizard_existing_secret("NTFY_ACCESS_TOKEN", state.env_path):
+        choice = _wizard_ask_choice("Which ntfy authentication should be used?", [
+            ("Keep the saved access token", "Keeps the private value without displaying or changing it."),
+            ("Paste a new access token", "Uses a hidden prompt then saves the replacement in .env."),
+            ("Do not use an access token", "Disables the saved token. Authentication in the topic URL still works."),
+        ], input_func=input_func)
+        if choice == 0:
+            return
+        if choice == 2:
+            state.secret_updates["NTFY_ACCESS_TOKEN"] = ""
+            print("  The saved ntfy access token will be disabled without being displayed.")
+            return
+    elif not _wizard_ask_yes_no("Authenticate this ntfy topic with a separate access token?", default=False, input_func=input_func):
+        print("  No separate access token selected. Authentication already present in the topic URL still works.")
+        return
+    while True:
+        token = _wizard_ask_secret("Paste the ntfy access token only", getpass_func=getpass_func)
+        if not token or ("\r" not in token and "\n" not in token and not token.casefold().startswith(("bearer ", "basic "))):
+            if token:
+                state.secret_updates["NTFY_ACCESS_TOKEN"] = token
+            return
+        print("  Paste only the access token without a Bearer or Basic prefix.")
+        if not _wizard_offer_retry("ntfy access token", input_func=input_func):
+            return
+
+
+# Asks whether to send webhook alerts and collects the provider, the hidden URL and the alert choices
+def _wizard_collect_webhook_section(state, input_func=None, getpass_func=None):
+    if not _wizard_ask_yes_no("Set up webhook alerts (Discord, ntfy etc.)?", default=bool(state.config_values.get("WEBHOOK_ENABLED")), input_func=input_func):
+        _wizard_disable_webhook(state)
+        return
+    provider_choice = _wizard_ask_choice("Which webhook service should receive alerts?", [
+        ("Discord", "Sends a Discord embed to one channel webhook."),
+        ("ntfy", "Sends a native notification to one ntfy topic URL."),
+    ], input_func=input_func)
+    provider = "discord" if provider_choice == 0 else "ntfy"
+    state.config_values["WEBHOOK_PROVIDER"] = provider
+    if provider == "discord":
+        print("  In Discord: Edit Channel > Integrations > Webhooks > New Webhook > Copy Webhook URL.")
+    else:
+        print("  In ntfy: choose a hard-to-guess topic. Paste its complete topic URL, or just the topic name when it is hosted on ntfy.sh.")
+    replace_webhook = True
+    if _wizard_existing_secret("WEBHOOK_URL", state.env_path):
+        choice = _wizard_ask_choice("Which webhook URL should be used?", [
+            ("Keep the saved URL", "Keeps the private value without displaying or changing it."),
+            ("Paste a new URL", "Uses a hidden prompt then saves the new private value in .env."),
+        ], input_func=input_func)
+        replace_webhook = choice == 1
+    if replace_webhook:
+        while True:
+            answer = _wizard_ask_secret("Paste the Discord webhook URL" if provider == "discord" else "Paste the ntfy topic URL or ntfy.sh topic name", getpass_func=getpass_func)
+            webhook_url = normalize_ntfy_topic_url(answer) if provider == "ntfy" else answer.strip()
+            if validate_webhook_url(webhook_url):
+                state.secret_updates["WEBHOOK_URL"] = webhook_url
+                break
+            # Nothing can be delivered without a destination, so giving up has to stay reachable from the prompt.
+            # The branch is chosen by what was typed rather than by the normalized value, since a rejected ntfy
+            # topic normalizes to an empty string and would otherwise be reported as nothing entered
+            if not answer.strip():
+                if not _wizard_offer_retry("webhook URL", "Webhook alerts stay off until one is set", input_func=input_func):
+                    _wizard_disable_webhook(state)
+                    return
+                continue
+            if provider == "ntfy":
+                print("  Enter a complete HTTPS ntfy topic URL or a topic name containing up to 64 letters, numbers, dashes or underscores.")
+            else:
+                print("  That does not look like a complete HTTPS webhook URL. Copy it from the webhook service and try again.")
+            if not _wizard_offer_retry("webhook URL", input_func=input_func):
+                _wizard_disable_webhook(state)
+                return
+    if provider == "ntfy":
+        _wizard_collect_ntfy_access_token(state, input_func=input_func, getpass_func=getpass_func)
+    state.config_values["WEBHOOK_ENABLED"] = True
+    state.config_values.update(_wizard_collect_alert_preset(
+        "Which webhook alerts should be sent?",
+        "Alerts when the player starts or stops a match, and when monitoring has a problem.",
+        WIZARD_WEBHOOK_NOTIFICATION_KEYS,
+        (("WEBHOOK_STATUS_NOTIFICATION", "Send a webhook alert when the player starts or stops a match?"), ("WEBHOOK_ERROR_NOTIFICATION", "Send a webhook alert when monitoring has a problem?")),
+        input_func=input_func,
+    ))
+
+
+# Adds the .csv extension when the answer carries none, so a bare name still names a CSV file
+def _wizard_normalize_csv_path(answer):
+    text = str(answer).strip()
+    if not text or Path(text).suffix:
+        return text
+    return text + ".csv"
+
+
+# Collects the log and CSV output destinations monitoring would write
+def _wizard_collect_output_section(state, input_func=None):
+    state.config_values["DISABLE_LOGGING"] = not _wizard_ask_yes_no("Write the normal per-target log file?", default=not bool(state.config_values.get("DISABLE_LOGGING")), input_func=input_func)
+    state.config_values["CSV_FILE"] = _wizard_normalize_csv_path(_wizard_ask_text("Optional CSV output path (blank disables it)", default=str(state.config_values.get("CSV_FILE") or ""), input_func=input_func))
+
+
+# Changes where setup writes, re-asking the sections that hold secrets when the dotenv destination moves
+def _wizard_collect_destination_section(state, input_func=None, getpass_func=None):
+    while True:
+        config_text = _wizard_ask_text("Configuration file destination", default=str(state.config_path), required=True, input_func=input_func)
+        try:
+            selected_config = _wizard_validate_destination(config_text, "Configuration destination")
+            break
+        except ValueError as exc:
+            print(f"  {exc}.")
+    # Both sides are compared resolved, so an unchanged answer written a different way is not read as a move
+    if selected_config != Path(state.config_path).expanduser().resolve():
+        chosen_config = _wizard_choose_config_destination(selected_config, input_func=input_func)
+        # Giving up on every offered path keeps the current destination rather than cancelling the whole setup
+        if chosen_config is not None:
+            state.config_path = chosen_config
+    while True:
+        env_text = _wizard_ask_text("Dotenv file destination", default=str(state.env_path), required=True, input_func=input_func)
+        if env_text.casefold() == "none":
+            print("  Setup needs a writable dotenv file and cannot use 'none'.")
+            continue
+        try:
+            selected_env = _wizard_validate_destination(env_text, "Dotenv destination")
+        except ValueError as exc:
+            print(f"  {exc}.")
+            continue
+        # One file cannot hold both, since saving the configuration would overwrite the secrets beside it
+        if selected_env == Path(state.config_path).expanduser().resolve():
+            print("  The dotenv file has to be a different file from the configuration.")
+            continue
+        break
+    state.config_values["DOTENV_FILE"] = str(selected_env)
+    if selected_env == Path(state.env_path).expanduser().resolve():
+        return
+    state.env_path = selected_env
+    # A secret kept rather than retyped was never queued, so it would be missing from a dotenv file that just moved
+    print("  The dotenv destination changed. Re-enter authentication and notification settings that may contain secrets.")
+    _wizard_collect_auth_section(state, input_func=input_func, getpass_func=getpass_func)
+    _wizard_confirm_target(state, input_func=input_func)
+    print()
+    _wizard_collect_email_section(state, input_func=input_func, getpass_func=getpass_func)
+    print()
+    _wizard_collect_webhook_section(state, input_func=input_func, getpass_func=getpass_func)
+
+
+# Runs one editable section again after resetting only the keys it owns
+def _wizard_edit_setup_section(state, input_func=None, getpass_func=None):
+    options = [(label, description) for _name, label, description, _config_keys, _secret_keys in WIZARD_SECTIONS]
+    options.append(("Return to summary", "Keep every current answer."))
+    choice = _wizard_ask_choice("Which setup section should be changed?", options, input_func=input_func)
+    if choice == len(WIZARD_SECTIONS):
+        return
+    name, _label, _description, config_keys, secret_keys = WIZARD_SECTIONS[choice]
+    _wizard_reset_section(state, config_keys, secret_keys)
+    if name == "Target":
+        state.riot_id = ""
+        state.region = ""
+    print()
+    collectors = {
+        "Target": lambda: _wizard_collect_target_section(state, input_func=input_func),
+        "Polling": lambda: _wizard_collect_polling_section(state, input_func=input_func),
+        "Authentication": lambda: _wizard_collect_auth_section(state, input_func=input_func, getpass_func=getpass_func),
+        "Email": lambda: _wizard_collect_email_section(state, input_func=input_func, getpass_func=getpass_func),
+        "Webhook": lambda: _wizard_collect_webhook_section(state, input_func=input_func, getpass_func=getpass_func),
+        "Output": lambda: _wizard_collect_output_section(state, input_func=input_func),
+        "Destinations": lambda: _wizard_collect_destination_section(state, input_func=input_func, getpass_func=getpass_func),
+    }
+    collectors[name]()
+    if name in ("Target", "Authentication"):
+        _wizard_confirm_target(state, input_func=input_func)
+
+
+# The theme part each setup summary row draws its value in, for rows whose value has a known kind
+WIZARD_SUMMARY_VALUE_STYLES = {"Target": "username", "Polling interval while not in game": "duration", "Polling interval while in game": "duration"}
+
+
+# Colours one setup summary value from its row label
+def _wizard_summary_value(label, value):
+    text = str(value)
+    part = WIZARD_SUMMARY_VALUE_STYLES.get(label)
+    if part:
+        return colorize(part, text)
+    if text.startswith("enabled") or text == "complete":
+        return colorize("boolean_true", text)
+    if text in ("disabled", "incomplete"):
+        return colorize("boolean_false", text)
+    return text
+
+
+# Prints one aligned label and value block, so every summary row lines up
+def _wizard_print_summary_rows(rows):
+    width = max(len(label) for label, _ in rows) + 1
+    for label, value in rows:
+        print(f"  {(label + ':'):<{width}} {_wizard_summary_value(label, value)}")
+
+
+# Shows everything that is about to be written, by name and never by secret value
+def _wizard_print_setup_summary(state):
+    email_labels = {"STATUS_NOTIFICATION": "status changes", "ERROR_NOTIFICATION": "errors"}
+    webhook_labels = {"WEBHOOK_STATUS_NOTIFICATION": "status changes", "WEBHOOK_ERROR_NOTIFICATION": "errors"}
+    enabled_email = [email_labels[name] for name in WIZARD_EMAIL_NOTIFICATION_KEYS if state.config_values.get(name)]
+    enabled_webhooks = [webhook_labels[name] for name in WIZARD_WEBHOOK_NOTIFICATION_KEYS if state.config_values.get(name)] if state.config_values.get("WEBHOOK_ENABLED") else []
+    api_key_set = "RIOT_API_KEY" in state.secret_updates or doctor_value_is_set(state.config_values.get("RIOT_API_KEY"))
+    webhook_state = f"enabled ({webhook_provider_display_name(state.config_values.get('WEBHOOK_PROVIDER'))})" if state.config_values.get("WEBHOOK_ENABLED") else "disabled"
+    rows = [
+        ("Target", f"{state.riot_id} ({state.region})" if state.riot_id and state.region else "not set"),
+        ("Persist target", "yes" if state.persist_target else "no"),
+        ("Polling interval while not in game", _wizard_format_duration(int(state.config_values.get("LOL_CHECK_INTERVAL") or 0))),
+        ("Polling interval while in game", _wizard_format_duration(int(state.config_values.get("LOL_ACTIVE_CHECK_INTERVAL") or 0))),
+        ("Authentication status", "complete" if api_key_set else "incomplete"),
+        ("Email", "enabled" if enabled_email else "disabled"),
+        ("Email notifications", ", ".join(enabled_email) if enabled_email else "none"),
+        ("Webhook", webhook_state),
+        ("Webhook alerts", ", ".join(enabled_webhooks) if enabled_webhooks else "none"),
+        ("Output log", "disabled" if state.config_values.get("DISABLE_LOGGING") else "enabled"),
+        ("CSV output", state.config_values.get("CSV_FILE") or "disabled"),
+        ("Config destination", state.config_path),
+        ("Dotenv destination", state.env_path),
+        ("Install method", install_method_display_name()),
+    ]
+    print(colorize("header", "\nSetup summary\n"))
+    _wizard_print_summary_rows(rows)
+
+
+# Loops on the summary until the user saves or explicitly discards, so nothing is written by accident
+def _wizard_review_setup(state, input_func=None, getpass_func=None):
+    while True:
+        _wizard_print_setup_summary(state)
+        action = _wizard_ask_choice("What would you like to do?", [
+            ("Save settings", "Write the displayed settings to the selected files."),
+            ("Review or change settings", "Edit one section without losing the other answers."),
+            ("Discard answers and exit", "Leave the destination files unchanged."),
+        ], input_func=input_func)
+        if action == 0:
+            return True
+        if action == 1:
+            _wizard_edit_setup_section(state, input_func=input_func, getpass_func=getpass_func)
+            continue
+        print()
+        if _wizard_ask_yes_no("Discard all entered answers and exit?", default=False, input_func=input_func):
+            return False
+        print("  Setup answers retained.")
+
+
+# Prints where setup will write and which install method the printed commands are written for
+def _wizard_print_setup_destinations(method, config_path, env_path):
+    print(f"Detected install method: {colorize('username', method)}")
+    print(f"Configuration:          {config_path}")
+    print(f"Dotenv:                 {env_path}\n")
+
+
+# Puts the values setup just saved into effect, so doctor checks the written files instead of the pre-setup state
+def _wizard_apply_saved_values(state, env_path=None):
+    # Config values first: they carry the unset placeholders for every secret, which would otherwise
+    # overwrite the secrets applied below and make doctor report a working setup as unconfigured
+    globals().update(state.config_values)
+    if env_path:
+        try:
+            reload_dotenv_secrets(str(env_path))
+        except Exception:
+            # Reading the file back needs python-dotenv, so the entered values are applied directly below
+            pass
+    load_secrets_from_environment()
+    # Secrets exported before startup keep winning here, exactly as they will when monitoring runs
+    for key, value in state.secret_updates.items():
+        if key not in EXPORTED_SECRET_KEYS and not doctor_value_is_set(globals().get(key)):
+            globals()[key] = value
+
+
+# Builds the exact local command that starts this monitor, used when setup offers to launch it
+def _wizard_local_command_args(riot_id=None, region=None, config_path=None, env_path=None):
+    executable = sys.executable or ("python" if platform.system() == "Windows" else "python3")
+    arguments = [executable, "-m", "lol_monitor"] if install_method() == INSTALL_METHOD_PYPI else [executable, str(Path(__file__).resolve())]
+    if riot_id and region:
+        arguments.extend([str(riot_id), str(region)])
+    if config_path:
+        arguments.extend(["--config-file", str(config_path)])
+    if env_path:
+        arguments.extend(["--env-file", str(env_path)])
+    return arguments
+
+
+# Hands the terminal to the monitor, replacing this process where the platform allows it
+def _wizard_launch_monitor(arguments):
+    command = [str(argument) for argument in arguments]
+    if platform.system() == "Windows":
+        try:
+            return subprocess.run(command, check=False).returncode
+        except KeyboardInterrupt:
+            return 0
+    os.execv(command[0], command)
+    return 0
+
+
+# Runs the guided setup, holding every answer until the user saves
+def run_setup_wizard(initial_riot_id=None, initial_region=None, config_file=None, env_file=None, input_func=None, getpass_func=None, interactive=None):
+    terminal_is_interactive = sys.stdin.isatty() if interactive is None else interactive
+    if not terminal_is_interactive:
+        print("The setup wizard needs an interactive terminal (TTY).")
+        print("Run --setup from an interactive shell or use --generate-config and edit the files manually.")
+        print(f"Guide: {QUICK_START_GUIDE_URL}")
+        return 1
+
+    try:
+        config_path, env_path = _wizard_destinations(config_file, env_file)
+    except ValueError as exc:
+        print_recovery_error(exc, context="file.unwritable", detail=str(exc))
+        return 1
+
+    print(colorize("header", "Setup Wizard\n"))
+    print("This asks a few questions and writes a ready-to-run configuration.")
+    _wizard_print_default_guidance()
+    print("Secrets go to the dotenv file. Non-secret settings go to the config file.")
+    print()
+    _wizard_print_setup_destinations(install_method(), config_path, env_path)
+
+    baseline_values = {name: value for name, value in globals().items() if name in _config_allowed_names()}
+    state = WizardSetupState(config_path, env_path, baseline_values)
+    state.config_values["DOTENV_FILE"] = str(env_path)
+
+    try:
+        # Asked before anything else, so a config that has to be replaced is agreed to rather than discovered at Save
+        config_existed = Path(config_path).exists()
+        chosen_config = _wizard_choose_config_destination(config_path, input_func=input_func)
+        if chosen_config is None:
+            print("\n" + colorize("warning", "Setup cancelled. Destination files were not changed."))
+            return 1
+        state.config_path = chosen_config
+        # A destination nothing was asked about printed nothing, so the separator would leave a blank gap
+        if config_existed:
+            print()
+        _wizard_collect_target_section(state, initial_riot_id, initial_region, input_func=input_func)
+        print()
+        _wizard_collect_polling_section(state, input_func=input_func)
+        print()
+        _wizard_collect_auth_section(state, input_func=input_func, getpass_func=getpass_func)
+        _wizard_confirm_target(state, input_func=input_func)
+        print()
+        _wizard_collect_email_section(state, input_func=input_func, getpass_func=getpass_func)
+        print()
+        _wizard_collect_webhook_section(state, input_func=input_func, getpass_func=getpass_func)
+        print()
+        _wizard_collect_output_section(state, input_func=input_func)
+        if not _wizard_review_setup(state, input_func=input_func, getpass_func=getpass_func):
+            print("\n" + colorize("warning", "Setup cancelled. Destination files were not changed."))
+            return 1
+    except (EOFError, KeyboardInterrupt):
+        print(colorize("warning", "Setup cancelled. Destination files were not changed."))
+        return 1
+
+    # Everything above only filled the state, so this is the first and only point anything reaches disk
+    try:
+        config_result = write_config_file(state.config_path, generate_config_with_current_values(state.config_values))
+    except Exception as exc:
+        print_recovery_error(exc, context="file", detail=f"Could not write the configuration to '{state.config_path}'")
+        return 1
+    dotenv_result = None
+    if state.secret_updates:
+        try:
+            dotenv_result = update_dotenv_file(state.env_path, state.secret_updates)
+        except Exception as exc:
+            print_recovery_error(exc, context="file", detail=f"Could not write secrets to '{state.env_path}'")
+            return 1
+
+    print(colorize("header", "\nSaved files\n"))
+    print(f"  Configuration: {config_result['path']}")
+    if config_result["backup_path"]:
+        print(f"  Backup:        {config_result['backup_path']}")
+    if dotenv_result:
+        print(f"  {'Secrets:':<15}{dotenv_result['path']}")
+
+    doctor_offered = bool(state.riot_id and state.region)
+    doctor_exit = None
+    if doctor_offered:
+        print()
+    try:
+        if doctor_offered and _wizard_ask_yes_no("Run doctor now? It writes no files and offers real delivery tests only with separate approval.", default=True, input_func=input_func):
+            print()
+            _wizard_apply_saved_values(state, env_path=state.env_path if dotenv_result else None)
+            doctor_exit = run_doctor(riot_id=state.riot_id, region=state.region, config_path=str(state.config_path), env_path=str(state.env_path) if dotenv_result else None)
+    except (EOFError, KeyboardInterrupt):
+        # The files are already written, so an interrupt here only skips the optional check
+        print(colorize("warning", "Setup is saved. Use the commands below when ready."))
+
+    env_argument = str(state.env_path) if dotenv_result else ""
+    # A persisted target is already in the config file, so the printed commands stay short
+    target_arguments = [] if state.persist_target or not state.riot_id else [state.riot_id, state.region]
+    print(colorize("header", "\nNext steps\n"))
+    print_labelled_command("Check setup again:", render_command(["--doctor"] + target_arguments, config_path=str(state.config_path), env_path=env_argument))
+    start_label = "After Doctor passes, start monitoring:" if doctor_exit not in (None, 0) else "Start monitoring:"
+    print_labelled_command(start_label, render_command(target_arguments, config_path=str(state.config_path), env_path=env_argument))
+    print(f"Guide: {colorize('link', QUICK_START_GUIDE_URL)}\n")
+
+    try:
+        # Only a doctor run that passed proves the saved setup can monitor, so the launch offer waits for it
+        start_monitoring = bool(state.riot_id and doctor_exit == 0 and _wizard_ask_yes_no("Start monitoring now? Monitoring will continue until Ctrl+C.", default=True, input_func=input_func))
+    except (EOFError, KeyboardInterrupt):
+        # The files are already written, so an interrupt here only skips the optional launch
+        print(colorize("warning", "Setup is saved. Start monitoring with the command above when ready."))
+        return 0
+    if start_monitoring:
+        launch_riot_id = None if state.persist_target else state.riot_id
+        launch_arguments = _wizard_local_command_args(riot_id=launch_riot_id, region=None if state.persist_target else state.region, config_path=state.config_path, env_path=state.env_path if dotenv_result else None)
+        sys.stdout.flush()
+        return _wizard_launch_monitor(launch_arguments)
+    return 0
+
+
 # Prints the command that starts monitoring with the files this run checked, so a report read on its own
 # ends with the next action rather than leaving the reader to assemble the command
 def print_doctor_next_steps(riot_id=None, region=None, riot_id_saved=False, region_saved=False, doctor_exit=0):
@@ -5299,6 +6290,12 @@ def main():
 
     # Configuration & dotenv files
     conf = parser.add_argument_group("Configuration & dotenv files")
+    conf.add_argument(
+        "--setup",
+        dest="setup",
+        action="store_true",
+        help="Run the guided setup and write a ready-to-run configuration"
+    )
     conf.add_argument(
         "--config-file",
         dest="config_file",
@@ -5578,7 +6575,8 @@ def main():
 
     cfg_path = None if CONFIG_DISCOVERY_DISABLED else find_config_file(CLI_CONFIG_PATH)
 
-    if not cfg_path and CLI_CONFIG_PATH:
+    if not cfg_path and CLI_CONFIG_PATH and not args.setup:
+        # Setup is allowed to name a file that does not exist yet, since creating it is the point
         print_recovery_error(context="config", detail=f"Config file '{CLI_CONFIG_PATH}' does not exist")
         sys.exit(1)
 
@@ -5631,7 +6629,7 @@ def main():
                 if not os.path.isfile(env_path):
                     debug_print("Dotenv file", path=env_path, outcome="skipped", reason="the file does not exist")
                     # A command that is about to write this file is not warned that it is missing
-                    if not args.set_smtp_password:
+                    if not command_writes_dotenv(sys.argv[1:]):
                         print(f"* Warning: dotenv file '{env_path}' does not exist\n")
                 else:
                     load_dotenv(env_path, override=False)
@@ -5693,7 +6691,7 @@ def main():
 
     # A target is optional only for the modes that legitimately finish without one. Checked after the dotenv
     # file is resolved, so the command this prints carries the same files the run was given
-    if (not args.riot_id or not args.region) and not (args.doctor or args.send_test_email or args.send_test_webhook or args.set_smtp_password):
+    if (not args.riot_id or not args.region) and not (args.setup or args.doctor or args.send_test_email or args.send_test_webhook or args.set_smtp_password):
         missing = "No Riot ID was provided" if not args.riot_id else "No region was provided"
         print_recovery_error(context="target.missing", detail=missing)
         sys.exit(1)
@@ -5707,6 +6705,10 @@ def main():
             print_recovery_error(exc, context="set_smtp_password")
             sys.exit(1)
         sys.exit(0)
+
+    if args.setup:
+        # Ahead of every connectivity check, so an offline machine can still be set up
+        sys.exit(run_setup_wizard(initial_riot_id=args.riot_id, initial_region=args.region, config_file=args.config_file, env_file=args.env_file))
 
     if args.doctor:
         doctor_exit = run_doctor(riot_id=args.riot_id, region=args.region, config_path=cfg_path, env_path=env_path, target_error=target_input_error)

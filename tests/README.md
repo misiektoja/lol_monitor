@@ -55,6 +55,7 @@ and again before anything is published to PyPI.
 | `test_recovery_errors.py` | The closed recovery taxonomy, the advice each failure carries, secret redaction and the shared error block |
 | `test_repository_contracts.py` | Governance documents, issue templates, action pinning, release gating, the supported Python floor and the CI contract |
 | `test_repository_metadata.py` | Governance files, citation, funding, line endings, the declared editor style, the pinned linter and release integrity |
+| `test_setup_wizard.py` | The guided setup wizard: what each answer collects, what reaches which file and what an interrupt leaves behind |
 | `test_secret_precedence.py` | Which source supplies each secret, the reload that keeps that order and how it is reported |
 | `test_secret_commands.py` | The one-shot `--set-riot-api-key`, `--set-smtp-password` and `--set-webhook-url` commands and the private dotenv file they write |
 | `test_riot_api_client.py` | The Riot API wrappers, pagination, champion name lookup and rejected API keys |
