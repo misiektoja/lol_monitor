@@ -1042,6 +1042,10 @@ def is_too_many_open_files(error):
             return True
     return False
 
+# Returns the next step for a failure no rule recognized, since a run already printing the technical cause cannot be told to re-run for it
+def unknown_failure_fix(): return "Check the monitoring log for the failing request, then open an issue with this output if it continues" if DEBUG_MODE else "Re-run with --debug to see the technical cause"
+
+
 
 # Maps one exception plus its HTTP status and calling context to stable recovery advice
 def classify_recovery_error(error=None, context="runtime", detail=""):
@@ -1158,7 +1162,7 @@ def classify_recovery_error(error=None, context="runtime", detail=""):
         return advice("network.timeout", "The Riot API request timed out", "Check connectivity. The tool will keep retrying", True, DIAGNOSTICS_GUIDE_URL)
     if any(term in message for term in ("connection", "name resolution", "network is unreachable", "no connectivity")):
         return advice("network.unavailable", "Riot could not be reached", "Check connectivity, DNS and any proxy. The tool will keep retrying", True, DIAGNOSTICS_GUIDE_URL)
-    return advice("unknown", safe_detail or "The request could not be completed", "Check the technical detail below and the monitoring log for the failing request", True, DIAGNOSTICS_GUIDE_URL)
+    return advice("unknown", safe_detail or "The request could not be completed", unknown_failure_fix(), True, DIAGNOSTICS_GUIDE_URL)
 
 
 # Renders one built advice as the shared Error, To fix and optional Technical detail block
