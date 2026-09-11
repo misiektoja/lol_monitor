@@ -54,6 +54,45 @@ def write_dotenv(directory, value=FROM_FILE):
     return env_file
 
 
+# The doctor reads the dotenv file keys before answering, so a trace that names a different source contradicts it
+@pytest.mark.parametrize("argv, environment, expected", [
+    (["--env-file", "DOTENV"], {}, "dotenv file"),
+    (["--env-file", "none"], {"RIOT_API_KEY": EXPORTED}, "environment"),
+    (["--env-file", "none", "--riot-api-key", FROM_ARGUMENT], {}, "command line"),
+])
+def test_the_secret_trace_names_the_source_the_doctor_names(lm_module, monkeypatch, monitor_calls, capsys, isolated_startup, argv, environment, expected):
+    pytest.importorskip("dotenv")
+    env_file = write_dotenv(isolated_startup)
+    for name in lm_module.SECRET_KEYS:
+        monkeypatch.setattr(lm_module, name, "", raising=False)
+        monkeypatch.delenv(name, raising=False)
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+    argv = [str(env_file) if part == "DOTENV" else part for part in argv]
+
+    assert run_main(lm_module, monkeypatch, [RIOT_ID, REGION, "--debug", *argv]) == 0
+
+    output = capsys.readouterr().out
+    # The length belongs to its own field, so a reader can split the line on ", " and get pairs
+    trace = [line for line in output.splitlines() if "Secret resolution: name=RIOT_API_KEY" in line][-1].split("Secret resolution: ", 1)[1]
+    assert dict(field.split("=", 1) for field in trace.split(", ")) == {"name": "RIOT_API_KEY", "source": expected, "value": "set", "chars": str(len(lm_module.RIOT_API_KEY))}
+    for value in (EXPORTED, FROM_FILE, FROM_ARGUMENT):
+        assert value not in output
+
+
+# The command line is the last layer to supply a secret, so a run with none says so only after it has had its say
+def test_a_run_with_no_secret_anywhere_says_so(lm_module, monkeypatch, monitor_calls, capsys, isolated_startup):
+    for name in lm_module.SECRET_KEYS:
+        monkeypatch.setattr(lm_module, name, "", raising=False)
+        monkeypatch.delenv(name, raising=False)
+
+    run_main(lm_module, monkeypatch, [RIOT_ID, REGION, "--debug", "--env-file", "none"])
+
+    output = capsys.readouterr().out
+    assert "Secret resolution:" not in output
+    assert "No private settings were resolved from config, dotenv, environment or the command line" in output
+
+
 # Verifies a secret exported before the run wins over the same name in a dotenv file
 def test_the_environment_beats_the_dotenv_file(lm_module, monkeypatch, monitor_calls, isolated_startup):
     pytest.importorskip("dotenv")

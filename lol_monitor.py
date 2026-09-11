@@ -818,7 +818,6 @@ def load_secrets_from_environment(namespace=None):
             continue
         applied.append((secret, selected_namespace.get(secret) != value))
         selected_namespace[secret] = value
-        debug_print("Secret resolution", name=secret, source="environment", **secret_fields(value, secret))
     return applied
 
 
@@ -840,6 +839,13 @@ def group_secrets_by_source(env_path=None):
         else:
             from_settings.append(key)
     return from_file, from_environment, from_settings, from_command_line
+
+
+# Returns the source each configured secret resolved from, so a debug run and the doctor cannot disagree
+def secret_source_labels(env_path=None):
+    grouped = zip(("dotenv file", "environment", "configuration file", "command line"), group_secrets_by_source(env_path), strict=True)
+    labels = {name: source for source, names in grouped for name in names}
+    return {name: labels[name] for name in SECRET_KEYS if name in labels}
 
 
 # Matches every ANSI escape sequence, so third-party text cannot move the cursor or repaint the terminal
@@ -6935,6 +6941,13 @@ def main():
 
     # Assigned once from the arguments rather than accumulated, so a second run in one process starts clean
     COMMAND_LINE_SECRET_KEYS = frozenset(name for name, supplied in (("RIOT_API_KEY", args.riot_api_key), ) if supplied)
+
+    # Traced here rather than at each layer, so the line reports the value that survived every later override
+    resolved_secrets = secret_source_labels(env_path)
+    for secret, source in resolved_secrets.items():
+        debug_print("Secret resolution", name=secret, source=source, **secret_fields(globals().get(secret), secret))
+    if not resolved_secrets:
+        debug_print("No private settings were resolved from config, dotenv, environment or the command line")
 
     # Applied before the report so every row it prints describes the run this command line asked for
     if args.check_interval:

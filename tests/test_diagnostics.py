@@ -168,22 +168,6 @@ def test_the_technical_detail_line_follows_debug_mode(lm_module, monkeypatch):
     assert "Technical detail: gaierror: name resolution failed" in loud
 
 
-# Verifies a run reports what it read the configuration and each secret from, which is the first thing a broken setup needs
-def test_a_debug_run_reports_configuration_and_secret_resolution(lm_module, monkeypatch, capsys, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("RIOT_API_KEY", "RGAPI-intraces-0000-0000-0000-000000000000")
-    monkeypatch.setattr(lm_module, "DEBUG_MODE", True)
-
-    lm_module.load_secrets_from_environment({})
-
-    output = capsys.readouterr().out
-    assert "Secret resolution: name=RIOT_API_KEY, source=environment" in output
-    # The length belongs to its own field, so a reader can split the line on ", " and get pairs
-    trace = [line for line in output.splitlines() if "Secret resolution: " in line][0].split("Secret resolution: ", 1)[1]
-    assert dict(field.split("=", 1) for field in trace.split(", "))["value"] == "set"
-    assert "RGAPI-intraces-0000-0000-0000-000000000000" not in output
-
-
 # Verifies the outbound calls a run makes are traced, since a trace with no request in it explains nothing
 def test_a_debug_run_traces_the_connectivity_request(lm_module, monkeypatch, capsys):
     monkeypatch.setattr(lm_module, "DEBUG_MODE", True)
