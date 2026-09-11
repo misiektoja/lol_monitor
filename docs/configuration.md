@@ -67,7 +67,13 @@ Email notifications need the SMTP block in the configuration file filled in:
 | `SENDER_EMAIL` | Address the alerts are sent from |
 | `RECEIVER_EMAIL` | Address the alerts are sent to |
 
-While `SMTP_HOST` is still the shipped placeholder, email notifications stay switched off.
+Email notifications stay switched off until `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `SENDER_EMAIL` and `RECEIVER_EMAIL` all hold real values. A setting left as its shipped `your_...` placeholder counts as unset.
+
+If any of them is missing while the rest are filled in, or if you asked for status emails with `-s`, startup names what is still missing:
+
+```
+* Email notifications are off because SMTP_PASSWORD, RECEIVER_EMAIL are not set
+```
 
 Check the settings by sending one real message:
 

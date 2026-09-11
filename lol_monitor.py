@@ -499,7 +499,7 @@ def group_secrets_by_source(env_path=None):
     environment_sources = secret_sources(env_path)
     from_file, from_environment, from_settings, from_command_line = [], [], [], []
     for key in SECRET_KEYS:
-        if not secret_is_set(globals().get(key)):
+        if not doctor_value_is_set(globals().get(key)):
             continue
         source = environment_sources.get(key)
         # An argument overrides whatever the dotenv file or the environment held, so it is checked first
@@ -542,13 +542,13 @@ def sanitize_untrusted_text(value, max_length=256):
 
 
 # Reports whether a secret holds a real value rather than being empty or one of the shipped placeholders
-def secret_is_set(value):
-    return isinstance(value, str) and bool(value.strip()) and not value.startswith("your_")
+def doctor_value_is_set(value):
+    return isinstance(value, str) and bool(value.strip()) and not value.strip().startswith("your_")
 
 
 # Describes a secret in diagnostic output without revealing any part of it
 def secret_fingerprint(value, key=None):
-    if not secret_is_set(value):
+    if not doctor_value_is_set(value):
         return "not set"
     return f"set, {len(value)} chars" if key in FIXED_LENGTH_SECRET_KEYS else "set"
 
@@ -862,6 +862,15 @@ async def riot_api_client():
         yield client
 
 
+# The settings email delivery needs before any notification can be sent
+EMAIL_DELIVERY_SETTINGS = ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SENDER_EMAIL", "RECEIVER_EMAIL")
+
+
+# Returns the email settings still holding a shipped placeholder or no value at all
+def unset_email_settings():
+    return [name for name in EMAIL_DELIVERY_SETTINGS if not doctor_value_is_set(globals().get(name))]
+
+
 # Reports whether separator-only log lines should use ASCII on this system
 def ascii_log_separators_enabled():
     mode = str(ASCII_LOG_SEPARATORS).strip().lower()
@@ -1040,7 +1049,7 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
         print("Error sending email - SMTP settings are incorrect (invalid email in SENDER_EMAIL or RECEIVER_EMAIL)")
         return 1
 
-    if not SMTP_USER or not isinstance(SMTP_USER, str) or SMTP_USER == "your_smtp_user" or not SMTP_PASSWORD or not isinstance(SMTP_PASSWORD, str) or SMTP_PASSWORD == "your_smtp_password":
+    if not doctor_value_is_set(SMTP_USER) or not doctor_value_is_set(SMTP_PASSWORD):
         print("Error sending email - SMTP settings are incorrect (check SMTP_USER & SMTP_PASSWORD variables)")
         return 1
 
@@ -3075,7 +3084,7 @@ def main():
     # Assigned once from the arguments rather than accumulated, so a second run in one process starts clean
     COMMAND_LINE_SECRET_KEYS = frozenset(name for name, supplied in (("RIOT_API_KEY", args.riot_api_key), ) if supplied)
 
-    if not RIOT_API_KEY or RIOT_API_KEY == "your_riot_api_key":
+    if not doctor_value_is_set(RIOT_API_KEY):
         print_recovery_error(context="credentials")
         sys.exit(1)
 
@@ -3192,7 +3201,11 @@ def main():
     if args.notify_errors is False:
         ERROR_NOTIFICATION = False
 
-    if SMTP_HOST.startswith("your_smtp_server_"):
+    unset_email = unset_email_settings()
+    if unset_email:
+        # Silent for a run that never asked for email, since untouched placeholders are not a mistake on their own
+        if STATUS_NOTIFICATION or len(unset_email) < len(EMAIL_DELIVERY_SETTINGS):
+            print(f"* Email notifications are off because {', '.join(unset_email)} {'is' if len(unset_email) == 1 else 'are'} not set\n")
         STATUS_NOTIFICATION = False
         ERROR_NOTIFICATION = False
 

@@ -247,6 +247,44 @@ def test_unconfigured_smtp_disables_every_notification(lm_module, monkeypatch, m
     assert lm_module.ERROR_NOTIFICATION is False
 
 
+# Verifies a run that asked for email is told which setting switched it off, rather than being left to guess
+def test_a_requested_notification_names_the_setting_that_disabled_it(lm_module, monkeypatch, monitor_calls, capsys):
+    monkeypatch.setattr(lm_module, "SENDER_EMAIL", "your_sender_email")
+
+    assert run_main(lm_module, monkeypatch, ["-s", RIOT_ID, REGION]) == 0
+
+    assert "* Email notifications are off because SENDER_EMAIL is not set" in capsys.readouterr().out
+
+
+# Verifies a half-configured SMTP block always says so, since somebody who started configuring email meant to finish
+def test_partly_configured_email_always_names_what_is_missing(lm_module, monkeypatch, monitor_calls, capsys):
+    monkeypatch.setattr(lm_module, "SENDER_EMAIL", "your_sender_email")
+    monkeypatch.setattr(lm_module, "RECEIVER_EMAIL", "")
+
+    assert run_main(lm_module, monkeypatch, [RIOT_ID, REGION]) == 0
+
+    assert "* Email notifications are off because SENDER_EMAIL, RECEIVER_EMAIL are not set" in capsys.readouterr().out
+
+
+# Verifies a run that never asked for email and never configured it stays quiet, since untouched placeholders are not a mistake
+def test_untouched_email_settings_stay_quiet(lm_module, monkeypatch, monitor_calls, capsys):
+    for name, placeholder in (("SMTP_HOST", "your_smtp_server_ssl"), ("SMTP_USER", "your_smtp_user"), ("SMTP_PASSWORD", "your_smtp_password"), ("SENDER_EMAIL", "your_sender_email"), ("RECEIVER_EMAIL", "your_receiver_email")):
+        monkeypatch.setattr(lm_module, name, placeholder)
+
+    assert run_main(lm_module, monkeypatch, [RIOT_ID, REGION]) == 0
+
+    assert "Email notifications are off" not in capsys.readouterr().out
+    assert lm_module.ERROR_NOTIFICATION is False
+
+
+# Verifies a fully configured SMTP block leaves the notifications the run asked for switched on
+def test_configured_email_keeps_the_notifications_on(lm_module, monkeypatch, monitor_calls, capsys):
+    assert run_main(lm_module, monkeypatch, ["-s", RIOT_ID, REGION]) == 0
+
+    assert lm_module.STATUS_NOTIFICATION is True
+    assert "Email notifications are off" not in capsys.readouterr().out
+
+
 # Verifies matches needing an RSO token can be included from the command line
 def test_forbidden_matches_can_be_included(lm_module, monkeypatch, monitor_calls):
     assert run_main(lm_module, monkeypatch, ["-f", RIOT_ID, REGION]) == 0

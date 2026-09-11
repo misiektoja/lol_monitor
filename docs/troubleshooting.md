@@ -86,7 +86,7 @@ Send one real message and read what happens:
 lol_monitor --send-test-email
 ```
 
-If the SMTP block is still filled with the shipped placeholders, email is switched off at startup and no message is attempted. See [SMTP Settings](configuration.md#smtp-settings).
+If any SMTP setting is still a shipped placeholder, email is switched off at startup and no message is attempted. Startup names the missing settings whenever the rest of the block is filled in or you asked for status emails. See [SMTP Settings](configuration.md#smtp-settings).
 
 ### A match is missing from the output
 

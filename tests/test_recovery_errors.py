@@ -228,6 +228,22 @@ def test_a_chosen_secret_reports_presence_only(lm_module):
     assert lm_module.secret_fingerprint("hunter2-and-then-some", "SMTP_PASSWORD") == "set"
 
 
+# Verifies one predicate decides whether any setting holds a real value, so a placeholder never reads as configured
+@pytest.mark.parametrize("value,expected", [
+    ("RGAPI-fullsize-0000-0000-0000-000000000000", True),
+    ("smtp.example.test", True),
+    ("your_riot_api_key", False),
+    ("  your_smtp_server_ssl", False),
+    ("", False),
+    ("   ", False),
+    (None, False),
+    (0, False),
+    (True, False),
+])
+def test_a_placeholder_is_not_a_value(lm_module, value, expected):
+    assert lm_module.doctor_value_is_set(value) is expected
+
+
 # Verifies an absent or placeholder secret is named as absent rather than reading as a value that is present
 @pytest.mark.parametrize("value", [None, "", "   ", "your_riot_api_key"])
 def test_an_absent_secret_is_reported_as_not_set(lm_module, value):
