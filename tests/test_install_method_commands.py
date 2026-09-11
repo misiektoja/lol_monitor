@@ -1,5 +1,6 @@
 """Tests that every printed command matches the detected install method and carries the files this run was given."""
 
+import shlex
 import inspect
 import sys
 
@@ -43,6 +44,14 @@ def test_a_downloaded_script_is_detected(lm_module, monkeypatch):
     assert lm_module.install_method() == lm_module.INSTALL_METHOD_SCRIPT
     assert lm_module.install_method_display_name() == "downloaded script"
     assert lm_module.render_command(["--version"]) == "python3 lol_monitor.py --version"
+
+
+# Verifies a value only shaped like a placeholder is quoted, so pasting the rendered command cannot run a substitution
+def test_a_value_shaped_like_a_placeholder_is_quoted(lm_module):
+    crafted = "<$(echo>marker)>"
+
+    assert shlex.split(lm_module.quote_command_argument(crafted)) == [crafted]
+    assert lm_module.quote_command_argument(lm_module.RIOT_ID_PLACEHOLDER) == lm_module.RIOT_ID_PLACEHOLDER
 
 
 # Verifies the packaged console script is detected and rendered by its entry point name
