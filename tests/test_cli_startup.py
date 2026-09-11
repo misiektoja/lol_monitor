@@ -308,12 +308,12 @@ def test_forbidden_matches_can_be_included(lm_module, monkeypatch, monitor_calls
 
 # Verifies the startup banner reports the settings the run will actually use
 def test_startup_banner_reports_the_effective_settings(lm_module, monkeypatch, monitor_calls, capsys):
-    assert run_main(lm_module, monkeypatch, ["-c", "600", "-k", "20", RIOT_ID, REGION]) == 0
+    assert run_main(lm_module, monkeypatch, ["-c", "600", "-k", "20", RIOT_ID, REGION, "--verbose"]) == 0
 
     output = capsys.readouterr().out
-    assert "* LoL polling intervals:\t[NOT in game: 10 minutes] [in game: 20 seconds]" in output
-    assert "* Include forbidden matches:\tFalse" in output
-    assert "* TLS verification:\t\tOn" in output
+    assert "* Polling intervals:            [NOT in game: 10 minutes] [in game: 20 seconds]" in output
+    assert "* Forbidden matches:            False" in output
+    assert "* TLS verification:             On" in output
     assert f"Monitoring user {RIOT_ID}" in output
 
 
@@ -327,7 +327,7 @@ def test_startup_applies_the_tls_setting(lm_module, monkeypatch, monitor_calls, 
     assert run_main(lm_module, monkeypatch, [RIOT_ID, REGION]) == 0
 
     assert silenced, "startup never applied the TLS setting"
-    assert "* TLS verification:\t\tOff, server certificates are not checked" in capsys.readouterr().out
+    assert "* TLS verification:             Off, server certificates are not checked" in capsys.readouterr().out
 
 
 # Verifies the log file is created in the working directory and named after the monitored player
@@ -455,7 +455,7 @@ def test_config_discovery_can_be_disabled(lm_module, monkeypatch, monitor_calls,
 
     assert lm_module.LOL_CHECK_INTERVAL == 150
     assert lm_module.CONFIG_DISCOVERY_DISABLED is True
-    assert "* Configuration file:\t\tDiscovery disabled" in capsys.readouterr().out
+    assert "* Config:                       Discovery disabled" in capsys.readouterr().out
 
 
 # Verifies switching the search off is not read as a missing file, since 'none' is an answer rather than a path
@@ -516,7 +516,7 @@ def test_config_file_in_the_working_directory_is_used(lm_module, monkeypatch, mo
     assert run_main(lm_module, monkeypatch, [RIOT_ID, REGION]) == 0
 
     assert lm_module.LOL_CHECK_INTERVAL == 900
-    assert f"* Configuration file:\t\t{config}" in capsys.readouterr().out
+    assert f"* Config:                       {config}" in capsys.readouterr().out
 
 
 # Verifies the preflight runs without a target, since a first run is the one that most needs the report

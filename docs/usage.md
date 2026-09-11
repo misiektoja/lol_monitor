@@ -22,6 +22,28 @@ To watch several players, run several copies.
 
 Output is saved to `lol_monitor_<riot_id_name>.log`. Change the name with `LOL_LOGFILE` or switch the file off with `DISABLE_LOGGING` or `-d`.
 
+## Startup Summary
+
+Every run opens with the settings that are actually in effect, one per line:
+
+```
+* Target:                       Faker#KR1 (kr)
+* Polling intervals:            [NOT in game: 2 minutes, 30 seconds] [in game: 45 seconds]
+* Notifications (email):        On (status changes, errors)
+* Output:                       lol_monitor_Faker.log
+* Config:                       lol_monitor.conf
+* Dotenv:                       .env
+* Liveness output:              12 hours
+* CSV output:                   matches.csv
+* More details:                 use --verbose or --debug
+```
+
+The short view names the target, where alerts go, where output goes and each optional feature that is switched on. A feature that is off is left out, apart from TLS verification, which appears while it is **off**.
+
+`--verbose` or `--debug` replaces it with the full view, which adds every remaining setting: the install method, the four secret source rows, ASCII log separators and the state of both diagnostic modes. **The log file always keeps the full view**, whatever the terminal showed, so a log attached to a bug report carries every effective setting.
+
+No secret value appears in either view. The secret rows list names only.
+
 ## Listing Mode
 
 `-l` prints the player's recent matches and exits instead of monitoring. `-n` sets how many, defaulting to the last 2:

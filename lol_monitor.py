@@ -380,6 +380,7 @@ except ModuleNotFoundError:
 import shlex
 import shutil
 import tempfile
+import textwrap
 import unicodedata
 from contextlib import asynccontextmanager, contextmanager
 from collections import namedtuple
@@ -551,16 +552,6 @@ def group_secrets_by_source(env_path=None):
         else:
             from_settings.append(key)
     return from_file, from_environment, from_settings, from_command_line
-
-
-# Describes where each secret in effect came from, by name and never by value
-def describe_secret_sources(env_path=None):
-    from_file, from_environment, from_settings, from_command_line = group_secrets_by_source(env_path)
-    described = []
-    for names, label in ((from_command_line, "command line"), (from_environment, "environment"), (from_file, "dotenv file"), (from_settings, "configuration")):
-        if names:
-            described.append(f"{', '.join(names)} ({label})")
-    return "; ".join(described) if described else "None"
 
 
 # Matches every ANSI escape sequence, so third-party text cannot move the cursor or repaint the terminal
@@ -987,6 +978,16 @@ class Logger(object):
         self.logfile.write(normalize_log_separators(message.expandtabs(8)))
         self.terminal.flush()
         self.logfile.flush()
+
+    # Writes text the log file should keep but the terminal has already shown, or does not need
+    def log_only(self, message):
+        self.logfile.write(normalize_log_separators(message.expandtabs(8)))
+        self.logfile.flush()
+
+    # Writes text meant for the reader at the terminal, which the log file has its own version of
+    def terminal_only(self, message):
+        self.terminal.write(message)
+        self.terminal.flush()
 
     def flush(self):
         pass
@@ -3507,6 +3508,84 @@ def print_doctor_next_steps(riot_id=None, region=None, riot_id_saved=False, regi
 
 
 
+# One startup summary setting, routed to the concise view, the verbose view or both. The log keeps the verbose view
+StartupSummaryRow = namedtuple("StartupSummaryRow", ["label", "value", "concise", "full"])
+StartupSummaryRow.__new__.__defaults__ = (False, True)
+
+# Wide enough for the longest shared label plus its colon, which keeps the value column in the same place across tools
+STARTUP_SUMMARY_LABEL_WIDTH = 30
+
+
+# Returns whether the full startup summary should be shown, which debug mode also implies
+def full_startup_summary_enabled():
+    return bool(VERBOSE_MODE or DEBUG_MODE)
+
+
+# Renders the alert categories one channel would deliver, or reports that the channel is off
+def startup_notification_state(categories):
+    return "On (" + ", ".join(categories) + ")" if categories else "Off"
+
+
+# Formats one summary row with an aligned value column, wrapping only the rollup that grows long
+def format_startup_summary_row(row):
+    prefix = f"* {(row.label + ':'):<{STARTUP_SUMMARY_LABEL_WIDTH}}"
+    if row.label == "Notifications (email)":
+        return textwrap.fill(str(row.value), width=100, initial_indent=prefix, subsequent_indent=" " * len(prefix), break_long_words=False, break_on_hyphens=False) + "\n"
+    return f"{prefix}{row.value}\n"
+
+
+# Prints the summary, showing the concise rows unless the full view was asked for. The log file always keeps
+# the complete set, so a bug report made from a log carries every effective setting whatever the terminal showed
+def emit_startup_summary(rows, show_full=False, stream=None):
+    destination = sys.stdout if stream is None else stream
+    # A stream that does not split its output has no log file to hold the full view, so those writes go nowhere
+    write_log = getattr(destination, "log_only", lambda line: None)
+    write_terminal = getattr(destination, "terminal_only", None)
+    if write_terminal is None:
+        write_terminal = destination.write
+    for row in rows:
+        line = format_startup_summary_row(row)
+        if row.full:
+            write_log(line)
+        if row.full if show_full else row.concise:
+            write_terminal(line)
+    write_log("\n")
+    write_terminal("\n")
+    destination.flush()
+
+
+# Builds every startup summary row, deciding per row whether it belongs in the concise view, the full view and the log
+def build_startup_summary(target=None, config_path=None, env_path=None, log_path=None):
+    from_dotenv, from_environment, from_config, from_command_line = group_secrets_by_source(env_path)
+    logging_enabled = bool(log_path) and not DISABLE_LOGGING
+    output_state = str(log_path) if logging_enabled else "Terminal only (logging disabled)"
+    return [
+        StartupSummaryRow("Target", str(target) if target else "None", concise=True),
+        StartupSummaryRow("Polling intervals", f"[NOT in game: {display_time(LOL_CHECK_INTERVAL)}] [in game: {display_time(LOL_ACTIVE_CHECK_INTERVAL)}]", concise=True),
+        StartupSummaryRow("Notifications (email)", startup_notification_state(email_notification_categories()), concise=True),
+        StartupSummaryRow("Output", output_state, concise=True, full=False),
+        StartupSummaryRow("Output logging", str(log_path) if logging_enabled else "Disabled"),
+        StartupSummaryRow("Config", str(config_path) if config_path else ("Discovery disabled" if CONFIG_DISCOVERY_DISABLED else "None"), concise=True),
+        StartupSummaryRow("Dotenv", str(env_path) if env_path else "None", concise=True),
+        # A tracked feature earns a concise row only while it is actually switched on
+        StartupSummaryRow("Forbidden matches", str(INCLUDE_FORBIDDEN_MATCHES), concise=bool(INCLUDE_FORBIDDEN_MATCHES)),
+        StartupSummaryRow("Liveness output", display_time(LIVENESS_CHECK_INTERVAL) if LIVENESS_CHECK_INTERVAL else "Disabled", concise=bool(LIVENESS_CHECK_INTERVAL)),
+        StartupSummaryRow("CSV output", CSV_FILE or "Disabled", concise=bool(CSV_FILE)),
+        StartupSummaryRow("Install method", install_method_display_name()),
+        StartupSummaryRow("Secrets from dotenv", ", ".join(sorted(from_dotenv)) if from_dotenv else "None"),
+        StartupSummaryRow("Secrets from environment", ", ".join(sorted(from_environment)) if from_environment else "None"),
+        StartupSummaryRow("Secrets from config file", ", ".join(sorted(from_config)) if from_config else "None"),
+        StartupSummaryRow("Secrets from command line", ", ".join(sorted(from_command_line)) if from_command_line else "None"),
+        # Concise while it is off, since a run that stopped checking certificates is worth saying without a flag
+        StartupSummaryRow("TLS verification", "On" if VERIFY_SSL else "Off, server certificates are not checked", concise=not VERIFY_SSL),
+        StartupSummaryRow("ASCII log separators", f"{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})"),
+        StartupSummaryRow("Verbose mode", str(VERBOSE_MODE), concise=bool(VERBOSE_MODE)),
+        StartupSummaryRow("Debug mode", str(DEBUG_MODE), concise=bool(DEBUG_MODE)),
+        # Points at the two modes for a reader who does not know they exist, so the full view drops it
+        StartupSummaryRow("More details", "use --verbose or --debug", concise=True, full=False),
+    ]
+
+
 def main():
     global CLI_CONFIG_PATH, CONFIG_DISCOVERY_DISABLED, COMMAND_LINE_SECRET_KEYS, EXPORTED_SECRET_KEYS, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT, INCLUDE_FORBIDDEN_MATCHES, DEBUG_MODE
 
@@ -3981,18 +4060,7 @@ def main():
         STATUS_NOTIFICATION = False
         ERROR_NOTIFICATION = False
 
-    print(f"* LoL polling intervals:\t[NOT in game: {display_time(LOL_CHECK_INTERVAL)}] [in game: {display_time(LOL_ACTIVE_CHECK_INTERVAL)}]")
-    print(f"* Email notifications:\t\t[status changes = {STATUS_NOTIFICATION}] [errors = {ERROR_NOTIFICATION}]")
-    print(f"* Include forbidden matches:\t{INCLUDE_FORBIDDEN_MATCHES}")
-    print(f"* Liveness check:\t\t{bool(LIVENESS_CHECK_INTERVAL)}" + (f" ({display_time(LIVENESS_CHECK_INTERVAL)})" if LIVENESS_CHECK_INTERVAL else ""))
-    print(f"* CSV logging enabled:\t\t{bool(CSV_FILE)}" + (f" ({CSV_FILE})" if CSV_FILE else ""))
-    print(f"* Output logging enabled:\t{not DISABLE_LOGGING}" + (f" ({FINAL_LOG_PATH})" if not DISABLE_LOGGING else ""))
-    print(f"* ASCII log separators:\t\t{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})")
-    print(f"* TLS verification:\t\t{'On' if VERIFY_SSL else 'Off, server certificates are not checked'}")
-    print(f"* Configuration file:\t\t{cfg_path or ('Discovery disabled' if CONFIG_DISCOVERY_DISABLED else 'None')}")
-    print(f"* Dotenv file:\t\t\t{env_path or 'None'}")
-    print(f"* Secrets in effect:\t\t{describe_secret_sources(env_path)}")
-    print(f"* Install method:\t\t{install_method_display_name()}\n")
+    emit_startup_summary(build_startup_summary(args.riot_id, cfg_path, env_path, FINAL_LOG_PATH), show_full=full_startup_summary_enabled())
 
     # We define signal handlers only for Linux & MacOS since Windows has limited number of signals supported
     if platform.system() != 'Windows':

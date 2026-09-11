@@ -98,16 +98,16 @@ def test_the_command_line_beats_everything(lm_module, monkeypatch, monitor_calls
 
 # Verifies each source is named in the startup summary, so a run says where its credential came from
 @pytest.mark.parametrize("argv,expected", [
-    ([], "RIOT_API_KEY (dotenv file)"),
-    (["-r", FROM_ARGUMENT], "RIOT_API_KEY (command line)"),
+    ([], "Secrets from dotenv"),
+    (["-r", FROM_ARGUMENT], "Secrets from command line"),
 ])
 def test_the_startup_summary_names_the_source(lm_module, monkeypatch, monitor_calls, isolated_startup, capsys, argv, expected):
     pytest.importorskip("dotenv")
     env_file = write_dotenv(isolated_startup)
 
-    assert run_main(lm_module, monkeypatch, [RIOT_ID, REGION, "--env-file", str(env_file), *argv]) == 0
+    assert run_main(lm_module, monkeypatch, [RIOT_ID, REGION, "--env-file", str(env_file), "--verbose", *argv]) == 0
 
-    assert expected in capsys.readouterr().out
+    assert summary_row(capsys.readouterr().out, expected) == "RIOT_API_KEY"
 
 
 # Verifies an exported secret is reported as coming from the environment even when the file names it too
@@ -116,9 +116,18 @@ def test_the_summary_names_the_environment_for_an_exported_secret(lm_module, mon
     env_file = write_dotenv(isolated_startup)
     monkeypatch.setenv("RIOT_API_KEY", EXPORTED)
 
-    assert run_main(lm_module, monkeypatch, [RIOT_ID, REGION, "--env-file", str(env_file)]) == 0
+    assert run_main(lm_module, monkeypatch, [RIOT_ID, REGION, "--env-file", str(env_file), "--verbose"]) == 0
 
-    assert "RIOT_API_KEY (environment)" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert summary_row(output, "Secrets from environment") == "RIOT_API_KEY"
+    assert summary_row(output, "Secrets from dotenv") == "None"
+
+
+# Returns the value one startup summary row carries, so a test names the row rather than its column width
+def summary_row(output, label):
+    line = next((line for line in output.splitlines() if line.startswith(f"* {label}:")), None)
+    assert line is not None, f"the summary has no '{label}' row"
+    return line.split(":", 1)[1].strip()
 
 
 # Verifies a secret left in the configuration file is reported as such rather than as an unnamed source
@@ -126,15 +135,20 @@ def test_a_configured_secret_is_reported_as_configuration(lm_module, monkeypatch
     monkeypatch.setattr(lm_module, "RIOT_API_KEY", "RGAPI-configured-000-0000-0000-00000000000")
     monkeypatch.setattr(lm_module, "SMTP_PASSWORD", "")
 
-    assert lm_module.describe_secret_sources(None) == "RIOT_API_KEY (configuration)"
+    rows = {row.label: row.value for row in lm_module.build_startup_summary()}
+
+    assert rows["Secrets from config file"] == "RIOT_API_KEY"
+    assert rows["Secrets from dotenv"] == "None"
 
 
-# Verifies a run with no secret at all says so instead of printing an empty line
+# Verifies a run with no secret at all says so in every bucket instead of printing an empty line
 def test_no_secret_is_reported_as_none(lm_module, monkeypatch):
     monkeypatch.setattr(lm_module, "RIOT_API_KEY", "")
     monkeypatch.setattr(lm_module, "SMTP_PASSWORD", "")
 
-    assert lm_module.describe_secret_sources(None) == "None"
+    rows = {row.label: row.value for row in lm_module.build_startup_summary()}
+
+    assert [rows[f"Secrets from {source}"] for source in ("dotenv", "environment", "config file", "command line")] == ["None"] * 4
 
 
 # Verifies the four buckets stay separate, since each one means a different place to look when a credential is wrong

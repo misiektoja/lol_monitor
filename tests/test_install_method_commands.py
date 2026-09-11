@@ -145,12 +145,12 @@ def test_windows_quoting_uses_double_quotes(lm_module, monkeypatch):
 
 # Verifies the startup summary names the install method, so a reader knows which form of every command applies
 def test_the_startup_summary_names_the_install_method(lm_module, monkeypatch, monitor_calls, capsys):
-    monkeypatch.setattr("sys.argv", ["/usr/local/bin/lol_monitor", RIOT_ID, REGION])
+    monkeypatch.setattr("sys.argv", ["/usr/local/bin/lol_monitor", RIOT_ID, REGION, "--verbose"])
 
     with pytest.raises(SystemExit):
         lm_module.main()
 
-    assert "* Install method:\t\tPyPI install" in capsys.readouterr().out
+    assert "* Install method:               PyPI install" in capsys.readouterr().out
 
 
 # Verifies the missing-dependency warning names the command that resumes this run rather than saying to re-run it

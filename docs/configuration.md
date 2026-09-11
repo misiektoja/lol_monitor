@@ -141,10 +141,13 @@ When the same secret is available from more than one place, the tool takes the f
 3. The dotenv file
 4. The configuration file or the source
 
-An exported variable applies on its own, with no dotenv file present. The startup summary reports which source each secret came from, by name and never by value:
+An exported variable applies on its own, with no dotenv file present. The startup summary reports which source each secret came from, by name and never by value, one row per source. Run with `--verbose` to see them:
 
 ```
-* Secrets in effect:		RIOT_API_KEY (environment); SMTP_PASSWORD (dotenv file)
+* Secrets from dotenv:          SMTP_PASSWORD
+* Secrets from environment:     RIOT_API_KEY
+* Secrets from config file:     None
+* Secrets from command line:    None
 ```
 
 ## Check Intervals
@@ -168,7 +171,7 @@ Every outbound connection verifies the server's TLS certificate: the Riot API, t
 
 `VERIFY_SSL = False` turns verification off for all of them at once. Do this only on a network that inspects TLS with its own certificate authority, such as a corporate proxy, and only when you cannot install that authority's certificate instead. With verification off, an intercepted connection looks the same as the real service, so your Riot API key can be read in transit.
 
-The startup summary reports the state on every run, as `TLS verification: On` or `Off, server certificates are not checked`.
+The startup summary reports the state as `TLS verification: On` or `Off, server certificates are not checked`. The row is only shown without `--verbose` while verification is off, since a run that stopped checking certificates should say so unasked.
 
 ## Output and Files
 
