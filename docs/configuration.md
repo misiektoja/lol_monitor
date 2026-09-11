@@ -68,7 +68,7 @@ lol_monitor "other_name#tag" euw1
 
 [`--setup`](setup-and-first-run.md#guided-setup) asks whether to save the target. Declining leaves `RIOT_ID` and `REGION` empty and the printed start commands include the Riot ID and region instead.
 
-Path settings are validated before startup opens files. An invalid value names the setting to correct. Command-line path overrides still take precedence.
+Path settings are validated before startup opens files. A monitoring run stops and names the setting to correct. `--doctor`, `--setup` and the `--set-...` commands report the same setting and continue on the built-in value, so it can still be repaired. Command-line path overrides still take precedence.
 
 ## SMTP Settings
 
@@ -116,7 +116,7 @@ Alerts that name no champion, such as an error alert, are unaffected. If the dow
 
 ## Webhook Settings
 
-A delivery keeps its original destination and credentials for every retry. Reloaded settings apply to the next delivery. Discord templates must produce a JSON object. Dictionary templates and JSON strings are supported, including strings with escaped format braces. Mentions remain disabled in every template.
+A delivery keeps its original destination and credentials for every retry. Reloaded settings apply to the next delivery. Discord templates must produce a JSON object. Dictionary templates and JSON strings are supported, including strings with escaped format braces. A placeholder the alert cannot fill, such as `{title[0]}` or `{0}`, is reported with the template text that failed. Mentions remain disabled in every template.
 
 Webhooks send the same alerts as email to a Discord channel or an ntfy topic. They are switched off until you set a destination. [`--setup`](setup-and-first-run.md#guided-setup) collects the service, the destination and the alert switches together:
 
