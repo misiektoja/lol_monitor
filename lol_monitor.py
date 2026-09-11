@@ -111,6 +111,15 @@ WEBHOOK_ERROR_NOTIFICATION = True
 # Values support the same placeholders as WEBHOOK_TEMPLATE
 WEBHOOK_HEADERS = {}
 
+# Optional ntfy access token for Bearer authentication
+# Prefer an environment variable or dotenv file instead of storing this token here
+NTFY_ACCESS_TOKEN = ""
+
+# Whether to attach the champion icon to ntfy alerts that name a champion
+# Applies only when WEBHOOK_PROVIDER is "ntfy". Discord shows the icon through WEBHOOK_TEMPLATE instead
+# An attachment that cannot be prepared or delivered falls back to a text-only alert
+NTFY_IMAGES = False
+
 # ----------------------------
 # Advanced Webhook Settings
 # ----------------------------
@@ -151,15 +160,6 @@ WEBHOOK_TEMPLATE = {
 #       ("description", "strip"),
 #   ]
 WEBHOOK_TRANSFORMS = []
-
-# Optional ntfy access token for Bearer authentication
-# Prefer an environment variable or dotenv file instead of storing this token here
-NTFY_ACCESS_TOKEN = ""
-
-# Whether to attach the champion icon to ntfy alerts that name a champion
-# Applies only when WEBHOOK_PROVIDER is "ntfy". Discord shows the icon through WEBHOOK_TEMPLATE instead
-# An attachment that cannot be prepared or delivered falls back to a text-only alert
-NTFY_IMAGES = False
 
 # How often to check for player activity when the user is NOT in a game; in seconds
 # Can also be set using the -c flag
@@ -206,21 +206,6 @@ LOL_LOGFILE = "lol_monitor"
 # Whether to disable logging to lol_monitor_<riot_id_name>.log
 # Can also be disabled via the -d flag
 DISABLE_LOGGING = False
-
-# Whether to print extra startup and runtime detail
-# Independent of DEBUG_MODE, so enable both to see everything
-# Can also be enabled via the --verbose flag, which turns it on regardless of this setting
-VERBOSE_MODE = False
-
-# Whether to print timestamped diagnostic detail, including every outbound call,
-# each notification delivery attempt and the technical cause of failures
-# Independent of VERBOSE_MODE, so enable both to see everything
-# Can also be enabled via the --debug flag, which turns it on regardless of this setting
-DEBUG_MODE = False
-
-# Whether verbose output confirms each delivered email and webhook alert
-# Applies only when VERBOSE_MODE is enabled
-DELIVERY_CONFIRMATIONS = True
 
 # Controls conversion of separator-only log lines to ASCII:
 #   "Auto" - enable on Windows only (default)
@@ -293,6 +278,21 @@ COLORED_OUTPUT = True
 #     "help_comment": "bright_black",
 #     "help_default": "bright_black",
 # }
+
+# Whether to print extra startup and runtime detail
+# Independent of DEBUG_MODE, so enable both to see everything
+# Can also be enabled via the --verbose flag, which turns it on regardless of this setting
+VERBOSE_MODE = False
+
+# Whether to print timestamped diagnostic detail, including every outbound call,
+# each notification delivery attempt and the technical cause of failures
+# Independent of VERBOSE_MODE, so enable both to see everything
+# Can also be enabled via the --debug flag, which turns it on regardless of this setting
+DEBUG_MODE = False
+
+# Whether verbose output confirms each delivered email and webhook alert
+# Applies only when VERBOSE_MODE is enabled
+DELIVERY_CONFIRMATIONS = True
 
 # Value used by signal handlers increasing/decreasing the check for player activity
 # when user is in-game (LOL_ACTIVE_CHECK_INTERVAL); in seconds
@@ -419,10 +419,10 @@ WEBHOOK_AVATAR_URL = ""
 WEBHOOK_STATUS_NOTIFICATION = False
 WEBHOOK_ERROR_NOTIFICATION = False
 WEBHOOK_HEADERS = {}
-WEBHOOK_TEMPLATE = {}
-WEBHOOK_TRANSFORMS = []
 NTFY_ACCESS_TOKEN = ""
 NTFY_IMAGES = False
+WEBHOOK_TEMPLATE = {}
+WEBHOOK_TRANSFORMS = []
 LOL_CHECK_INTERVAL = 0
 LOL_ACTIVE_CHECK_INTERVAL = 0
 INCLUDE_FORBIDDEN_MATCHES = False
@@ -435,14 +435,14 @@ CSV_FILE = ""
 DOTENV_FILE = ""
 LOL_LOGFILE = ""
 DISABLE_LOGGING = False
-VERBOSE_MODE = False
-DEBUG_MODE = False
-DELIVERY_CONFIRMATIONS = True
 ASCII_LOG_SEPARATORS = "Auto"
 TRUNCATE_CHARS = 0
 HORIZONTAL_LINE = 0
 CLEAR_SCREEN = False
 COLORED_OUTPUT = True
+VERBOSE_MODE = False
+DEBUG_MODE = False
+DELIVERY_CONFIRMATIONS = True
 LOL_ACTIVE_CHECK_SIGNAL_VALUE = 0
 REGION_TO_CONTINENT = {}
 
