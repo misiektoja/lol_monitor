@@ -166,7 +166,7 @@ INCLUDE_FORBIDDEN_MATCHES = False
 
 # How often to print a "liveness check" message to the output; in seconds
 # Set to 0 to disable
-LIVENESS_CHECK_INTERVAL = 43200  # 12 hours
+LIVENESS_CHECK_INTERVAL = 86400  # 24 hours
 
 # URL used to verify internet connectivity at startup
 CHECK_INTERNET_URL = 'https://europe.api.riotgames.com/'
@@ -673,7 +673,8 @@ def pip_install_command(requirement):
 
 
 # Returns advice for an optional library that is missing, naming the exact install command for this interpreter
-def missing_dependency_advice(package, effect, alternative=""): return make_recovery_advice("dependency.missing", f"{effect} because the optional '{package}' library is missing", recovery_fix_with_guide(f"Install it with: {pip_install_command(package)}" + (f". {alternative}" if alternative else ""), INSTALL_GUIDE_URL), False)
+def missing_dependency_advice(package, effect, alternative=""):
+    return make_recovery_advice("dependency.missing", f"{effect} because the optional '{package}' library is missing", recovery_fix_with_guide(f"Install it with: {pip_install_command(package)}" + (f". {alternative}" if alternative else ""), INSTALL_GUIDE_URL), False)
 
 
 # Raised when a private setting cannot be checked or saved safely
@@ -938,7 +939,8 @@ def secret_fingerprint(value, key=None):
 
 
 # Returns the diagnostic fields describing one secret, keeping the length out of the value so a line still splits on ", "
-def secret_fields(value, key=None): return {"value": "set" if doctor_value_is_set(value) else "not set", "chars": len(str(value).strip()) if key in FIXED_LENGTH_SECRET_KEYS and doctor_value_is_set(value) else None}
+def secret_fields(value, key=None):
+    return {"value": "set" if doctor_value_is_set(value) else "not set", "chars": len(str(value).strip()) if key in FIXED_LENGTH_SECRET_KEYS and doctor_value_is_set(value) else None}
 
 
 # Returns the secret values long enough to replace wherever they appear, skipping the shipped placeholders
@@ -1046,9 +1048,10 @@ def is_too_many_open_files(error):
             return True
     return False
 
-# Returns the next step for a failure no rule recognized, since a run already printing the technical cause cannot be told to re-run for it
-def unknown_failure_fix(): return "Check the monitoring log for the failing request, then open an issue with this output if it continues" if DEBUG_MODE else "Re-run with --debug to see the technical cause"
 
+# Returns the next step for a failure no rule recognized, since a run already printing the technical cause cannot be told to re-run for it
+def unknown_failure_fix():
+    return "Check the monitoring log for the failing request, then open an issue with this output if it continues" if DEBUG_MODE else "Re-run with --debug to see the technical cause"
 
 
 # Maps one exception plus its HTTP status and calling context to stable recovery advice
@@ -4054,7 +4057,8 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
 
 
 # Returns the advice an account with no readable match history carries, worded the same in the listing and the count
-def no_match_history_advice(): return make_recovery_advice("target.not_found", "Riot returned no match history for this account", recovery_fix_with_guide("Check the Riot ID and the region, since match history is kept per region", USAGE_GUIDE_URL), False)
+def no_match_history_advice():
+    return make_recovery_advice("target.not_found", "Riot returned no match history for this account", recovery_fix_with_guide("Check the Riot ID and the region, since match history is kept per region", USAGE_GUIDE_URL), False)
 
 
 # Prints history of matches with relevant details
@@ -4322,6 +4326,7 @@ def parse_config_content(content, filename="<config>", retired_out=None, referen
 # Validates config content through the same restricted parser used at startup
 def validate_config_content(content, filename="<generated-config>"):
     parse_config_content(content, filename)
+
 
 # Reports settings an older version wrote that this version no longer defines
 def describe_retired_settings(names, quoted_path):
@@ -6378,7 +6383,6 @@ def print_doctor_next_steps(riot_id=None, region=None, riot_id_saved=False, regi
     print_labelled_command(label, render_command(command_target_arguments(riot_id, region, riot_id_saved, region_saved)))
     # No trailing blank line: the command printer already left one and the report must not end on two
     print(f"Guide: {QUICK_START_GUIDE_URL}")
-
 
 
 # One startup summary setting, routed to the concise view, the verbose view or both. The log keeps the verbose view
