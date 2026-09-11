@@ -20,6 +20,15 @@ def test_notification_is_delivered_over_tls(lm_module, smtp_double):
     assert delivery.quit_called is True
 
 
+# Verifies a delivered message is traced with the recipient and the subject, so a verbose log shows what went where
+def test_a_delivered_message_is_traced_with_its_recipient(lm_module, monkeypatch, smtp_double, capsys):
+    monkeypatch.setattr(lm_module, "VERBOSE_MODE", True)
+
+    lm_module.send_email("LoL user is in game now", "body text", "", True)
+
+    assert "* Email delivered to alerts@example.test: LoL user is in game now" in capsys.readouterr().out
+
+
 # Verifies a plain SMTP session skips the TLS upgrade when the operator turned SSL off
 def test_plain_session_skips_the_tls_upgrade(lm_module, smtp_double):
     assert lm_module.send_email("subject", "body", "", False) == 0

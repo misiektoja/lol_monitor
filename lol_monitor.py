@@ -1068,8 +1068,8 @@ def classify_recovery_error(error=None, context="runtime", detail=""):
         # Classified from the error, because the detail names the endpoint rather than the failure
         cause = str(error or "").lower()
         if "timed out" in cause or "timeout" in cause:
-            return advice("network.timeout", "The connectivity endpoint did not answer in time", "Check network, DNS, proxy and the CHECK_INTERNET_URL setting", True)
-        return advice("network.unavailable", "The connectivity endpoint could not be reached", "Check network, DNS, proxy and the CHECK_INTERNET_URL setting", True)
+            return advice("network.timeout", "The connectivity endpoint did not answer in time", "Check network, DNS, proxy and CHECK_INTERNET_URL settings", True)
+        return advice("network.unavailable", "The connectivity endpoint could not be reached", "Check network, DNS, proxy and CHECK_INTERNET_URL settings", True)
 
     if context == "email":
         if any(term in message for term in ("authentication", "auth", "username and password", "535")):
@@ -1774,7 +1774,7 @@ def resolve_truncate_chars(cli_value, configured_value, logging_disabled):
         return 0
     if truncate_chars == TERMINAL_WIDTH_SENTINEL:
         terminal_size = shutil.get_terminal_size()
-        verbose_print(f"Detected terminal width: {terminal_size.columns} characters")
+        verbose_print(f"The detected terminal screen width is: {terminal_size.columns} characters")
         return terminal_size.columns
     return max(0, truncate_chars)
 
@@ -2083,7 +2083,7 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
         debug_print("Email delivery", recipient=RECEIVER_EMAIL, outcome="failed", error=f"{type(e).__name__}: {e}")
         print_recovery_error(e, context="email")
         return 1
-    verbose_print(f"Email delivered to {RECEIVER_EMAIL}")
+    verbose_print(f"Email delivered to {RECEIVER_EMAIL}: {subject}")
     return 0
 
 
@@ -2653,7 +2653,7 @@ def send_webhook(title, description, notification_type="status", force=False, sl
             else:
                 response = post_webhook_request(json=discord_payload, headers=request_headers)
             if 200 <= response.status_code <= 299:
-                verbose_print(f"Webhook delivered through {provider} (HTTP {response.status_code})")
+                verbose_print(f"Webhook delivered through {provider}: {webhook_values['title']}")
                 debug_print("Webhook delivery", channel=provider, status=response.status_code, outcome="OK")
                 return 0
             retryable = response.status_code == 429 or 500 <= response.status_code <= 599
@@ -4709,7 +4709,7 @@ def doctor_check_environment(version_info=None, spec_finder=None):
         checks.append(make_doctor_check("Environment", "WARN", advice.summary, "Secrets can only come from environment variables or the configuration file. Every other feature is unaffected", advice))
 
     if module_present("wcwidth"):
-        checks.append(make_doctor_check("Environment", "PASS", "Optional dependency wcwidth is installed", "Used only to measure display width for terminal truncation"))
+        checks.append(make_doctor_check("Environment", "PASS", "Optional dependency wcwidth is installed", "Used only to measure display width for screen truncation"))
     elif TRUNCATE_CHARS:
         advice = make_recovery_advice("dependency.missing", "Optional dependency wcwidth is not installed", recovery_fix_with_guide(f"Install it with: {pip_install_command('wcwidth')}. Or switch terminal truncation off", INSTALL_GUIDE_URL), False)
         checks.append(make_doctor_check("Environment", "WARN", advice.summary, "Terminal truncation is switched on but lines are printed in full. Every other feature is unaffected", advice))
@@ -5065,7 +5065,7 @@ def doctor_progress_clear():
 
 # States what doctor will and will not do, before the first slow check starts rather than after
 def render_doctor_notice():
-    print("Running preflight checks. No files will be written. The interactive email and webhook tests run only after separate approval.\n")
+    print("Running preflight checks. No files will be written. Interactive email and webhook tests run only after separate approval.\n")
 
 
 # Prompts for explicit delivery consent and defaults safely to no
@@ -5161,7 +5161,7 @@ def run_doctor(riot_id=None, region=None, config_path=None, env_path=None, targe
 # Prints one labelled command on its own indented line, the shared shape across these tools
 def print_labelled_command(label, command, suffix=""):
     print(label)
-    print(f"    {command}{suffix}\n")
+    print(f"    {colorize('section', command)}{colorize('info', suffix) if suffix else ''}\n")
 
 
 # Returns the target arguments a printed command needs, leaving out a pair the configuration file already supplies
@@ -5624,11 +5624,11 @@ def _wizard_email_enabled(config_values):
 
 
 # Asks which alerts one channel should send, offering the recommended preset before the per-alert questions
-def _wizard_collect_alert_preset(question, recommended_description, keys, questions, input_func=None):
+def _wizard_collect_alert_preset(question, recommended_description, custom_description, keys, questions, input_func=None):
     # Every alert this tool has is in the recommended preset, so an 'Every supported event' entry would repeat it
     preset = _wizard_ask_choice(question, [
-        ("Status changes and errors, recommended", recommended_description),
-        ("Custom", "Choose each notification type separately."),
+        ("Status and errors, recommended", recommended_description),
+        ("Custom", custom_description),
     ], input_func=input_func)
     if preset == 0:
         return {name: True for name in keys}
@@ -5668,6 +5668,7 @@ def _wizard_collect_email_section(state, input_func=None, getpass_func=None):
     state.config_values.update(_wizard_collect_alert_preset(
         "Which email notifications should be enabled?",
         "Emails when the player starts or stops a match, and when monitoring has a problem.",
+        "Choose each notification type separately.",
         WIZARD_EMAIL_NOTIFICATION_KEYS,
         (("STATUS_NOTIFICATION", "Email when the player starts or stops a match?"), ("ERROR_NOTIFICATION", "Email on monitoring errors?")),
         input_func=input_func,
@@ -5759,6 +5760,7 @@ def _wizard_collect_webhook_section(state, input_func=None, getpass_func=None):
     state.config_values.update(_wizard_collect_alert_preset(
         "Which webhook alerts should be sent?",
         "Alerts when the player starts or stops a match, and when monitoring has a problem.",
+        "Choose each webhook alert separately.",
         WIZARD_WEBHOOK_NOTIFICATION_KEYS,
         (("WEBHOOK_STATUS_NOTIFICATION", "Send a webhook alert when the player starts or stops a match?"), ("WEBHOOK_ERROR_NOTIFICATION", "Send a webhook alert when monitoring has a problem?")),
         input_func=input_func,
@@ -6086,6 +6088,76 @@ def run_setup_wizard(initial_riot_id=None, initial_region=None, config_file=None
     return 0
 
 
+# Renders the --help examples: one heading per task, then a comment and the command it describes
+def render_help_examples(groups, guide_url):
+    blocks = []
+    for title, entries in groups:
+        block = [f"{title}:"]
+        for comment, command in entries:
+            if len(block) > 1:
+                block.append("")
+            block.extend(f"  # {line}" for line in comment.split("\n"))
+            if command:
+                block.append(f"  {command}")
+        blocks.append("\n".join(block))
+    return "Examples:\n\n" + "\n\n".join(blocks) + f"\n\nGuide: {guide_url}\n"
+
+
+# Returns the --help epilog, listing the commands worth knowing rather than every command there is
+def help_examples():
+    prefix = render_command(include_paths=False)
+    groups = (
+        ("Getting started", (
+            ("Guided setup, recommended for the first run", f"{prefix} --setup"),
+            ("Or save the Riot API key through a hidden prompt", f"{prefix} --set-riot-api-key"),
+            ("Check the setup before relying on it", f"{prefix} --doctor <riot_id> <region>"),
+            ("Start monitoring", f"{prefix} <riot_id> <region>"),
+        )),
+        ("Notifications", (
+            ("Email when the player starts or finishes a match", f"{prefix} <riot_id> <region> -s"),
+            ("Send one test email", f"{prefix} --send-test-email"),
+            ("Send one test webhook", f"{prefix} --send-test-webhook"),
+        )),
+        ("Match history", (
+            ("List the 25 most recent matches and exit", f"{prefix} <riot_id> <region> -l -n 25"),
+            ("List matches 20 through 50 and save them to CSV", f"{prefix} <riot_id> <region> -l -m 20 -n 50 -b matches.csv"),
+            ("Append every reported match to a CSV file while monitoring", f"{prefix} <riot_id> <region> -b matches.csv"),
+        )),
+        ("Information and diagnostics", (
+            ("Show every effective setting at startup", f"{prefix} <riot_id> <region> --verbose"),
+            ("Trace what the tool is doing", f"{prefix} <riot_id> <region> --debug"),
+        )),
+    )
+    return render_help_examples(groups, QUICK_START_GUIDE_URL)
+
+
+# Prints the commands a first-time reader needs and offers the wizard, replacing the argument error a
+# bare run used to end in. Returns the exit code, which is 0 only where the screen ended in a question
+def print_welcome_screen(input_func=None, interactive=None, config_file=None, env_file=None):
+    terminal_is_interactive = sys.stdin.isatty() if interactive is None else bool(interactive)
+    print(f"For <riot_id>, use a {RIOT_ID_FORMS}.")
+    print(f"For <region>, use a {REGION_FORMS}.\n")
+    print_labelled_command("Quickest start (already configured):", render_command(["<riot_id>", "<region>"], include_paths=False))
+    # The suffix names the prompt printed below, so it only appears when that prompt does
+    print_labelled_command("Easiest start (guided setup wizard):", render_command(["--setup"], include_paths=False), "   (or just answer Y below)" if terminal_is_interactive else "")
+    print_labelled_command("Check setup before monitoring:", render_command(["--doctor", "<riot_id>", "<region>"], include_paths=False))
+    print_labelled_command("Show recent matches and exit:", render_command(["-l", "<riot_id>", "<region>"], include_paths=False))
+    print(f"Full options: {colorize('section', render_command(['--help'], include_paths=False))}")
+    print(f"\nGuide:        {colorize('link', QUICK_START_GUIDE_URL)}\n")
+    if terminal_is_interactive:
+        try:
+            start_setup = _wizard_ask_yes_no("Run the guided setup wizard now?", default=True, input_func=input_func)
+        except (EOFError, KeyboardInterrupt):
+            # This prompt sits outside the wizard, which handles its own interrupts
+            print(colorize("warning", "Setup cancelled."))
+            return 1
+        if start_setup:
+            print()
+            return run_setup_wizard(config_file=config_file, env_file=env_file, input_func=input_func)
+    # Without a terminal there was nothing to answer, so a bare invocation stays the usage error it was
+    return 0 if terminal_is_interactive else 1
+
+
 # Prints the command that starts monitoring with the files this run checked, so a report read on its own
 # ends with the next action rather than leaving the reader to assemble the command
 def print_doctor_next_steps(riot_id=None, region=None, riot_id_saved=False, region_saved=False, doctor_exit=0):
@@ -6205,7 +6277,7 @@ def validate_secret_action_args(args, parser, action_dest, action_flag, permitte
 
 
 def main():
-    global CLI_CONFIG_PATH, CONFIG_DISCOVERY_DISABLED, COMMAND_LINE_SECRET_KEYS, EXPORTED_SECRET_KEYS, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT, INCLUDE_FORBIDDEN_MATCHES, DEBUG_MODE, COLORED_OUTPUT, TRUNCATE_CHARS
+    global CLI_CONFIG_PATH, CONFIG_DISCOVERY_DISABLED, COMMAND_LINE_SECRET_KEYS, EXPORTED_SECRET_KEYS, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT, INCLUDE_FORBIDDEN_MATCHES, DEBUG_MODE, COLORED_OUTPUT, TRUNCATE_CHARS, WEBHOOK_ENABLED
 
     if "--generate-config" in sys.argv:
         config_content = CONFIG_BLOCK.strip("\n") + "\n"
@@ -6255,13 +6327,17 @@ def main():
     # Everything printed before the logging policy is known still goes through one colour pass
     sys.stdout = ColorStream(stdout_bck)
 
+    if CLEAR_SCREEN and DEBUG_MODE:
+        debug_print("Terminal screen clear skipped because debug mode is active")
     clear_screen(CLEAR_SCREEN and not keep_terminal_history() and not DEBUG_MODE)
 
     print_startup_banner()
 
     parser = argparse.ArgumentParser(
         prog="lol_monitor",
-        description=(f"Monitor a League of Legends user's playing status and send customizable email alerts [ {PROJECT_URL}/ ]"), formatter_class=argparse.RawTextHelpFormatter,
+        description=(f"Monitor a League of Legends user's playing status and send customizable email alerts [ {PROJECT_URL}/ ]"),
+        epilog=help_examples(),
+        formatter_class=argparse.RawTextHelpFormatter,
         **argparse_color_kwargs()
     )
 
@@ -6313,13 +6389,31 @@ def main():
         "--force",
         dest="force",
         action="store_true",
-        help="Let --generate-config replace an existing file without asking, after a timestamped backup",
+        help="Let --generate-config replace an existing file, after a timestamped backup",
     )
     conf.add_argument(
         "--env-file",
         dest="env_file",
         metavar="PATH",
         help="Path to optional dotenv file (auto-search if not set, disable with 'none')",
+    )
+    conf.add_argument(
+        "--set-riot-api-key",
+        dest="set_riot_api_key",
+        action="store_true",
+        help="Enter the Riot API key privately, check it with Riot and save it to the dotenv file"
+    )
+    conf.add_argument(
+        "--set-smtp-password",
+        dest="set_smtp_password",
+        action="store_true",
+        help="Enter the SMTP password privately, check it against the mail server and save it to the dotenv file"
+    )
+    conf.add_argument(
+        "--set-webhook-url",
+        dest="set_webhook_url",
+        action="store_true",
+        help="Save a Discord or ntfy webhook URL through a hidden prompt"
     )
     conf.add_argument(
         "--doctor",
@@ -6338,15 +6432,9 @@ def main():
         type=str,
         help="Riot API key"
     )
-    creds.add_argument(
-        "--set-riot-api-key",
-        dest="set_riot_api_key",
-        action="store_true",
-        help="Paste the Riot API key with input hidden and save it to the dotenv file"
-    )
 
-    # Notifications
-    notify = parser.add_argument_group("Notifications")
+    # Email notifications
+    notify = parser.add_argument_group("Email notifications")
     notify.add_argument(
         "-s", "--notify-status",
         dest="notify_status",
@@ -6360,12 +6448,6 @@ def main():
         action="store_false",
         default=None,
         help="Disable email on errors (e.g. invalid API key)"
-    )
-    notify.add_argument(
-        "--set-smtp-password",
-        dest="set_smtp_password",
-        action="store_true",
-        help="Enter the SMTP password with input hidden, check it against the mail server and save it"
     )
     notify.add_argument(
         "--send-test-email",
@@ -6427,12 +6509,6 @@ def main():
         help="Disable webhook alerts when monitoring has a problem"
     )
     webhook_notify.add_argument(
-        "--set-webhook-url",
-        dest="set_webhook_url",
-        action="store_true",
-        help="Paste the webhook URL with input hidden and save it to the dotenv file"
-    )
-    webhook_notify.add_argument(
         "--send-test-webhook",
         dest="send_test_webhook",
         action="store_true",
@@ -6456,8 +6532,8 @@ def main():
         help="Polling interval when user is in game"
     )
 
-    # Listing mode
-    listing = parser.add_argument_group("Listing")
+    # User information & listing
+    listing = parser.add_argument_group("User information & listing")
 
     listing.add_argument(
         "-l", "--list-recent-matches",
@@ -6527,14 +6603,14 @@ def main():
         dest="no_color",
         action="store_true",
         default=None,
-        help="Switch off coloured terminal output (overrides COLORED_OUTPUT)"
+        help="Disable coloured output in the terminal"
     )
     opts.add_argument(
         "--truncate",
         dest="truncate",
         metavar="N",
         type=int,
-        help="Max characters per screen line (not the log), use 999 to auto-detect terminal width, ignored with -d"
+        help="Max characters per screen line (not log), use 999 to auto-detect terminal width, ignored if -d is set"
     )
 
     args = parser.parse_args()
@@ -6608,6 +6684,10 @@ def main():
             target_input_error = str(exc)
     if args.region:
         args.region = normalize_region(args.region)
+
+    # Evaluated after the config file is read, so a saved target starts monitoring instead of being welcomed
+    if len(sys.argv) == 1 and not (args.riot_id and args.region):
+        sys.exit(print_welcome_screen(config_file=args.config_file, env_file=args.env_file))
 
     # Recorded before the dotenv file is read, so an exported value stays ahead of the same name in that file
     EXPORTED_SECRET_KEYS = frozenset(secret for secret in SECRET_KEYS if os.getenv(secret) is not None)
@@ -6849,6 +6929,10 @@ def main():
         verbose_print(f"Email notifications are off because {', '.join(unset_email)} {'is' if len(unset_email) == 1 else 'are'} not set")
         STATUS_NOTIFICATION = False
         ERROR_NOTIFICATION = False
+
+    if WEBHOOK_ENABLED and not validate_webhook_url():
+        verbose_print("Webhook notifications are off because WEBHOOK_URL is not a complete HTTPS link")
+        WEBHOOK_ENABLED = False
 
     emit_startup_summary(build_startup_summary(args.riot_id, cfg_path, env_path, FINAL_LOG_PATH), show_full=full_startup_summary_enabled())
 

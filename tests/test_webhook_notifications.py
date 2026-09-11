@@ -642,6 +642,19 @@ def test_a_server_failure_is_retried_once_then_reported(discord, webhook_session
     assert "the service returned HTTP 500" in capsys.readouterr().out
 
 
+# Verifies a delivered alert is traced with the provider and the title, never with the private destination
+def test_a_delivered_alert_is_traced_with_its_provider(discord, webhook_session, monkeypatch, capsys):
+    from conftest import FakeWebhookResponse
+    monkeypatch.setattr(discord, "VERBOSE_MODE", True)
+    webhook_session.responses.append(FakeWebhookResponse(204))
+
+    assert discord.send_webhook("LoL user is in game now", "body", "status", sleeper=RecordingSleeper()) == 0
+
+    printed = capsys.readouterr().out
+    assert "* Webhook delivered through discord: LoL user is in game now" in printed
+    assert DISCORD_URL not in printed
+
+
 # Verifies a retried delivery that succeeds reports success rather than the failure that preceded it
 def test_a_retried_delivery_that_succeeds_reports_success(discord, webhook_session):
     from conftest import FakeWebhookResponse

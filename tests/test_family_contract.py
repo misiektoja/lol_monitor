@@ -1,5 +1,7 @@
 """Tests for the parts of the interface shared with the sibling monitors, pinned here because their sources are not available to CI."""
 
+from pathlib import Path
+
 import pytest
 
 import lol_monitor as monitor
@@ -24,6 +26,12 @@ def monitor_calls(monkeypatch, lm_module, tmp_path):
 
     monkeypatch.setattr(lm_module, "lol_monitor_user", fake_monitor)
     return recorded
+
+
+@pytest.fixture(scope="module")
+# Reads the tool's own source, which is where the shared wording is pinned against
+def module_source():
+    return Path(monitor.__file__).read_text(encoding="utf-8")
 
 
 # Returns the leftmost column holding a glyph anywhere in a block of banner rows
@@ -171,6 +179,113 @@ class TestTheScreenClear:
         run_main(lm_module, monkeypatch, argv)
 
         assert asked == [expected]
+
+
+# The wording shared with the sibling monitors. Every sentence below is printed verbatim by all eight of
+# them, so a reader who has used one tool reads the same words here. Pinned because the sibling sources are
+# not available to CI. Changing one of these is a family-wide decision, not a local edit
+SHARED_SENTENCES = (
+    "* Cannot clear the screen contents",
+    "After Doctor passes, start monitoring:",
+    "Another config destination or leave empty to cancel",
+    "Authenticate this ntfy topic with a separate access token?",
+    "Change Discord or ntfy details and events.",
+    "Change SMTP details and email events.",
+    "Change the configuration or dotenv output path.",
+    "Check network, DNS, proxy and CHECK_INTERNET_URL settings",
+    "Check setup before monitoring:",
+    "Check the setup before relying on it",
+    "Configuration file destination",
+    "Configure email notifications?",
+    "Could not create a unique backup for '",
+    "Could not initialize CSV file '",
+    "Disable coloured output in the terminal",
+    "Disables the saved token. Authentication in the topic URL still works.",
+    "Discard all entered answers and exit?",
+    "Doctor test email delivery failed",
+    "Easiest start (guided setup wizard):",
+    "Edit one section without losing the other answers.",
+    "Email alerts are enabled but unusable",
+    "Email is configured but no alert types are selected",
+    "Email notifications are disabled",
+    "Enter the SMTP password privately, check it against the mail server and save it to the dotenv file",
+    "Every outbound request checks the server certificate",
+    "Guided setup, recommended for the first run",
+    "Keeps the private value without displaying or changing it.",
+    "Leave the destination files unchanged.",
+    "Max characters per screen line (not log), use 999 to auto-detect terminal width, ignored if -d is set",
+    "No SMTP connection was attempted and no email was sent",
+    "No configuration file selected",
+    "Nothing was read from a dotenv file, the environment, the configuration file or the command line",
+    "Nothing would ever be delivered",
+    "Off, server certificates are not checked",
+    "One or more numeric settings are invalid",
+    "One real test email was sent after confirmation",
+    "One real test webhook was sent after confirmation",
+    "Optional CSV output path (blank disables it)",
+    "Paste the ntfy access token only",
+    "Paste the ntfy topic URL or ntfy.sh topic name",
+    "Review the SMTP error above and correct the email settings",
+    "Review the webhook error above and correct the destination settings",
+    "Run doctor now? It writes no files and offers real delivery tests only with separate approval.",
+    "Run read-only preflight checks and report what is ready and what is not",
+    "Run the guided setup and write a ready-to-run configuration",
+    "Run the guided setup wizard now?",
+    "SMTP connection and login succeeded",
+    "Save a Discord or ntfy webhook URL through a hidden prompt",
+    "Send one test email now? This will deliver a real message",
+    "Send one test webhook without starting monitoring",
+    "Send test email to verify SMTP settings",
+    "Sends a native notification to one ntfy topic URL.",
+    "Set VERIFY_SSL back to True unless this network intercepts TLS with its own certificate authority",
+    "Set WEBHOOK_ENABLED to True, or turn the alert types off",
+    "Set up webhook alerts (Discord, ntfy etc.)?",
+    "Setup cancelled. Destination files were not changed.",
+    "Setup is saved. Start monitoring with the command above when ready.",
+    "Setup is saved. Use the commands below when ready.",
+    "Start monitoring now? Monitoring will continue until Ctrl+C.",
+    "TLS certificate verification is off",
+    "TLS certificate verification is on",
+    "Terminal only (logging disabled)",
+    "The approved test email could not be delivered",
+    "The approved test webhook could not be delivered",
+    "The connectivity endpoint could not be reached",
+    "The connectivity endpoint is reachable",
+    "This test email was sent after approval in --doctor. Your SMTP delivery settings work.",
+    "This test email was sent by --send-test-email. Your SMTP settings work.",
+    "This test notification was sent after approval in --doctor. Your webhook delivery settings work.",
+    "This test notification was sent by --send-test-webhook. Your webhook settings work.",
+    "Turn on at least one email alert in the configuration file",
+    "Turn on at least one webhook alert in the configuration file, or set WEBHOOK_ENABLED to False",
+    "Using built-in defaults and command-line overrides",
+    "Using environment variables and other configured sources",
+    "Webhook URL, headers and alert choices look valid",
+    "Webhook alert types are selected but webhooks are switched off",
+    "Webhook alerts are on but no alert types are selected",
+    "Webhook alerts stay off until one is set",
+    "Which email notifications should be enabled?",
+    "Which ntfy authentication should be used?",
+    "Which setup section should be changed?",
+    "Which webhook URL should be used?",
+    "Which webhook alerts should be sent?",
+    "Which webhook service should receive alerts?",
+    "Write the displayed settings to the selected files.",
+    "Write the normal per-target log file?",
+    "You declined the real delivery test. Run doctor again and approve the email test when ready",
+    "You declined the real delivery test. Run doctor again and approve the webhook test when ready",
+)
+
+
+class TestTheSharedWording:
+    # Verifies every sentence the family shares is still printed with exactly the family's words
+    @pytest.mark.parametrize("sentence", SHARED_SENTENCES)
+    def test_a_shared_sentence_is_unchanged(self, sentence, module_source):
+        assert sentence in module_source
+
+    # Verifies the pinned list did not quietly shrink, which is how a removed sentence would slip through
+    def test_the_shared_wording_covers_the_whole_contract(self):
+        assert len(SHARED_SENTENCES) == 88
+        assert len(set(SHARED_SENTENCES)) == len(SHARED_SENTENCES)
 
 
 class FakeStdout:

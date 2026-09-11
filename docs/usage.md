@@ -1,5 +1,21 @@
 # Usage
 
+## Starting Point
+
+Run the tool with no arguments to see the commands worth starting from and to be offered the [guided setup](setup-and-first-run.md#guided-setup):
+
+```sh
+lol_monitor
+```
+
+If the configuration file already names a player in `RIOT_ID` and `REGION`, the same bare command starts monitoring them instead.
+
+`--help` lists every flag, grouped by what it configures, and ends with worked examples for the common tasks:
+
+```sh
+lol_monitor --help
+```
+
 ## Monitoring Mode
 
 Pass the player's Riot ID and region and the tool watches them until you stop it:

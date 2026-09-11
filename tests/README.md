@@ -44,10 +44,11 @@ and again before anything is published to PyPI.
 | `test_csv_output.py` | The CSV match history, its columns and the custom game rows saved from a live snapshot |
 | `test_doctor_report.py` | The `--doctor` preflight: every check branch, the rendered report, the delivery offer and the exit code |
 | `test_diagnostics.py` | The `--verbose` and `--debug` printers, the trace grammar and what each mode is allowed to print |
-| `test_family_contract.py` | The surfaces shared with the sibling monitors, starting with the startup banner |
+| `test_family_contract.py` | The surfaces shared with the sibling monitors: the startup banner, the screen clear and the wording every tool prints |
 | `test_documentation.py` | The documentation site: navigation, links into and out of it, page structure and claims about flags and tooling |
 | `test_email_html.py` | The HTML notification body and escaping of names taken from Riot |
 | `test_email_notifications.py` | SMTP validation, the delivered message and failure handling |
+| `test_help_screen.py` | The `--help` screen: option group names and order, the shared help sentences and the worked examples |
 | `test_install_method_commands.py` | Install-method detection and the printed commands built from it, including the files a run carries into them |
 | `test_match_formatting.py` | Riot IDs, game type and patch labels, participant names, team rosters and ban lists |
 | `test_match_reporting.py` | The finished-match report, the in-game report, live snapshots and match history listing |

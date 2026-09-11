@@ -378,15 +378,36 @@ def test_declining_email_keeps_the_alerts_the_wizard_never_offers(tmp_path, wiza
 # Verifies the recommended alert preset enables every alert the channel owns
 @pytest.mark.parametrize("keys", [monitor.WIZARD_EMAIL_NOTIFICATION_KEYS, monitor.WIZARD_WEBHOOK_NOTIFICATION_KEYS])
 def test_the_recommended_alert_preset_enables_every_alert(keys):
-    chosen = monitor._wizard_collect_alert_preset("Which?", "Everything.", keys, [(name, name) for name in keys], input_func=scripted_input(["1"]))
+    chosen = monitor._wizard_collect_alert_preset("Which?", "Everything.", "Pick each.", keys, [(name, name) for name in keys], input_func=scripted_input(["1"]))
 
     assert chosen == {name: True for name in keys}
+
+
+# Verifies the recommended entry names the alerts it turns on, so the choice is readable without the description
+def test_the_recommended_preset_entry_names_what_it_enables(capsys):
+    keys = monitor.WIZARD_EMAIL_NOTIFICATION_KEYS
+    monitor._wizard_collect_alert_preset("Which?", "Everything.", "Pick each.", keys, [(name, name) for name in keys], input_func=scripted_input(["1"]))
+
+    assert "1. Status and errors, recommended" in capsys.readouterr().out
+
+
+# Verifies each channel describes its own custom preset, so the menu never offers to pick email alerts for a webhook
+@pytest.mark.parametrize("section,answers,expected", [
+    ("_wizard_collect_email_section", ["y", "smtp.example.com", "", "", "user", "a@example.com", "b@example.com", "2", "n", "n"], "Choose each notification type separately."),
+    ("_wizard_collect_webhook_section", ["y", "1", "2", "n", "n"], "Choose each webhook alert separately."),
+])
+def test_each_channel_names_its_own_custom_preset(tmp_path, monkeypatch, wizard_globals, capsys, section, answers, expected):
+    monkeypatch.setattr(monitor, "_wizard_smtp_sign_in_accepted", lambda *args, **kwargs: True)
+    state = monitor.WizardSetupState(tmp_path / "lol_monitor.conf", tmp_path / ".env", {})
+    getattr(monitor, section)(state, input_func=scripted_input(answers), getpass_func=lambda _prompt: WEBHOOK_URL)
+
+    assert expected in capsys.readouterr().out
 
 
 # Verifies the custom alert preset asks about each alert separately
 def test_the_custom_alert_preset_asks_about_each_alert():
     keys = monitor.WIZARD_EMAIL_NOTIFICATION_KEYS
-    chosen = monitor._wizard_collect_alert_preset("Which?", "Everything.", keys, [(name, name) for name in keys], input_func=scripted_input(["2", "y", "n"]))
+    chosen = monitor._wizard_collect_alert_preset("Which?", "Everything.", "Pick each.", keys, [(name, name) for name in keys], input_func=scripted_input(["2", "y", "n"]))
 
     assert chosen == {"STATUS_NOTIFICATION": True, "ERROR_NOTIFICATION": False}
 
@@ -1290,6 +1311,161 @@ def test_a_run_with_no_secret_writes_no_dotenv_file(tmp_path, monkeypatch, wizar
     assert not (tmp_path / ".env").exists()
     assert "Secrets:" not in printed
     assert "--env-file" not in printed
+
+
+# Verifies the welcome screen offers the commands a newcomer needs next, in the order the siblings print them
+def test_the_welcome_screen_offers_the_shared_commands(capsys):
+    monitor.print_welcome_screen(interactive=False)
+    lines = capsys.readouterr().out.splitlines()
+    labels = [line for line in lines if line.endswith(":") or line.startswith(("Full options:", "Guide:"))]
+
+    assert labels == [
+        "Quickest start (already configured):",
+        "Easiest start (guided setup wizard):",
+        "Check setup before monitoring:",
+        "Show recent matches and exit:",
+        "Full options: " + monitor.render_command(["--help"], include_paths=False),
+        "Guide:        " + monitor.QUICK_START_GUIDE_URL,
+    ]
+
+
+# Verifies the accepted forms come from the constants the wizard prompt and the target error already use
+def test_the_welcome_screen_names_the_accepted_forms(capsys):
+    monitor.print_welcome_screen(interactive=False)
+    printed = capsys.readouterr().out
+
+    assert printed.startswith(f"For <riot_id>, use a {monitor.RIOT_ID_FORMS}.\nFor <region>, use a {monitor.REGION_FORMS}.\n\n")
+
+
+# Verifies the welcome commands are written for this install and leave the placeholders readable
+def test_the_welcome_commands_suit_the_install(monkeypatch, capsys):
+    monkeypatch.setenv(monitor.INSTALL_METHOD_ENV_VAR, "pip")
+    monitor.print_welcome_screen(interactive=False)
+    printed = capsys.readouterr().out
+
+    assert "    lol_monitor <riot_id> <region>\n" in printed
+    assert "python3 lol_monitor.py" not in printed
+
+
+# Verifies the suffix naming the prompt below appears only where that prompt does
+@pytest.mark.parametrize("interactive,expected", [(True, True), (False, False)])
+def test_the_setup_suffix_only_appears_beside_its_prompt(capsys, interactive, expected):
+    monitor.print_welcome_screen(interactive=interactive, input_func=lambda _prompt: "n")
+    printed = capsys.readouterr().out
+
+    assert ("   (or just answer Y below)" in printed) is expected
+
+
+# Verifies the screen is not offered when there is no terminal to answer on, where a bare run stays a usage error
+def test_the_welcome_screen_does_not_offer_the_wizard_without_a_terminal(capsys):
+    code = monitor.print_welcome_screen(interactive=False)
+
+    assert code == 1
+    assert "Run the guided setup wizard now?" not in capsys.readouterr().out
+
+
+# Verifies answering no to the welcome offer exits cleanly, since the screen ended in a question that was answered
+def test_declining_the_welcome_offer_exits_cleanly(capsys):
+    code = monitor.print_welcome_screen(interactive=True, input_func=lambda _prompt: "n")
+
+    assert code == 0
+    assert "Setup cancelled." not in capsys.readouterr().out
+
+
+# Verifies answering yes hands over to the wizard with the destinations the run was given
+def test_accepting_the_welcome_offer_starts_the_wizard(tmp_path, monkeypatch, capsys):
+    handed = {}
+    monkeypatch.setattr(monitor, "run_setup_wizard", lambda **kwargs: handed.update(kwargs) or 7)
+    code = monitor.print_welcome_screen(interactive=True, input_func=lambda _prompt: "y", config_file=str(tmp_path / "a.conf"), env_file=str(tmp_path / "a.env"))
+
+    assert code == 7
+    assert handed["config_file"] == str(tmp_path / "a.conf")
+    assert handed["env_file"] == str(tmp_path / "a.env")
+
+
+# Verifies Ctrl+C at the welcome offer reports one line instead of a traceback, since the prompt sits outside the wizard
+def test_interrupting_the_welcome_offer_reports_a_cancellation(capsys):
+    def interrupt(_prompt):
+        raise KeyboardInterrupt
+
+    code = monitor.print_welcome_screen(interactive=True, input_func=interrupt)
+    printed = capsys.readouterr().out
+
+    assert code == 1
+    assert printed.rstrip().endswith("Setup cancelled.")
+    assert "Destination files were not changed" not in printed
+
+
+# Verifies pressing Enter at the offer starts the wizard, since the screen exists to get a newcomer into it
+def test_the_welcome_offer_defaults_to_starting_the_wizard(tmp_path, monkeypatch):
+    started = []
+    monkeypatch.setattr(monitor, "run_setup_wizard", lambda **_kwargs: started.append(True) or 0)
+    monitor.print_welcome_screen(interactive=True, input_func=lambda _prompt: "")
+
+    assert started == [True]
+
+
+# Verifies each labelled command is indented under its label and followed by one blank line, the shared block shape
+def test_a_labelled_command_is_indented_under_its_label(capsys):
+    monitor.print_labelled_command("Label:", "tool --flag")
+
+    assert capsys.readouterr().out == "Label:\n    tool --flag\n\n"
+
+
+# Verifies the command is coloured while the label is not, so the part worth copying stands out
+def test_a_labelled_command_is_the_coloured_part(capsys, colored):
+    monitor.print_labelled_command("Label:", "tool --flag", " (suffix)")
+    printed = capsys.readouterr().out
+
+    assert printed.startswith("Label:\n")
+    assert f"    {colored['section']}tool --flag{monitor.ANSI_RESET}" in printed
+    assert f"{colored['info']} (suffix){monitor.ANSI_RESET}" in printed
+
+
+# Verifies the guide link opens the setup page the siblings link, with no section fragment
+def test_the_welcome_guide_link_opens_the_shared_setup_page():
+    assert monitor.QUICK_START_GUIDE_URL.endswith("/setup-and-first-run/")
+
+
+# Verifies the screen closes with one blank line, the way it does in every sibling
+def test_the_welcome_screen_closes_with_a_blank_line(capsys):
+    monitor.print_welcome_screen(interactive=False)
+
+    assert capsys.readouterr().out.endswith(f"{monitor.QUICK_START_GUIDE_URL}\n\n")
+
+
+# Verifies a bare run reaches the welcome screen rather than the missing-target error
+def test_a_bare_run_reaches_the_welcome_screen(tmp_path, monkeypatch, wizard_globals, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(monitor, "clear_screen", lambda _enabled: None)
+    monkeypatch.setattr(monitor, "print_startup_banner", lambda: None)
+    monkeypatch.setattr(monitor.signal, "signal", lambda *args: None)
+    monkeypatch.setattr(monitor, "find_config_file", lambda _path=None: None)
+    monkeypatch.setattr(monitor.sys, "argv", ["lol_monitor"])
+
+    with pytest.raises(SystemExit) as exit_error:
+        monitor.main()
+
+    assert exit_error.value.code == 1
+    assert "Easiest start (guided setup wizard):" in capsys.readouterr().out
+
+
+# Verifies a saved target starts monitoring instead of being welcomed, which is what puts the screen after the config read
+def test_a_saved_target_is_not_welcomed(tmp_path, monkeypatch, wizard_globals, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(monitor, "clear_screen", lambda _enabled: None)
+    monkeypatch.setattr(monitor, "print_startup_banner", lambda: None)
+    monkeypatch.setattr(monitor.signal, "signal", lambda *args: None)
+    monkeypatch.setattr(monitor, "find_config_file", lambda _path=None: None)
+    monkeypatch.setattr(monitor, "RIOT_ID", RIOT_ID)
+    monkeypatch.setattr(monitor, "REGION", REGION)
+    monkeypatch.setattr(monitor, "check_internet", lambda *args, **kwargs: False)
+    monkeypatch.setattr(monitor.sys, "argv", ["lol_monitor"])
+
+    with pytest.raises(SystemExit):
+        monitor.main()
+
+    assert "Easiest start (guided setup wizard):" not in capsys.readouterr().out
 
 
 # Returns the transcript of driving the real wizard through a pseudo-terminal with scripted answers

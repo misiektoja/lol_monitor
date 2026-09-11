@@ -20,9 +20,17 @@ Secrets are typed at a hidden prompt and go to the dotenv file. Non-secret setti
 
 Setup runs before any connectivity check, so a machine with no network can still be configured. If there is no terminal to answer on, setup says so and points at `--generate-config` instead of hanging.
 
+If the config file names a target in [`RIOT_ID` and `REGION`](configuration.md#target-profile), running the tool with no arguments starts monitoring that player. With no saved target, running it **with no arguments at all** prints the commands worth starting with and offers to open the wizard. Answering that offer exits 0. With no terminal to answer on there is no offer, so the run exits 1 like the argument error it replaced.
+
 ## Quick Start
 
-Grab a [Riot API key](#riot-api-key), then track a player by passing their Riot ID and region:
+Run the tool with no arguments to see the commands to start from, and to be offered the guided setup:
+
+```sh
+lol_monitor
+```
+
+Or grab a [Riot API key](#riot-api-key) and track a player by passing their Riot ID and region:
 
 ```sh
 lol_monitor <riot_id> <region> -r "your_riot_api_key"
@@ -44,7 +52,7 @@ lol_monitor --doctor <riot_id> <region>
 
 That writes nothing and reports every part of the setup in one pass, described in [Doctor Preflight](troubleshooting.md#doctor-preflight).
 
-To list every supported command-line argument:
+To list every supported command-line argument, with worked examples for the common tasks at the end:
 
 ```sh
 lol_monitor --help

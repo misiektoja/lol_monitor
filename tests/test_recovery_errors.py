@@ -73,6 +73,16 @@ def test_an_outage_and_a_missing_account_are_separated(lm_module):
     assert (missing.code, missing.retryable) == ("target.not_found", False)
 
 
+# Verifies both connectivity failures name the same four things to check, since the reader cannot tell them apart
+@pytest.mark.parametrize("error,code", [(TimeoutError("timed out"), "network.timeout"), (OSError("connection refused"), "network.unavailable")])
+def test_a_connectivity_failure_names_what_to_check(lm_module, error, code):
+    advice = lm_module.classify_recovery_error(error, context="connectivity")
+
+    assert advice.code == code
+    assert advice.fix.startswith("Check network, DNS, proxy and CHECK_INTERNET_URL settings")
+    assert advice.retryable is True
+
+
 # Verifies an HTTP status on the error is read directly, so a client that carries one is classified by it
 def test_the_http_status_is_read_from_the_error(lm_module):
     class Rejected(Exception):

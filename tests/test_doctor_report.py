@@ -698,11 +698,39 @@ def test_the_notice_is_printed_before_the_first_check(lm_module, riot_api, smtp_
     assert output.index("No files will be written") < output.index("Environment")
 
 
+# Verifies the notice says all three things the family promises: no writes, no email and no webhook without approval
+def test_the_notice_states_what_the_run_will_not_do(lm_module, riot_api, smtp_double, capsys):
+    lm_module.run_doctor()
+
+    assert capsys.readouterr().out.startswith("Running preflight checks. No files will be written. Interactive email and webhook tests run only after separate approval.\n")
+
+
+# Verifies an optional dependency row says what the tool uses it for, so a reader can judge whether to install it
+def test_an_optional_dependency_row_says_what_it_is_used_for(lm_module, riot_api, smtp_double, capsys):
+    pytest.importorskip("wcwidth")
+    lm_module.run_doctor()
+
+    assert "Used only to measure display width for screen truncation" in capsys.readouterr().out
+
+
 # Verifies the checks run connectivity before authentication, so an offline machine is told it is offline first
 def test_connectivity_is_checked_before_authentication(lm_module):
     source = inspect.getsource(lm_module.run_doctor)
 
     assert source.index("doctor_check_connectivity") < source.index("doctor_check_authentication")
+
+
+# Verifies the doctor run prints no Next steps block of its own, so the caller decides which one belongs there
+@pytest.mark.parametrize("clean", [True, False])
+def test_the_doctor_run_leaves_the_next_steps_block_to_its_caller(lm_module, monkeypatch, riot_api, smtp_double, capsys, clean):
+    riot_api.script("get_lol_status_v4_platform_data", {"id": "EUN1"})
+    riot_api.script("get_account_v1_by_riot_id", {"puuid": "p" * 78, "gameName": "misiektoja", "tagLine": "EUNE"})
+    if not clean:
+        monkeypatch.setattr(lm_module, "RIOT_API_KEY", "", raising=False)
+
+    lm_module.run_doctor(riot_id=RIOT_ID, region=REGION)
+
+    assert "Next steps" not in capsys.readouterr().out
 
 
 # Verifies the report ends with the command that starts monitoring rather than leaving it to be assembled

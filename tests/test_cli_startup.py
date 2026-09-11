@@ -63,14 +63,33 @@ def test_version_is_printed_and_exits(lm_module, monkeypatch, capsys):
     assert lm_module.VERSION in capsys.readouterr().out
 
 
-# Verifies running without arguments explains what is missing instead of dumping the whole option list
-def test_bare_invocation_names_the_missing_target(lm_module, monkeypatch, capsys):
+# Verifies running without arguments offers the commands worth knowing instead of dumping the whole option list
+def test_bare_invocation_shows_the_welcome_screen(lm_module, monkeypatch, capsys):
     assert run_main(lm_module, monkeypatch, []) == 1
+
+    output = capsys.readouterr().out
+    assert "Easiest start (guided setup wizard):" in output
+    assert "usage: lol_monitor" not in output
+
+
+# Verifies a run that carries other options is past the welcome screen, so it still names the missing target
+def test_an_incomplete_run_names_the_missing_target(lm_module, monkeypatch, capsys):
+    assert run_main(lm_module, monkeypatch, ["--verbose"]) == 1
 
     output = capsys.readouterr().out
     assert "* Error: No Riot ID was provided" in output
     assert "To fix: " in output
     assert "usage: lol_monitor" not in output
+    assert "Easiest start (guided setup wizard):" not in output
+
+
+# Verifies a Riot ID given without a region reports the half that is missing rather than a welcome
+def test_a_riot_id_without_a_region_names_the_missing_region(lm_module, monkeypatch, capsys):
+    assert run_main(lm_module, monkeypatch, [RIOT_ID]) == 1
+
+    output = capsys.readouterr().out
+    assert "* Error: No region was provided" in output
+    assert "Easiest start (guided setup wizard):" not in output
 
 
 # Verifies the generated config template is complete and is accepted by the tool's own parser
@@ -278,6 +297,28 @@ def test_the_email_gate_reason_is_verbose_only(lm_module, monkeypatch, monitor_c
 
     assert "Email notifications are off" not in capsys.readouterr().out
     assert lm_module.STATUS_NOTIFICATION is False
+
+
+# Verifies webhooks with no usable destination are switched off at startup, so nothing tries to deliver to nowhere
+def test_a_webhook_with_no_usable_url_is_switched_off(lm_module, monkeypatch, monitor_calls, capsys):
+    monkeypatch.setattr(lm_module, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(lm_module, "WEBHOOK_URL", "not-a-url")
+
+    assert run_main(lm_module, monkeypatch, ["--verbose", RIOT_ID, REGION]) == 0
+
+    assert "Webhook notifications are off because WEBHOOK_URL is not a complete HTTPS link" in capsys.readouterr().out
+    assert lm_module.WEBHOOK_ENABLED is False
+
+
+# Verifies a usable webhook URL is left alone, so the gate did not switch the channel off wholesale
+def test_a_usable_webhook_url_stays_enabled(lm_module, monkeypatch, monitor_calls, capsys):
+    monkeypatch.setattr(lm_module, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(lm_module, "WEBHOOK_URL", "https://discord.com/api/webhooks/123456789/tokenvalue")
+
+    assert run_main(lm_module, monkeypatch, ["--verbose", RIOT_ID, REGION]) == 0
+
+    assert "Webhook notifications are off" not in capsys.readouterr().out
+    assert lm_module.WEBHOOK_ENABLED is True
 
 
 # Verifies a run that never asked for email and never configured it stays quiet, since untouched placeholders are not a mistake

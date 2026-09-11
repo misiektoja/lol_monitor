@@ -20,6 +20,12 @@ Powerful tool for real-time monitoring of **LoL (League of Legends) players' act
 pip install lol_monitor
 ```
 
+Run it with no arguments to see the commands to start from and to be offered the guided setup:
+
+```sh
+lol_monitor
+```
+
 The guided setup asks a few questions and writes a ready-to-run configuration:
 
 ```sh
@@ -45,6 +51,7 @@ lol_monitor <riot_id> <region> -r "your_riot_api_key"
 - **Discord and ntfy webhook alerts** carrying the same events, with each channel keeping its own alert settings
 - **CSV export** of every reported match with timestamps, including custom games
 - **Guided setup** through `--setup`, which asks a few questions and writes a ready-to-run configuration, with a review summary and per-section editing before anything is saved
+- **A welcome screen on a bare run**, naming the commands worth starting from and offering the wizard, plus a `--help` screen that ends with worked examples for the common tasks
 - **Flexible configuration** through config files, dotenv files, environment variables and command-line arguments
 - Possibility to **control the running copy** of the script via signals
 - **Utility tools** for CSV format conversion and match history comparison

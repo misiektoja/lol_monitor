@@ -93,7 +93,7 @@ pkill -HUP -f "lol_monitor <riot_id> <region>"
 
 ### `No Riot ID was provided` or `No region was provided`
 
-Both positionals are required to start monitoring. The message names whichever one is missing, and the fix line shows the complete command.
+Both positionals are required to start monitoring. The message names whichever one is missing, and the fix line shows the complete command. A run with no arguments at all shows the [welcome screen](setup-and-first-run.md#quick-start) instead, since there is nothing yet to be missing.
 
 ### `'<region>' is not present in REGION_TO_CONTINENT`
 
@@ -188,6 +188,14 @@ The host did not answer. The delivery is retried once and then reported. Monitor
 ### `--setup requires a config destination`
 
 [`--setup`](setup-and-first-run.md#guided-setup) writes both files, so it cannot run with `--config-file none` or `--env-file none`. Give each one a writable path.
+
+### `Setup cancelled` from the welcome screen
+
+Ctrl+C at the welcome screen's `Run the guided setup wizard now?` offer ends the run with exit code 1. Nothing had been asked yet, so nothing was written. The wizard itself reports the longer message below.
+
+### A bare run exits 1 in a script
+
+Running with no arguments and no terminal to answer on prints the welcome screen and exits 1, the same as the argument error it replaced. Pass the Riot ID and region, or save them in the configuration file, and the run starts monitoring.
 
 ### `Setup cancelled. Destination files were not changed`
 

@@ -10,6 +10,7 @@ import pytest
 import test_monitoring_loop as loop
 
 
+RIOT_ID = "misiektoja#EUNE"
 REGION = "eun1"
 
 # The closed vocabulary every outbound trace line reports its result with
@@ -71,6 +72,27 @@ def test_a_verbose_line_matches_ordinary_output(lm_module, monkeypatch, capsys):
     lm_module.verbose_print("Email delivered to alerts@example.test")
 
     assert capsys.readouterr().out == "* Email delivered to alerts@example.test\n"
+
+
+# Verifies the terminal width a run measured is reported with the shared wording rather than a bare number
+def test_the_measured_terminal_width_is_reported(lm_module, monkeypatch, capsys):
+    monkeypatch.setattr(lm_module, "VERBOSE_MODE", True)
+    monkeypatch.setattr(lm_module.shutil, "get_terminal_size", lambda: FakeTerminalSize(132))
+
+    assert lm_module.resolve_truncate_chars(None, lm_module.TERMINAL_WIDTH_SENTINEL, False) == 132
+    assert "* The detected terminal screen width is: 132 characters" in capsys.readouterr().out
+
+
+# Verifies a debug run says why it kept the screen it was started from, rather than looking like a broken setting
+def test_debug_mode_says_why_the_screen_was_not_cleared(lm_module, monkeypatch, capsys):
+    from test_cli_startup import run_main
+
+    monkeypatch.setattr(lm_module, "CLEAR_SCREEN", True)
+    monkeypatch.setattr(lm_module, "clear_screen", lambda _enabled: None)
+
+    run_main(lm_module, monkeypatch, ["--debug", RIOT_ID, REGION])
+
+    assert "Terminal screen clear skipped because debug mode is active" in capsys.readouterr().out
 
 
 # Verifies a secret interpolated into a verbose line is redacted the same way a debug line is
@@ -324,3 +346,11 @@ class NotFoundError(Exception):
 # Returns the 404 Riot answers with for a player who is not in a game
 def not_found_error():
     return NotFoundError("404 Not Found")
+
+
+class FakeTerminalSize:
+    """A terminal size with only the column count the width probe reads."""
+
+    def __init__(self, columns):
+        self.columns = columns
+        self.lines = 24
