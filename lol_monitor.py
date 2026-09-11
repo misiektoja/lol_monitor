@@ -722,7 +722,10 @@ def update_dotenv_file(destination, updates):
 
     destination_path = Path(destination).expanduser()
     destination_path.parent.mkdir(parents=True, exist_ok=True)
-    existing_lines = destination_path.read_text(encoding="utf-8").splitlines() if destination_path.exists() else []
+    try:
+        existing_lines = destination_path.read_text(encoding="utf-8").splitlines() if destination_path.exists() else []
+    except (OSError, UnicodeError) as exc:
+        raise SecretConfigurationError(f"Could not read dotenv destination '{destination_path}'. Check that it is a readable UTF-8 file.") from exc
     update_keys = {key for key, _ in update_items}
     values_by_key = dict(update_items)
     seen_keys = set()
@@ -958,8 +961,8 @@ RECOVERY_CODES = frozenset({
     "riot.rate_limited", "riot.unavailable",
     "target.missing", "target.invalid", "target.region", "target.not_found",
     "smtp.invalid", "smtp.authentication", "smtp.connection",
-    "file.exists", "file.unwritable",
-    "webhook.invalid", "webhook.connection",
+    "file.exists", "file.unreadable", "file.unwritable",
+    "webhook.invalid", "webhook.rate_limited", "webhook.rejected", "webhook.connection",
     "unknown",
 })
 
@@ -1029,12 +1032,12 @@ def classify_recovery_error(error=None, context="runtime", detail=""):
 
     if context == "webhook":
         if status == 429 or "rate limit" in message:
-            return advice("webhook.connection", "The webhook service is rate limiting deliveries", "Reduce how many alert types are enabled, or wait for the service to accept deliveries again", True, WEBHOOK_GUIDE_URL)
+            return advice("webhook.rate_limited", "The webhook service is rate limiting deliveries", "Reduce how many alert types are enabled, or wait for the service to accept deliveries again", True, WEBHOOK_GUIDE_URL)
         if any(term in message for term in ("must contain", "must be discord", "could not be formatted", "header", "priority", "tags")):
             return advice("webhook.invalid", safe_detail or "The webhook configuration is not usable", f"Check WEBHOOK_URL, WEBHOOK_PROVIDER and the alert settings, then verify with '{render_command(['--send-test-webhook'])}'", False, WEBHOOK_GUIDE_URL)
         if any(term in message for term in ("could not be reached", "connection", "timed out")):
             return advice("webhook.connection", "The webhook service could not be reached", "Check connectivity and the webhook host, then try again", True, WEBHOOK_GUIDE_URL)
-        return advice("webhook.invalid", safe_detail or "The webhook service refused the delivery", f"Confirm the webhook still exists and the URL is current, then verify with '{render_command(['--send-test-webhook'])}'", status is not None and status >= 500, WEBHOOK_GUIDE_URL)
+        return advice("webhook.rejected", safe_detail or "The webhook service refused the delivery", f"Confirm the webhook still exists and the URL is current, then verify with '{render_command(['--send-test-webhook'])}'", status is not None and status >= 500, WEBHOOK_GUIDE_URL)
 
     if context in ("set_riot_api_key", "set_smtp_password", "set_webhook_url"):
         flag = {"set_riot_api_key": "--set-riot-api-key", "set_smtp_password": "--set-smtp-password"}.get(context, "--set-webhook-url")
@@ -1102,6 +1105,9 @@ def classify_recovery_error(error=None, context="runtime", detail=""):
         return advice("file.unwritable", safe_detail or "A setup destination cannot be written", "Choose a path inside an existing directory you can write to with --config-file or --env-file", False, CONFIG_FILE_GUIDE_URL)
 
     if context == "file":
+        # The only read failure reaching this branch is an existing dotenv file the secret writer could not decode
+        if any(term in message for term in ("could not read dotenv", "unreadable", "not valid utf-8")):
+            return advice("file.unreadable", safe_detail or "The private settings file could not be read", "Check that the file is readable UTF-8 text, or choose another path with --env-file", False, SECRETS_GUIDE_URL)
         return advice("file.unwritable", safe_detail or "A file the tool writes could not be opened", "Check that the directory exists and is writable, or choose another path", False, OUTPUT_GUIDE_URL)
 
     # Runtime, which is the monitoring loop and every Riot API call it makes
@@ -6184,6 +6190,10 @@ def run_setup_wizard(initial_riot_id=None, initial_region=None, config_file=None
     except (EOFError, KeyboardInterrupt):
         print(colorize("warning", "Setup cancelled. Destination files were not changed."))
         return 1
+    except SecretConfigurationError as exc:
+        # An existing dotenv file the questions could not read stops setup here rather than at the save step
+        print_recovery_error(exc, context="file", detail=str(exc))
+        return 1
 
     # Everything above only filled the state, so this is the first and only point anything reaches disk
     try:
@@ -6195,6 +6205,9 @@ def run_setup_wizard(initial_riot_id=None, initial_region=None, config_file=None
     if state.secret_updates:
         try:
             dotenv_result = update_dotenv_file(state.env_path, state.secret_updates)
+        except SecretConfigurationError as exc:
+            print_recovery_error(exc, context="file", detail=str(exc))
+            return 1
         except Exception as exc:
             print_recovery_error(exc, context="file", detail=f"Could not write secrets to '{state.env_path}'")
             return 1

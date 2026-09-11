@@ -1048,6 +1048,23 @@ def test_a_directory_destination_is_refused(tmp_path, capsys):
     assert "must be a file path, not a directory" in capsys.readouterr().out
 
 
+# Verifies an existing dotenv file the questions cannot read is reported rather than raised as a traceback
+def test_an_unreadable_dotenv_is_reported_as_a_read_failure(tmp_path, monkeypatch, capsys, wizard_globals):
+    (tmp_path / ".env").write_bytes(b"SMTP_PASSWORD=\xff\xfe not utf-8\n")
+    mail = ["smtp.gmail.com", "587", "y", "monitoring@example.test", "monitoring@example.test", "alerts@example.test"]
+    answers = minimal_answers()
+    answers[5:6] = ["y"] + mail + ["y", "1"]
+
+    code = run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY, "typed-password"])
+
+    printed = capsys.readouterr().out
+    assert code == 1
+    assert "* Error: Could not read dotenv destination" in printed
+    # The action line answers a file that cannot be read rather than sending the operator to check directory permissions
+    assert "To fix: Check that the file is readable UTF-8 text" in printed
+    assert f"Guide: {monitor.SECRETS_GUIDE_URL}" in printed
+
+
 # Verifies the disabled file settings are refused, since setup exists to write both files
 @pytest.mark.parametrize("config_file,env_file,expected,fix", [
     ("none", ".env", "--setup has nowhere to write the configuration", "Replace '--config-file none' with a writable path"),

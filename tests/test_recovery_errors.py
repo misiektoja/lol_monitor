@@ -36,7 +36,7 @@ def test_the_classifier_only_produces_declared_codes(lm_module, context):
 def test_every_declared_code_is_reachable(lm_module):
     produced = set()
     for context in CONTEXTS:
-        for error in (RuntimeError("rate limit exceeded"), RuntimeError("request timed out"), RuntimeError("connection refused"), RuntimeError("401 Unauthorized"), RuntimeError("404 not found"), RuntimeError("500 Internal Server Error"), RuntimeError("authentication failed"), RuntimeError("the settings are incorrect"), RuntimeError("name and tagline"), RuntimeError("does not exist"), RuntimeError("something surprising")):
+        for error in (RuntimeError("rate limit exceeded"), RuntimeError("request timed out"), RuntimeError("connection refused"), RuntimeError("401 Unauthorized"), RuntimeError("404 not found"), RuntimeError("500 Internal Server Error"), RuntimeError("authentication failed"), RuntimeError("the settings are incorrect"), RuntimeError("name and tagline"), RuntimeError("does not exist"), RuntimeError("Could not read dotenv destination '.env'. Check that it is a readable UTF-8 file."), RuntimeError("something surprising")):
             produced.add(lm_module.classify_recovery_error(error, context=context).code)
     # A doctor row builds its own advice rather than going through the classifier, so those call sites count too
     for node in ast.walk(ast.parse(inspect.getsource(lm_module))):
@@ -55,6 +55,38 @@ def test_the_existing_file_refusal_reads_the_way_the_siblings_report_it(lm_modul
     assert advice.code == "file.exists"
     assert "--generate-config <new-file>" in advice.fix
     assert f"Guide: {lm_module.CONFIG_FILE_GUIDE_URL}" in advice.fix
+
+
+# Verifies a rate limited webhook is reported as itself, since waiting it out is not the fix for an unreachable host
+def test_a_rate_limited_webhook_is_not_reported_as_unreachable(lm_module):
+    class Throttled(RuntimeError):
+        status = 429
+
+    advice = lm_module.classify_recovery_error(Throttled("Too Many Requests"), context="webhook")
+
+    assert advice.code == "webhook.rate_limited"
+    assert advice.retryable is True
+    assert "rate limiting deliveries" in advice.summary
+
+
+# Verifies a delivery the service answered and refused is separated from one it could not parse
+def test_a_refused_delivery_is_not_reported_as_a_bad_configuration(lm_module):
+    refused = lm_module.classify_recovery_error(RuntimeError("the webhook no longer exists"), context="webhook")
+    malformed = lm_module.classify_recovery_error(RuntimeError("the payload must contain content"), context="webhook")
+
+    assert refused.code == "webhook.rejected"
+    assert malformed.code == "webhook.invalid"
+
+
+# Verifies a file that could not be read is separated from one that could not be written, since the fixes differ
+def test_a_read_failure_is_never_reported_as_unwritable(lm_module):
+    unreadable = lm_module.classify_recovery_error(context="file", detail="Could not read dotenv destination '.env'. Check that it is a readable UTF-8 file.")
+    unwritable = lm_module.classify_recovery_error(context="file", detail="Could not write secrets to '.env'")
+
+    assert unreadable.code == "file.unreadable"
+    assert "readable UTF-8 text" in unreadable.fix
+    assert f"Guide: {lm_module.SECRETS_GUIDE_URL}" in unreadable.fix
+    assert unwritable.code == "file.unwritable"
 
 
 # Verifies no delivery path prints at all, since a print there is an error line that skipped the recovery block
