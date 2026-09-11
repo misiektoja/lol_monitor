@@ -2502,7 +2502,7 @@ def smtp_connect_and_login(use_ssl, smtp_timeout=15):
     try:
         if use_ssl:
             smtp_object.starttls(context=tls_context())
-        smtp_object.login(SMTP_USER, SMTP_PASSWORD)
+        smtp_login(smtp_object, SMTP_USER, SMTP_PASSWORD)
         return smtp_object
     except Exception:
         try:
@@ -2603,6 +2603,22 @@ def mail_sign_in_settings_missing():
 # Words the refusal so the reader learns which settings to fill in rather than being sent to check all four
 def mail_settings_incomplete_message(missing):
     return f"{MAIL_SETTINGS_INCOMPLETE_MESSAGE}, {join_setting_names(missing, 'and')} {'is' if len(missing) == 1 else 'are'} not set"
+
+
+# Signs in while removing the attempted password from SMTP rejection replies before they can be rendered
+def smtp_login(connection, username, password):
+    try:
+        return connection.login(username, password)
+    except smtplib.SMTPResponseException as error:
+        reply = error.smtp_error
+        if password:
+            if isinstance(reply, bytes):
+                reply = reply.replace(str(password).encode("utf-8"), b"<redacted>")
+            else:
+                reply = str(reply).replace(str(password), "<redacted>")
+        error.smtp_error = reply
+        error.args = (error.smtp_code, reply)
+        raise
 
 
 # Signs in to the configured mail server with one entered password, so nothing is saved that cannot deliver
