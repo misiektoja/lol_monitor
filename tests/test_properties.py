@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import pytest
-from dotenv import dotenv_values
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -97,4 +96,4 @@ def test_a_secret_survives_the_dotenv_file(tmp_path_factory, value):
     env_file = tmp_path_factory.mktemp("dotenv") / ".env"
     monitor.update_dotenv_file(str(env_file), {"RIOT_API_KEY": value})
 
-    assert dotenv_values(str(env_file))["RIOT_API_KEY"] == value
+    assert monitor.resolve_dotenv_values(env_file.read_text(encoding="utf-8"))["RIOT_API_KEY"] == value
