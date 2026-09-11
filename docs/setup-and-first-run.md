@@ -5,13 +5,13 @@
 Grab a [Riot API key](#riot-api-key), then track a player by passing their Riot ID and region:
 
 ```sh
-lol_monitor <riot_id_name#tag> <region> -r "your_riot_api_key"
+lol_monitor <riot_id> <region> -r "your_riot_api_key"
 ```
 
 Or if you installed [manually](installation.md#manual-installation):
 
 ```sh
-python3 lol_monitor.py <riot_id_name#tag> <region> -r "your_riot_api_key"
+python3 lol_monitor.py <riot_id> <region> -r "your_riot_api_key"
 ```
 
 A Riot ID is the game name plus the tag line, written as `riot_id_name#tag`. The region is the short code from [Region Codes](#region-codes) below, not the display name.

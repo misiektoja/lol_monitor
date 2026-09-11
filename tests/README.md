@@ -44,6 +44,7 @@ and again before anything is published to PyPI.
 | `test_documentation.py` | The documentation site: navigation, links into and out of it, page structure and claims about flags and tooling |
 | `test_email_html.py` | The HTML notification body and escaping of names taken from Riot |
 | `test_email_notifications.py` | SMTP validation, the delivered message and failure handling |
+| `test_install_method_commands.py` | Install-method detection and the printed commands built from it, including the files a run carries into them |
 | `test_match_formatting.py` | Riot IDs, game type and patch labels, participant names, team rosters and ban lists |
 | `test_match_reporting.py` | The finished-match report, the in-game report, live snapshots and match history listing |
 | `test_monitoring_loop.py` | End-to-end monitoring runs: profile startup, new match detection, in-game and stopped alerts, custom game saves and error recovery |

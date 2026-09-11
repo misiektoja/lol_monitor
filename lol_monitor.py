@@ -295,6 +295,7 @@ try:
     from pulsefire.clients import RiotAPIClient
 except ModuleNotFoundError:
     raise SystemExit("Error: Couldn't find the Pulsefire library !\n\nTo install it, run:\n    pip3 install pulsefire\n\nOnce installed, re-run this tool. For more help, visit:\nhttps://pulsefire.iann838.com/usage/basic/installation/")
+import shlex
 import shutil
 from pathlib import Path
 from typing import Optional, Any, Dict, List, Mapping, Tuple, TypedDict
@@ -311,6 +312,81 @@ class RankedQueueInfo(TypedDict):
 class RankedInfo(TypedDict):
     solo_duo: RankedQueueInfo
     flex: RankedQueueInfo
+
+
+# Install methods the tool can detect, used to tailor every command it prints
+INSTALL_METHOD_PYPI = "pip"
+INSTALL_METHOD_SCRIPT = "manual"
+INSTALL_METHOD_ENV_VAR = "LOL_MONITOR_INSTALL_METHOD"
+
+
+# Returns True when the tool runs inside a container, so printed commands and paths can be adjusted for it
+def running_in_container():
+    if os.environ.get("LOL_MONITOR_IN_CONTAINER", "").strip().casefold() in ("1", "true", "yes"):
+        return True
+    if os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv"):
+        return True
+    try:
+        with open("/proc/1/cgroup", encoding="utf-8", errors="replace") as cgroup_file:
+            return any(marker in cgroup_file.read() for marker in ("docker", "containerd", "kubepods", "podman"))
+    except OSError:
+        return False
+
+
+# Returns how the tool was started, either as the installed console script or as a downloaded standalone script
+def install_method():
+    override = os.environ.get(INSTALL_METHOD_ENV_VAR, "").strip().casefold()
+    if override in (INSTALL_METHOD_PYPI, INSTALL_METHOD_SCRIPT):
+        return override
+    if os.path.basename(sys.argv[0] or "").casefold().endswith(".py"):
+        return INSTALL_METHOD_SCRIPT
+    return INSTALL_METHOD_PYPI
+
+
+# Returns a readable name for the detected install method
+def install_method_display_name(method=None):
+    selected = install_method() if method is None else method
+    base = {"pip": "PyPI install", "manual": "downloaded script"}.get(selected, selected)
+    return f"{base} in a container" if running_in_container() else base
+
+
+# Returns the argv prefix that invokes this tool for the detected install method
+def install_command_prefix():
+    if install_method() == INSTALL_METHOD_SCRIPT:
+        return ["python3", os.path.basename(sys.argv[0]) or "lol_monitor.py"]
+    return ["lol_monitor"]
+
+
+# Returns one command-line argument quoted for the shell the user is most likely pasting into
+def quote_command_argument(argument):
+    text = str(argument)
+    # A <placeholder> is documentation for the reader to replace, so quoting it would only be noise
+    if text.startswith("<") and text.endswith(">"):
+        return text
+    if platform.system() == "Windows":
+        return f'"{text}"' if (not text or any(char.isspace() for char in text)) else text
+    return shlex.quote(text)
+
+
+# True when a command writes the dotenv file itself, so it refuses an --env-file that switches dotenv loading off
+def command_writes_dotenv(arguments=()):
+    return any(str(argument) == "--setup" or str(argument).startswith("--set-") for argument in arguments)
+
+
+# Returns a copy-pasteable command line for the detected install method, carrying the config and dotenv files this run was given
+def render_command(arguments=None, include_paths=True, config_path=None, env_path=None):
+    parts = list(install_command_prefix())
+    parts.extend(str(argument) for argument in (arguments or []))
+    # An explicitly passed path is always rendered, while include_paths only governs falling back to the active ones
+    selected_config = config_path if config_path is not None else (CLI_CONFIG_PATH if include_paths else None)
+    selected_env = env_path if env_path is not None else (DOTENV_FILE if include_paths else None)
+    if selected_config:
+        parts.extend(["--config-file", str(selected_config)])
+    # The "none" sentinel is carried so the printed command reads the setup this run read, except into a command
+    # that writes the dotenv file, since those refuse the sentinel at their own argument gate
+    if selected_env and not (str(selected_env).casefold() == "none" and command_writes_dotenv(arguments or ())):
+        parts.extend(["--env-file", str(selected_env)])
+    return " ".join(quote_command_argument(part) for part in parts)
 
 
 # Reports whether separator-only log lines should use ASCII on this system
@@ -2455,7 +2531,9 @@ def main():
         except ImportError:
             env_path = DOTENV_FILE if DOTENV_FILE else None
             if env_path:
-                print(f"* Warning: Cannot load dotenv file '{env_path}' because 'python-dotenv' is not installed\n\nTo install it, run:\n    pip3 install python-dotenv\n\nOnce installed, re-run this tool\n")
+                retry_command = render_command([args.riot_id, args.region]) if args.riot_id and args.region else None
+                retry_line = f"Once installed, re-run this tool with:\n    {retry_command}\n" if retry_command else "Once installed, re-run this tool\n"
+                print(f"* Warning: Cannot load dotenv file '{env_path}' because 'python-dotenv' is not installed\n\nTo install it, run:\n    pip3 install python-dotenv\n\n{retry_line}")
 
     if env_path:
         for secret in SECRET_KEYS:
@@ -2618,7 +2696,8 @@ def main():
     print(f"* Output logging enabled:\t{not DISABLE_LOGGING}" + (f" ({FINAL_LOG_PATH})" if not DISABLE_LOGGING else ""))
     print(f"* ASCII log separators:\t\t{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})")
     print(f"* Configuration file:\t\t{cfg_path}")
-    print(f"* Dotenv file:\t\t\t{env_path or 'None'}\n")
+    print(f"* Dotenv file:\t\t\t{env_path or 'None'}")
+    print(f"* Install method:\t\t{install_method_display_name()}\n")
 
     # We define signal handlers only for Linux & MacOS since Windows has limited number of signals supported
     if platform.system() != 'Windows':

@@ -24,7 +24,7 @@ The file is read as data, not executed. Only documented `SETTING = value` lines 
 By default the tool looks for `lol_monitor.conf` in the current directory, then the home directory, then the script directory. If you saved it elsewhere or under another name, point at it with `--config-file`:
 
 ```sh
-lol_monitor <riot_id_name#tag> <region> --config-file /path/lol_monitor_new.conf
+lol_monitor <riot_id> <region> --config-file /path/lol_monitor_new.conf
 ```
 
 ## Target Profile
@@ -32,10 +32,10 @@ lol_monitor <riot_id_name#tag> <region> --config-file /path/lol_monitor_new.conf
 The Riot ID and the region are positional arguments. Both are required to start monitoring:
 
 ```sh
-lol_monitor <riot_id_name#tag> <region>
+lol_monitor <riot_id> <region>
 ```
 
-The accepted region codes are listed under [Region Codes](setup-and-first-run.md#region-codes).
+A Riot ID is the game name plus the tag line, written as `riot_id_name#tag`. The accepted region codes are listed under [Region Codes](setup-and-first-run.md#region-codes).
 
 ## SMTP Settings
 
@@ -86,13 +86,13 @@ By default the tool searches for a file named `.env` in the current directory an
 Select a specific file with the `DOTENV_FILE` setting or the `--env-file` flag:
 
 ```sh
-lol_monitor <riot_id_name#tag> <region> --env-file /path/.env-lol_monitor
+lol_monitor <riot_id> <region> --env-file /path/.env-lol_monitor
 ```
 
 Disable the search entirely with `DOTENV_FILE = "none"` or `--env-file none`:
 
 ```sh
-lol_monitor <riot_id_name#tag> <region> --env-file none
+lol_monitor <riot_id> <region> --env-file none
 ```
 
 As a fallback both values can also live in the configuration file or the source.
@@ -100,7 +100,7 @@ As a fallback both values can also live in the configuration file or the source.
 ## Check Intervals
 
 ```sh
-lol_monitor <riot_id_name#tag> <region> -k 60 -c 120
+lol_monitor <riot_id> <region> -k 60 -c 120
 ```
 
 | Setting | Flag | Meaning |
@@ -124,3 +124,15 @@ lol_monitor <riot_id_name#tag> <region> -k 60 -c 120
 | `CHECK_INTERNET_URL` | | Endpoint used to verify connectivity at startup |
 | `LOL_ACTIVE_CHECK_SIGNAL_VALUE` | | Seconds each `TRAP` or `ABRT` signal adds to or removes from the in-game interval |
 | `REGION_TO_CONTINENT` | | Maps each region code to its routing continent |
+
+## Install Method
+
+The tool works out whether it is running as the `lol_monitor` console script from PyPI or as a downloaded `lol_monitor.py`, and prints every command in the form that works for that install. The startup summary reports what it detected.
+
+Wrapper scripts and container images can defeat the detection. Set `LOL_MONITOR_INSTALL_METHOD` to `pip` or `manual` to pin it:
+
+```sh
+export LOL_MONITOR_INSTALL_METHOD=pip
+```
+
+Set `LOL_MONITOR_IN_CONTAINER=true` to have the summary say so.

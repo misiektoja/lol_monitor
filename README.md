@@ -20,10 +20,10 @@ Powerful tool for real-time monitoring of **LoL (League of Legends) players' act
 pip install lol_monitor
 ```
 
-Track a player by passing their Riot ID and region:
+Track a player by passing their Riot ID, written as `riot_id_name#tag`, and their region code:
 
 ```sh
-lol_monitor <riot_id_name#tag> <region> -r "your_riot_api_key"
+lol_monitor <riot_id> <region> -r "your_riot_api_key"
 ```
 
 <p align="center">

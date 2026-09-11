@@ -5,13 +5,13 @@
 Pass the player's Riot ID and region and the tool watches them until you stop it:
 
 ```sh
-lol_monitor <riot_id_name#tag> <region>
+lol_monitor <riot_id> <region>
 ```
 
 If you have not stored the `RIOT_API_KEY` secret yet, pass it with `-r`:
 
 ```sh
-lol_monitor <riot_id_name#tag> <region> -r "your_riot_api_key"
+lol_monitor <riot_id> <region> -r "your_riot_api_key"
 ```
 
 A Riot ID is the game name plus the tag line, written as `riot_id_name#tag`. The region is the short code from [Region Codes](setup-and-first-run.md#region-codes).
@@ -27,13 +27,13 @@ Output is saved to `lol_monitor_<riot_id_name>.log`. Change the name with `LOL_L
 `-l` prints the player's recent matches and exits instead of monitoring. `-n` sets how many, defaulting to the last 2:
 
 ```sh
-lol_monitor <riot_id_name#tag> <region> -l -n 25
+lol_monitor <riot_id> <region> -l -n 25
 ```
 
 `-m` sets the lowest match index, so a range is `-m` plus `-n`. This lists matches 20 through 50:
 
 ```sh
-lol_monitor <riot_id_name#tag> <region> -l -m 20 -n 50
+lol_monitor <riot_id> <region> -l -m 20 -n 50
 ```
 
 `-a` fetches every match available rather than a fixed count.
@@ -41,7 +41,7 @@ lol_monitor <riot_id_name#tag> <region> -l -m 20 -n 50
 Adding `-b` with a filename saves the listed matches to CSV as well as printing them:
 
 ```sh
-lol_monitor <riot_id_name#tag> <region> -l -m 5 -n 10 -b lol_games_riot_id_name.csv
+lol_monitor <riot_id> <region> -l -m 5 -n 10 -b lol_games_riot_id_name.csv
 ```
 
 ## Email Notifications
@@ -49,13 +49,13 @@ lol_monitor <riot_id_name#tag> <region> -l -m 5 -n 10 -b lol_games_riot_id_name.
 To get mail when the player's status changes, set `STATUS_NOTIFICATION` to `True` or pass `-s`:
 
 ```sh
-lol_monitor <riot_id_name#tag> <region> -s
+lol_monitor <riot_id> <region> -s
 ```
 
 Mail on errors is on by default. Switch it off with `ERROR_NOTIFICATION = False` or `-e`:
 
 ```sh
-lol_monitor <riot_id_name#tag> <region> -e
+lol_monitor <riot_id> <region> -e
 ```
 
 Fill in the [SMTP settings](configuration.md#smtp-settings) first, otherwise nothing is sent.
@@ -71,7 +71,7 @@ Example email:
 Set `CSV_FILE` or pass `-b` to append every reported match to a CSV file:
 
 ```sh
-lol_monitor <riot_id_name#tag> <region> -b lol_games_riot_id_name.csv
+lol_monitor <riot_id> <region> -b lol_games_riot_id_name.csv
 ```
 
 The file is created if it does not exist. Columns:
@@ -102,7 +102,7 @@ Signals change the behaviour of a running copy without restarting it:
 Send them with `kill` or `pkill`:
 
 ```sh
-pkill -USR1 -f "lol_monitor <riot_id_name#tag> <region>"
+pkill -USR1 -f "lol_monitor <riot_id> <region>"
 ```
 
 Windows supports too few signals for this, so it is available on Linux, Unix and macOS only.

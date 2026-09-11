@@ -15,7 +15,7 @@ A development key expires 24 hours after it is issued, so this normally means th
 If the key lives in a dotenv file you can replace the value and send `SIGHUP` to the running process instead of restarting it:
 
 ```sh
-pkill -HUP -f "lol_monitor <riot_id_name#tag> <region>"
+pkill -HUP -f "lol_monitor <riot_id> <region>"
 ```
 
 ### `REGION might be wrong as it is not present in 'REGION_TO_CONTINENT' dictionary`
