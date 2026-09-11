@@ -22,7 +22,15 @@ pip install -e '.[lint]'
 python -m ruff check lol_monitor.py tools tests
 ```
 
-CI runs both on every push and pull request, across Python 3.12 through 3.14,
+Build the documentation the same way CI does, which fails on a broken link or a
+page missing from the navigation:
+
+```bash
+pip install -r docs/requirements.txt
+mkdocs build --strict
+```
+
+CI runs all three on every push and pull request, across Python 3.12 through 3.14,
 and again before anything is published to PyPI.
 
 ## Layout
@@ -33,6 +41,7 @@ and again before anything is published to PyPI.
 | `test_cli_startup.py` | Command line handling, config and dotenv loading, startup validation, listing mode and the effective-settings banner |
 | `test_config_loading.py` | Declarative config parsing, retired settings and refusal of executable config content |
 | `test_csv_output.py` | The CSV match history, its columns and the custom game rows saved from a live snapshot |
+| `test_documentation.py` | The documentation site: navigation, links into and out of it, page structure and claims about flags and tooling |
 | `test_email_html.py` | The HTML notification body and escaping of names taken from Riot |
 | `test_email_notifications.py` | SMTP validation, the delivered message and failure handling |
 | `test_match_formatting.py` | Riot IDs, game type and patch labels, participant names, team rosters and ban lists |

@@ -1,0 +1,126 @@
+# Usage
+
+## Monitoring Mode
+
+Pass the player's Riot ID and region and the tool watches them until you stop it:
+
+```sh
+lol_monitor <riot_id_name#tag> <region>
+```
+
+If you have not stored the `RIOT_API_KEY` secret yet, pass it with `-r`:
+
+```sh
+lol_monitor <riot_id_name#tag> <region> -r "your_riot_api_key"
+```
+
+A Riot ID is the game name plus the tag line, written as `riot_id_name#tag`. The region is the short code from [Region Codes](setup-and-first-run.md#region-codes).
+
+The tool runs until interrupted with `Ctrl+C`. Use `tmux` or `screen` if you want it to survive a closed terminal.
+
+To watch several players, run several copies.
+
+Output is saved to `lol_monitor_<riot_id_name>.log`. Change the name with `LOL_LOGFILE` or switch the file off with `DISABLE_LOGGING` or `-d`.
+
+## Listing Mode
+
+`-l` prints the player's recent matches and exits instead of monitoring. `-n` sets how many, defaulting to the last 2:
+
+```sh
+lol_monitor <riot_id_name#tag> <region> -l -n 25
+```
+
+`-m` sets the lowest match index, so a range is `-m` plus `-n`. This lists matches 20 through 50:
+
+```sh
+lol_monitor <riot_id_name#tag> <region> -l -m 20 -n 50
+```
+
+`-a` fetches every match available rather than a fixed count.
+
+Adding `-b` with a filename saves the listed matches to CSV as well as printing them:
+
+```sh
+lol_monitor <riot_id_name#tag> <region> -l -m 5 -n 10 -b lol_games_riot_id_name.csv
+```
+
+## Email Notifications
+
+To get mail when the player's status changes, set `STATUS_NOTIFICATION` to `True` or pass `-s`:
+
+```sh
+lol_monitor <riot_id_name#tag> <region> -s
+```
+
+Mail on errors is on by default. Switch it off with `ERROR_NOTIFICATION = False` or `-e`:
+
+```sh
+lol_monitor <riot_id_name#tag> <region> -e
+```
+
+Fill in the [SMTP settings](configuration.md#smtp-settings) first, otherwise nothing is sent.
+
+Messages go out in both plain text and HTML, so match details stay readable in any mail client.
+
+Example email:
+
+![lol_monitor email notification](https://raw.githubusercontent.com/misiektoja/lol_monitor/main/assets/lol_monitor_email_notifications.png)
+
+## CSV Export
+
+Set `CSV_FILE` or pass `-b` to append every reported match to a CSV file:
+
+```sh
+lol_monitor <riot_id_name#tag> <region> -b lol_games_riot_id_name.csv
+```
+
+The file is created if it does not exist. Columns:
+
+- `Match Start`, `Match Stop`, `Duration`
+- `Game Mode`, for example `CLASSIC`, `ARAM` or `URF`
+- `Victory`, win or loss
+- `Kills`, `Deaths`, `Assists`
+- `Champion`
+- `Level`, the champion level reached
+- `Role`, for example `DUO_CARRY` or `JUNGLE`
+- `Lane`, for example `TOP`, `MIDDLE` or `BOTTOM`
+- `Team 1`, `Team 2`, the team rosters
+
+Files written by v1.7.2 or earlier use the older column set. The [CSV format converter](tools.md#csv-format-converter) rewrites them.
+
+## Signal Controls (macOS/Linux/Unix)
+
+Signals change the behaviour of a running copy without restarting it:
+
+| Signal | Description |
+| ----------- | ----------- |
+| USR1 | Toggle email notifications when the player's status changes (`-s`) |
+| TRAP | Increase the in-game check interval by `LOL_ACTIVE_CHECK_SIGNAL_VALUE` seconds |
+| ABRT | Decrease the in-game check interval by `LOL_ACTIVE_CHECK_SIGNAL_VALUE` seconds |
+| HUP | Reload secrets from the dotenv file |
+
+Send them with `kill` or `pkill`:
+
+```sh
+pkill -USR1 -f "lol_monitor <riot_id_name#tag> <region>"
+```
+
+Windows supports too few signals for this, so it is available on Linux, Unix and macOS only.
+
+## Coloring Log Output with GRC
+
+[GRC](https://github.com/garabik/grc) can colour the log file.
+
+Add this to your GRC config at `~/.grc/grc.conf`:
+
+```
+# monitoring log file
+.*_monitor_.*\.log
+conf.monitor_logs
+```
+
+Copy [conf.monitor_logs](https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/grc/conf.monitor_logs) to `~/.grc/` and the log reads in colour:
+
+```sh
+grc tail -F -n 100 lol_monitor_<riot_id_name>.log
+```

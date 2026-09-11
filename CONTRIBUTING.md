@@ -30,18 +30,21 @@ pre-commit install
 ```sh
 python -m pytest
 python -m ruff check lol_monitor.py tools tests
+mkdocs build --strict
 ```
 
 The default suite is offline. It never contacts Riot Games and network calls are replaced with local test doubles. See [tests/README.md](tests/README.md) for what each test file covers.
 
-CI runs the same two checks on every push and pull request, across Python 3.12 through 3.14. The linter is pinned in the `lint` extra so a new ruff release cannot fail a build on a rule that did not exist when the change was written; the pre-commit hook pins the same version.
+The documentation build needs `pip install -r docs/requirements.txt` once, and `--strict` fails on a broken link or a page missing from the navigation.
+
+CI runs the same three checks on every push and pull request, across Python 3.12 through 3.14. The linter is pinned in the `lint` extra so a new ruff release cannot fail a build on a rule that did not exist when the change was written; the pre-commit hook pins the same version.
 
 A change to the monitoring loop, authentication or Riot Games data handling is not verified by the offline suite alone. Exercise it against a real account and say so in the pull request, without usernames or credentials.
 
 ## What a change needs
 
 - **Tests.** New behavior needs a test. A bug fix needs a test that fails without it. Match the existing files in `tests/`.
-- **Documentation.** User-facing behavior belongs in [README.md](README.md), which is the reference for this project. Document a new configuration setting or command-line option in the section that covers its feature.
+- **Documentation.** User-facing behavior belongs in [docs/](docs/), which is published at [misiektoja.github.io/lol_monitor](https://misiektoja.github.io/lol_monitor/). Document a new configuration setting or command-line option on the page that covers its feature. The README is a landing page and is not the place to describe a setting.
 - **A release-notes entry.** Add it under the unreleased section of [RELEASE_NOTES.md](RELEASE_NOTES.md), following the existing category and prefix style. Write it for a user, not as an implementation log.
 - **A Conventional Commits message.** Use the scope the repository already uses for that area.
 
