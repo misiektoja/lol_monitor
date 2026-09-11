@@ -1132,24 +1132,6 @@ def print_recovery_error(error=None, context="runtime", debug=None, detail=""):
     return advice
 
 
-# Tracks the last uninterrupted recovery category so a long outage cannot repeat the same hint every cycle
-class RecoveryHintTracker:
-    # Starts with no category, so the first failure of any kind always renders its hint
-    def __init__(self):
-        self.last_code = None
-
-    # Returns True for the first category and again only when the failure category changes
-    def should_render(self, advice):
-        if advice.code == self.last_code:
-            return False
-        self.last_code = advice.code
-        return True
-
-    # Clears suppression after a successful cycle, so a recurrence is reported again
-    def reset(self):
-        self.last_code = None
-
-
 # Decides how a lasting failure is reported: in full when it is new, then on the liveness cadence while it lasts
 class OutageReporter:
     # Starts with no failure recorded, so the first failure of any category is reported in full
@@ -1216,10 +1198,10 @@ def render_monitor_recovery(advice, retry_note="", with_fix=True, label="Error")
     return "\n".join(lines)
 
 
-# Prints one monitoring failure, repeating the fix only when the failure category changes
-def print_monitor_recovery(error, context, tracker, retry_note="", label="Error"):
+# Prints one monitoring failure in full, which is the only state its caller reports from
+def print_monitor_recovery(error, context, retry_note="", label="Error"):
     advice = classify_recovery_error(error, context)
-    print(render_monitor_recovery(advice, retry_note, tracker is None or tracker.should_render(advice), label))
+    print(render_monitor_recovery(advice, retry_note, True, label))
     return advice
 
 
@@ -4404,7 +4386,6 @@ async def lol_monitor_user(riotid, region, csv_file_name):
     puuid = None
     riotid_name = ""
     started_announced = False
-    hint_tracker = RecoveryHintTracker()
 
     try:
         if csv_file_name:
@@ -4653,7 +4634,6 @@ async def lol_monitor_user(riotid, region, csv_file_name):
             error_webhook_sent = False
             error_delivery_code = None
             transient_retry_used = False
-            hint_tracker.reset()
 
             outage_lasted = outage.recovered()
             if outage_lasted is not None:
@@ -4689,7 +4669,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                 retry_after = riot_retry_after_seconds(e, sleep_interval)
                 retry_note = f"retrying in {display_time(retry_after)}"
                 if outage_outcome == "full":
-                    print_monitor_recovery(e, "runtime", hint_tracker, retry_note)
+                    print_monitor_recovery(e, "runtime", retry_note)
                     print_cur_ts("Timestamp:\t\t\t")
                 elif outage_outcome == "degraded":
                     print_outage_liveness(riotid, advice, outage.since)
@@ -4704,7 +4684,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
             transient_retry = advice.retryable and not transient_retry_used
             retry_note = f"retrying in {display_time(TRANSIENT_RETRY_SECONDS if transient_retry else sleep_interval)}"
             if outage_outcome == "full":
-                print_monitor_recovery(e, "runtime", hint_tracker, retry_note)
+                print_monitor_recovery(e, "runtime", retry_note)
             elif outage_outcome == "degraded":
                 print_outage_liveness(riotid, advice, outage.since)
             elif outage_outcome == "repeat":

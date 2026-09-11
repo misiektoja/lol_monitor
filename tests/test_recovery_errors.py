@@ -277,32 +277,14 @@ def test_a_fingerprint_discloses_no_part_of_the_value(lm_module):
         assert secret[-length:] not in fingerprint
 
 
-# Verifies the same category twice renders its hint once, so a lasting outage does not repeat the advice every cycle
-def test_a_repeated_failure_renders_one_hint(lm_module):
-    tracker = lm_module.RecoveryHintTracker()
-    advice = lm_module.classify_recovery_error(RuntimeError("429 rate limit exceeded"))
+# Verifies the fix is rendered whenever this printer runs, since its caller only reaches it on a new failure
+# category and the throttling of a lasting outage is the outage reporter's job rather than a second guard's
+def test_the_printed_failure_carries_its_fix(lm_module, capsys):
+    lm_module.print_monitor_recovery(RuntimeError("429 rate limit exceeded"), "runtime", "retrying in 5 seconds")
 
-    assert tracker.should_render(advice) is True
-    assert tracker.should_render(advice) is False
-
-
-# Verifies a changed category renders again, since the new failure is not the one already explained
-def test_a_changed_failure_category_renders_again(lm_module):
-    tracker = lm_module.RecoveryHintTracker()
-
-    assert tracker.should_render(lm_module.classify_recovery_error(RuntimeError("429 rate limit exceeded"))) is True
-    assert tracker.should_render(lm_module.classify_recovery_error(RuntimeError("401 Unauthorized"))) is True
-
-
-# Verifies a successful cycle clears the suppression, so a recurrence is explained rather than whispered
-def test_a_successful_cycle_clears_suppression(lm_module):
-    tracker = lm_module.RecoveryHintTracker()
-    advice = lm_module.classify_recovery_error(RuntimeError("429 rate limit exceeded"))
-    tracker.should_render(advice)
-
-    tracker.reset()
-
-    assert tracker.should_render(advice) is True
+    printed = capsys.readouterr().out
+    assert printed.startswith("* Error: Riot is rate limiting requests (retrying in 5 seconds)\n")
+    assert "To fix: " in printed
 
 
 # Verifies every action line keeps the shared shape: the renderer owns the prefix, one capitalised instruction, no trailing period
