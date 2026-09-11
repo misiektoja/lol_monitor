@@ -4301,18 +4301,6 @@ def load_config_file(config_path, namespace=None, report_errors=True):
     return False
 
 
-# Resolves an executable path by checking if it's a valid file or searching in $PATH
-def resolve_executable(path):
-    if os.path.isfile(path) and os.access(path, os.X_OK):
-        return path
-
-    found = shutil.which(path)
-    if found:
-        return found
-
-    raise FileNotFoundError(f"Could not find executable '{path}'")
-
-
 # Returns a compact snapshot of the current live match with mode, start_ts, and participants
 async def get_current_match_details(puuid: str, region: str) -> dict:
     async with riot_api_client() as client:

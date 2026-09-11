@@ -215,11 +215,3 @@ def test_an_explicit_endpoint_wins(lm_module, monkeypatch):
 
     assert lm_module.check_internet("https://explicit.example.test/", 3) is True
     assert seen["url"] == "https://explicit.example.test/"
-
-
-# Verifies an executable is found on PATH and a missing one is reported by name
-def test_executable_resolution(lm_module):
-    assert lm_module.resolve_executable("sh").endswith("sh")
-
-    with pytest.raises(FileNotFoundError, match="not-a-real-executable"):
-        lm_module.resolve_executable("not-a-real-executable")
