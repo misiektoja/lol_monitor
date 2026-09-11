@@ -97,13 +97,22 @@ Signals change the behaviour of a running copy without restarting it:
 | USR1 | Toggle email notifications when the player's status changes (`-s`) |
 | TRAP | Increase the in-game check interval by `LOL_ACTIVE_CHECK_SIGNAL_VALUE` seconds |
 | ABRT | Decrease the in-game check interval by `LOL_ACTIVE_CHECK_SIGNAL_VALUE` seconds |
-| HUP | Reload secrets from the dotenv file |
+| HUP | Reload secrets from the dotenv file, reporting each one that changed |
 
 Send them with `kill` or `pkill`:
 
 ```sh
 pkill -USR1 -f "lol_monitor <riot_id> <region>"
 ```
+
+A reload names each secret it replaced and how it looks, never its value:
+
+```
+* Reloaded RIOT_API_KEY from .env (set, 42 chars)
+* Reloaded SMTP_PASSWORD from .env (set)
+```
+
+A Riot API key is always 42 characters, so a shorter one means the paste was cut. A password you chose reports presence only, since its length is a real disclosure.
 
 Windows supports too few signals for this, so it is available on Linux, Unix and macOS only.
 

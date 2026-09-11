@@ -20,7 +20,8 @@ This tool holds credentials for your own Riot Games access and records what othe
 
 - **Configuration files are parsed, not executed.** Only documented `SETTING = value` lines with plain literal values are accepted, plus a setting that reuses another setting. Imports, function calls, expressions and control flow are rejected without being run, so a configuration file sitting in the working directory cannot execute code. The offending line and setting are named on rejection, and a file that fails leaves every setting at its previous value rather than applying the lines before the bad one.
 - **Secrets belong in `.env`, not in the configuration file.** Point the tool at a dotenv file with `--env-file` and keep it owner-readable only. A secret placed in the configuration file is read by anything that can read that file.
-- **Credentials are masked in output.** Tokens and keys are redacted in the log and in error messages, so a log you attach to an issue does not carry them. Check anything you paste regardless.
+- **Credentials are redacted in output.** Error messages and the advice printed with them are redacted before they reach the console or the log, both by value and by the `X-Riot-Token` header, `api_key=` query and `SETTING = value` forms a failure can expose, so a log you attach to an issue does not carry them. Check anything you paste regardless.
+- **Text Riot sends is treated as hostile.** Player names, champion names and game labels are stripped of terminal escape sequences and other control characters before they reach the console or the log, and escaped before they reach an email body, so a crafted display name cannot repaint your terminal or forge lines in your log.
 - **Monitoring an account is subject to the law where you are.** The tool is intended for accounts you own or are authorized to observe.
 
 ## Supply chain

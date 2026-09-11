@@ -109,6 +109,26 @@ def test_no_ranked_request_without_a_player(lm_module, riot_api):
     assert riot_api.requests_to("get_lol_league_v4_entries_by_puuid") == []
 
 
+# Verifies a champion name is sanitized as Data Dragon is read, so every report reuses the clean cached one
+def test_a_champion_name_is_sanitized_when_it_is_cached(lm_module, monkeypatch):
+    hostile = chr(27) + "[31mAhri" + chr(27) + "[0m"
+
+    # Answers the two Data Dragon requests the lookup makes, in the order it makes them
+    class FakeResponse:
+        def __init__(self, payload):
+            self.status_code = 200
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    answers = [FakeResponse(["15.19.1"]), FakeResponse({"data": {hostile: {"key": "103"}}})]
+    monkeypatch.setattr(lm_module.req, "get", lambda *args, **kwargs: answers.pop(0))
+    monkeypatch.setattr(lm_module, "_champion_id_to_name_cache", None)
+
+    assert lm_module.get_champion_name(103) == "Ahri"
+
+
 # Verifies champion mastery is reported for the highest scoring champions, named rather than numbered
 def test_top_champion_mastery_is_reported(lm_module, riot_api, monkeypatch):
     monkeypatch.setattr(lm_module, "_champion_id_to_name_cache", {103: "Ahri", 99: "Lux", 238: "Zed", 64: "LeeSin"})

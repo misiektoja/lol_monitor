@@ -272,6 +272,11 @@ REGION_PLACEHOLDER = "<region>"
 # List of secret keys to load from env/config
 SECRET_KEYS = ("RIOT_API_KEY", "SMTP_PASSWORD")
 
+# Secrets whose length is a fixed, published property of the credential itself. A Riot API key is the RGAPI-
+# prefix plus a UUID, and a truncated paste is the usual way one arrives broken, so the length diagnoses that
+# without revealing anything the format does not already. A password the user chose reports presence only
+FIXED_LENGTH_SECRET_KEYS = frozenset(("RIOT_API_KEY",))
+
 # Shortest secret replaced by plain substring search. Sanitizing runs over normal monitoring output, so a
 # short value such as a simple SMTP password would otherwise redact ordinary words like champion names.
 # Every credential this tool handles is far longer, and shorter ones stay covered by the shape patterns
@@ -325,6 +330,7 @@ except ModuleNotFoundError:
     raise SystemExit("Error: Couldn't find the Pulsefire library !\n\nTo install it, run:\n    pip3 install pulsefire\n\nOnce installed, re-run this tool. For more help, visit:\nhttps://pulsefire.iann838.com/usage/basic/installation/")
 import shlex
 import shutil
+import unicodedata
 from collections import namedtuple
 from pathlib import Path
 from typing import Optional, Any, Dict, List, Mapping, Tuple, TypedDict
@@ -416,6 +422,35 @@ def render_command(arguments=None, include_paths=True, config_path=None, env_pat
     if selected_env and not (str(selected_env).casefold() == "none" and command_writes_dotenv(arguments or ())):
         parts.extend(["--env-file", str(selected_env)])
     return " ".join(quote_command_argument(part) for part in parts)
+
+
+# Matches every ANSI escape sequence, so third-party text cannot move the cursor or repaint the terminal
+ANSI_ESCAPE_RE = re.compile(r"\x1B[@-_][0-?]*[ -/]*[@-~]")
+
+
+# Strips terminal control sequences and other C0/C1 characters from third-party text before it reaches a console or a log
+def sanitize_untrusted_text(value, max_length=256):
+    if value is None:
+        return ""
+    text = ANSI_ESCAPE_RE.sub("", str(value))
+    # Everything Riot sends is hostile until proven otherwise, so drop the control range outright
+    text = "".join(character for character in text if character == " " or not unicodedata.category(character).startswith("C"))
+    text = text.strip()
+    if max_length and len(text) > max_length:
+        text = text[:max_length] + "..."
+    return text
+
+
+# Reports whether a secret holds a real value rather than being empty or one of the shipped placeholders
+def secret_is_set(value):
+    return isinstance(value, str) and bool(value.strip()) and not value.startswith("your_")
+
+
+# Describes a secret in diagnostic output without revealing any part of it
+def secret_fingerprint(value, key=None):
+    if not secret_is_set(value):
+        return "not set"
+    return f"set, {len(value)} chars" if key in FIXED_LENGTH_SECRET_KEYS else "set"
 
 
 # Returns the secret values long enough to replace wherever they appear, skipping the shipped placeholders
@@ -1007,7 +1042,7 @@ def reload_secrets_signal_handler(sig, frame):
             val = os.getenv(secret)
             if val is not None and val != old_val:
                 globals()[secret] = val
-                print(f"* Reloaded {secret} from {env_path}")
+                print(f"* Reloaded {secret} from {env_path} ({secret_fingerprint(val, secret)})")
 
     print_cur_ts("Timestamp:\t\t\t")
 
@@ -1031,6 +1066,8 @@ def add_new_team_member(list_of_teams, teamid, member):
 
 # Converts Riot's gameType to a human-friendly label
 def humanize_game_type(game_type: Optional[str]) -> str:
+    # Sanitized before the lookup and the title casing, since an escape sequence inside the value corrupts both
+    game_type = sanitize_untrusted_text(game_type, max_length=64)
     if not game_type:
         return "Unknown"
     return game_type_mapping.get(game_type, game_type.replace("_", " ").title())
@@ -1041,7 +1078,7 @@ def format_game_version_label(game_version: Optional[str]) -> str:
     if not game_version:
         return "Unknown"
 
-    version = str(game_version).strip()
+    version = sanitize_untrusted_text(game_version, max_length=64)
     if not version or version.lower() == "unknown":
         return "Unknown"
 
@@ -1057,6 +1094,11 @@ def format_game_version_label(game_version: Optional[str]) -> str:
 
 # Returns the best available Riot name for a participant
 def get_participant_display_name(participant: Mapping[str, Any]) -> str:
+    return sanitize_untrusted_text(resolve_participant_display_name(participant), max_length=64) or "unknown"
+
+
+# Reads the first display name a participant record carries, in the order Riot fills the fields
+def resolve_participant_display_name(participant: Mapping[str, Any]) -> str:
     if not participant:
         return "unknown"
 
@@ -1308,7 +1350,7 @@ def get_champion_name(champion_id: int) -> Optional[str]:
                     for champion_name, champion_info in champions_data.items():
                         champ_id = int(champion_info.get("key", 0))
                         if champ_id:
-                            _champion_id_to_name_cache[champ_id] = champion_name
+                            _champion_id_to_name_cache[champ_id] = sanitize_untrusted_text(champion_name, max_length=64)
         except Exception:
             # If Data Dragon fails, this will return None
             pass
@@ -1448,7 +1490,7 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
             for p in current_match.get("participants", []):
                 u_riotid = p.get("riotId")
                 if u_riotid:
-                    u_riotid_name = u_riotid.split('#', 1)[0]
+                    u_riotid_name = sanitize_untrusted_text(u_riotid.split('#', 1)[0], max_length=64)
                     # u_riotid_tag=u_riotid.split('#', 1)[1]
                 else:
                     u_riotid_name = "unknown"
@@ -2145,6 +2187,7 @@ async def get_current_match_details(puuid: str, region: str) -> dict:
         return {}
 
     gamemode_raw = current_match.get("gameMode")
+    gamemode_raw = sanitize_untrusted_text(gamemode_raw, max_length=64) or gamemode_raw
     gamemode = game_modes_mapping.get(gamemode_raw, gamemode_raw)
 
     start_ts = int((current_match.get("gameStartTime", 0)) / 1000)
@@ -2155,9 +2198,9 @@ async def get_current_match_details(puuid: str, region: str) -> dict:
     for p in current_match.get("participants", []):
         riot_id = p.get("riotId")
         if riot_id:
-            riotid_name = riot_id.split("#", 1)[0]
+            riotid_name = sanitize_untrusted_text(riot_id.split("#", 1)[0], max_length=64)
         else:
-            riotid_name = p.get("riotIdGameName") or p.get("summonerName") or "Unknown Player"
+            riotid_name = sanitize_untrusted_text(p.get("riotIdGameName") or p.get("summonerName"), max_length=64) or "Unknown Player"
 
         participants.append({
             "riotIdName": riotid_name,

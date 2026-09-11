@@ -263,6 +263,34 @@ def test_a_live_match_is_announced(lm_module, riot_api, fake_clock, known_champi
     assert "- LeeSin (pick 1)" in output
 
 
+# Verifies a roster name Riot supplies cannot repaint the terminal the live match is printed to
+def test_a_live_roster_name_is_sanitized(lm_module, riot_api, fake_clock, known_champions, capsys):
+    hostile = chr(27) + "[2J" + chr(27) + "[31mrival" + chr(27) + "[0m"
+    payload = live_match_payload()
+    payload["participants"][2] = {"riotId": f"{hostile}#EUNE", "teamId": 200, "championId": 238}
+    riot_api.script("get_lol_spectator_v5_active_game_by_summoner", payload)
+
+    asyncio.run(lm_module.print_current_match(PUUID, USER, "eun1", TS - 7200, TS - 3600, False))
+
+    output = capsys.readouterr().out
+    assert chr(27) not in output
+    assert "- rival (Zed)" in output
+
+
+# Verifies the live snapshot saved for a custom game carries the sanitized name, not the one Riot sent
+def test_a_live_snapshot_name_is_sanitized(lm_module, riot_api, fake_clock, known_champions):
+    hostile = chr(27) + "[31mrival" + chr(27) + "[0m"
+    payload = live_match_payload()
+    payload["participants"][2] = {"riotIdGameName": hostile, "teamId": 200, "championId": 238}
+    riot_api.script("get_lol_spectator_v5_active_game_by_summoner", payload)
+
+    snapshot = asyncio.run(lm_module.get_current_match_details(PUUID, "eun1"))
+
+    names = [entry["riotIdName"] for entry in snapshot["participants"]]
+    assert "rival" in names
+    assert not any(chr(27) in name for name in names)
+
+
 # Verifies a match that has only just started reports that rather than a zero duration
 def test_a_match_that_just_started_is_labeled(lm_module, riot_api, fake_clock, known_champions, capsys):
     riot_api.script("get_lol_spectator_v5_active_game_by_summoner", live_match_payload(gameLength=0))

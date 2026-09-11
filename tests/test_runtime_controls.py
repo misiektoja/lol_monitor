@@ -76,6 +76,26 @@ def test_reloaded_secrets_are_not_printed(lm_module, tmp_path, monkeypatch, caps
         lm_module.RIOT_API_KEY = "riot-api-key-test-value"
 
 
+# Verifies the reload reports the new key's length, which is how a truncated paste is spotted without printing it
+def test_a_reloaded_key_reports_its_fingerprint(lm_module, tmp_path, monkeypatch, capsys):
+    pytest.importorskip("dotenv")
+    env_file = tmp_path / ".env"
+    env_file.write_text("RIOT_API_KEY=RGAPI-fullsize-0000-0000-0000-000000000000\nSMTP_PASSWORD=a-chosen-password\n", encoding="utf-8")
+    monkeypatch.setattr(lm_module, "DOTENV_FILE", str(env_file))
+    monkeypatch.delenv("RIOT_API_KEY", raising=False)
+    monkeypatch.delenv("SMTP_PASSWORD", raising=False)
+
+    lm_module.reload_secrets_signal_handler(signal.SIGHUP, None)
+
+    try:
+        output = capsys.readouterr().out
+        assert "Reloaded RIOT_API_KEY" in output and "(set, 42 chars)" in output
+        assert "Reloaded SMTP_PASSWORD" in output and "(set)" in output
+    finally:
+        lm_module.RIOT_API_KEY = "riot-api-key-test-value"
+        lm_module.SMTP_PASSWORD = "not-a-real-password"
+
+
 # Verifies the dotenv scan can be turned off entirely, which a container deployment relies on
 def test_dotenv_reload_can_be_disabled(lm_module, monkeypatch):
     monkeypatch.setattr(lm_module, "DOTENV_FILE", "none")

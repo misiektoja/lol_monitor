@@ -177,6 +177,74 @@ def test_a_full_length_secret_is_replaced_anywhere(lm_module, monkeypatch):
     assert lm_module.sanitize_error_text("login failed for correct-horse-battery-staple") == "login failed for <redacted>"
 
 
+# Verifies a name Riot supplies cannot repaint the terminal it is printed to
+@pytest.mark.parametrize("hostile, expected", [
+    ("\x1b[31mRed\x1b[0m", "Red"),
+    ("\x1b[2J\x1b[HCleared", "Cleared"),
+    ("Line\nBreak", "LineBreak"),
+    ("Bell\x07Rings", "BellRings"),
+    ("  padded  ", "padded"),
+])
+def test_untrusted_text_is_stripped_of_control_sequences(lm_module, hostile, expected):
+    assert lm_module.sanitize_untrusted_text(hostile) == expected
+
+
+# Verifies a long name is cut with a visible marker rather than filling the line it appears on
+def test_untrusted_text_is_truncated_with_a_marker(lm_module):
+    sanitized = lm_module.sanitize_untrusted_text("A" * 300, max_length=64)
+
+    assert sanitized == "A" * 64 + "..."
+
+
+# Verifies an absent value becomes empty text rather than the word None reaching a match report
+def test_untrusted_text_handles_an_absent_value(lm_module):
+    assert lm_module.sanitize_untrusted_text(None) == ""
+
+
+# Verifies a participant name is sanitized where it is read, so every report and roster gets the clean one
+@pytest.mark.parametrize("field", ["riotIdGameName", "summonerName"])
+def test_a_participant_name_is_sanitized_at_the_boundary(lm_module, field):
+    assert lm_module.get_participant_display_name({field: "\x1b[31mFaker\x1b[0m"}) == "Faker"
+
+
+# Verifies a participant with nothing usable still reads as unknown rather than as an empty column
+def test_a_participant_without_a_name_reads_as_unknown(lm_module):
+    assert lm_module.get_participant_display_name({"riotIdGameName": "\x1b[0m"}) == "unknown"
+
+
+# Verifies a game type Riot does not map is sanitized before the fallback formats it, since the escape corrupts both
+def test_an_unmapped_game_type_is_sanitized(lm_module):
+    assert lm_module.humanize_game_type("\x1b[31mFUTURE_MODE") == "Future Mode"
+    assert lm_module.humanize_game_type("\x1b[31mCUSTOM_GAME") == "Custom"
+
+
+# Verifies a fixed-length credential reports its length, which is how a truncated paste is spotted
+def test_a_fixed_length_secret_reports_its_length(lm_module):
+    assert lm_module.secret_fingerprint("RGAPI-fullsize-0000-0000-0000-000000000000", "RIOT_API_KEY") == "set, 42 chars"
+
+
+# Verifies a value the user chose reports presence only, since its length is a real disclosure
+def test_a_chosen_secret_reports_presence_only(lm_module):
+    assert lm_module.secret_fingerprint("hunter2-and-then-some", "SMTP_PASSWORD") == "set"
+
+
+# Verifies an absent or placeholder secret is named as absent rather than reading as a value that is present
+@pytest.mark.parametrize("value", [None, "", "   ", "your_riot_api_key"])
+def test_an_absent_secret_is_reported_as_not_set(lm_module, value):
+    assert lm_module.secret_fingerprint(value, "RIOT_API_KEY") == "not set"
+
+
+# Verifies no fingerprint discloses any part of the value, since these lines reach public bug reports
+def test_a_fingerprint_discloses_no_part_of_the_value(lm_module):
+    secret = "RGAPI-fullsize-0000-0000-0000-000000000000"
+
+    fingerprint = lm_module.secret_fingerprint(secret, "RIOT_API_KEY")
+
+    for length in range(2, len(secret) + 1):
+        assert secret[:length] not in fingerprint
+        assert secret[-length:] not in fingerprint
+
+
 # Verifies the same category twice renders its hint once, so a lasting outage does not repeat the advice every cycle
 def test_a_repeated_failure_renders_one_hint(lm_module):
     tracker = lm_module.RecoveryHintTracker()
