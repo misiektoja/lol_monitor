@@ -47,7 +47,7 @@ and again before anything is published to PyPI.
 | `test_match_formatting.py` | Riot IDs, game type and patch labels, participant names, team rosters and ban lists |
 | `test_match_reporting.py` | The finished-match report, the in-game report, live snapshots and match history listing |
 | `test_monitoring_loop.py` | End-to-end monitoring runs: profile startup, new match detection, in-game and stopped alerts, custom game saves and error recovery |
-| `test_repository_contracts.py` | Governance documents, issue templates, action pinning, release gating and the CI contract |
+| `test_repository_contracts.py` | Governance documents, issue templates, action pinning, release gating, the supported Python floor and the CI contract |
 | `test_repository_metadata.py` | Governance files, citation, funding, line endings, the declared editor style, the pinned linter and release integrity |
 | `test_riot_api_client.py` | The Riot API wrappers, pagination, champion name lookup and rejected API keys |
 | `test_runtime_controls.py` | Signal-driven toggles, interval changes, secret reload and the log output filter |

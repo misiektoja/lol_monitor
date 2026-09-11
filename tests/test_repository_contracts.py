@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+import lol_monitor as monitor
+
 yaml = pytest.importorskip("yaml")
 
 
@@ -21,6 +23,31 @@ def read_asset(relative_path):
 # Reads one repository file as parsed YAML
 def read_yaml_asset(relative_path):
     return yaml.safe_load(read_asset(relative_path))
+
+
+# Turns a dotted version like "3.12" into a tuple that sorts numerically
+def version_key(text):
+    return tuple(int(part) for part in str(text).split("."))
+
+
+class TestPythonSupport:
+    # The module declares the floor, so packaging, CI and the documentation must repeat that one number rather than drift from it
+    def test_the_minimum_python_version_is_declared_once(self):
+        floor = monitor.MINIMUM_PYTHON_VERSION_TEXT
+        assert floor == ".".join(str(part) for part in monitor.MINIMUM_PYTHON_VERSION)
+
+        pyproject = read_asset("pyproject.toml")
+        assert f'requires-python = ">={floor}"' in pyproject, "pyproject.toml declares a different minimum"
+
+        classifiers = re.findall(r"Programming Language :: Python :: (\d+\.\d+)", pyproject)
+        assert classifiers, "pyproject.toml names no versioned Python classifier"
+        assert min(classifiers, key=version_key) == floor, "the lowest Python classifier is not the declared minimum"
+
+        matrix = read_yaml_asset(".github/workflows/tests.yml")["jobs"]["test"]["strategy"]["matrix"]["python-version"]
+        assert min(matrix, key=version_key) == str(floor), "CI does not test the oldest supported Python"
+
+        assert f"Python {floor} or higher" in read_asset("docs/installation.md"), "the requirements page states a different minimum"
+        assert f"python-{floor}+" in read_asset("README.md"), "the README badge states a different minimum"
 
 
 class TestGovernanceDocuments:
