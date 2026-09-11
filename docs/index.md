@@ -29,25 +29,25 @@ For the manual single-file method, dependencies and upgrade commands, see [Insta
 
 ## Features
 
-### Match Tracking
+### 🔍 Match Tracking
 
 * **Match activity**: Detect when a player starts and finishes a game.
 * **Match reports**: Show results, kills, deaths, assists, champion, level, role and lane.
 * **Game context**: Include mode, queue, map, version, both team rosters and champion bans.
 
-### Player Insights and Tools
+### 📊 Player Insights and Tools
 
 * **Ranked statistics**: View Solo/Duo and Flex ranks plus top champion mastery.
 * **Match history**: List recent matches and export timestamped reports, including custom games.
 * **CSV tools**: Convert older history files and compare match histories.
 
-### Notifications
+### 🔔 Notifications
 
 * **Email alerts**: Receive match starts, finishes, summaries and errors.
 * **Discord and ntfy**: Choose webhook events independently from email.
 * **Champion artwork**: Include an optional icon in email, as a Discord thumbnail or as an ntfy attachment.
 
-### Setup and Configuration
+### ⚙️ Setup and Configuration
 
 * **Guided setup**: Review and edit settings before saving with `--setup`.
 * **Getting started**: Use the welcome screen, worked help examples and `--doctor` checks.
