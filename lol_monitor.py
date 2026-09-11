@@ -2220,9 +2220,14 @@ MAIL_SETTINGS_INCOMPLETE_MESSAGE = "The mail server settings are incomplete"
 RIOT_API_KEY_PROBE_REGION = "euw1"
 
 
-# Returns whether every setting a mail sign-in needs holds a real value
-def mail_sign_in_settings_complete():
-    return all(doctor_value_is_set(globals().get(name)) for name in MAIL_SIGN_IN_SETTINGS)
+# Returns the settings a mail sign-in needs that still hold no real value, so every refusal names the same ones
+def mail_sign_in_settings_missing():
+    return [name for name in MAIL_SIGN_IN_SETTINGS if not doctor_value_is_set(globals().get(name))]
+
+
+# Words the refusal so the reader learns which settings to fill in rather than being sent to check all four
+def mail_settings_incomplete_message(missing):
+    return f"{MAIL_SETTINGS_INCOMPLETE_MESSAGE}, {join_setting_names(missing, 'and')} {'is' if len(missing) == 1 else 'are'} not set"
 
 
 # Signs in to the configured mail server with one entered password, so nothing is saved that cannot deliver
@@ -2232,8 +2237,9 @@ def smtp_sign_in(password, timeout=15):
     candidate = str(password or "")
     if not candidate or candidate == "your_smtp_password":
         raise SecretConfigurationError("No SMTP password was entered. The private settings file was not changed.")
-    if not mail_sign_in_settings_complete():
-        raise SecretConfigurationError(MAIL_SETTINGS_INCOMPLETE_MESSAGE)
+    missing = mail_sign_in_settings_missing()
+    if missing:
+        raise SecretConfigurationError(mail_settings_incomplete_message(missing))
     previous_password = SMTP_PASSWORD
     SMTP_PASSWORD = candidate
     smtp_object = None
@@ -2315,8 +2321,9 @@ def run_set_smtp_password(env_file=None, interactive=None, input_func=None, getp
     if not terminal_is_interactive:
         raise SecretConfigurationError("--set-smtp-password requires an interactive terminal. Run it in a terminal window so the password stays hidden while you type it.")
     # Checked before the prompts, so nobody types a password only to be told the mail server was never configured
-    if not mail_sign_in_settings_complete():
-        raise SecretConfigurationError(MAIL_SETTINGS_INCOMPLETE_MESSAGE)
+    missing = mail_sign_in_settings_missing()
+    if missing:
+        raise SecretConfigurationError(mail_settings_incomplete_message(missing))
     prompt = input if input_func is None else input_func
     if _dotenv_contains_key(destination, "SMTP_PASSWORD"):
         try:
@@ -7014,8 +7021,9 @@ def main():
         sys.exit(1)
 
     if args.send_test_email:
-        if not mail_sign_in_settings_complete():
-            print_recovery_error(context="set_smtp_password", detail="The mail server settings are incomplete")
+        missing = mail_sign_in_settings_missing()
+        if missing:
+            print_recovery_error(context="set_smtp_password", detail=mail_settings_incomplete_message(missing))
             sys.exit(1)
         print("* Sending test email notification ...\n")
         debug_print("Test email", sender=SENDER_EMAIL, recipient=RECEIVER_EMAIL)

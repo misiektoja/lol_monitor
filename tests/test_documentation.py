@@ -283,6 +283,14 @@ def test_the_test_suite_guide_lists_every_test_file():
     assert {name for name in listed if name.endswith(".py")} - present == set(), f"tests/README.md names files that do not exist: {sorted({name for name in listed if name.endswith('.py')} - present)}"
 
 
+# Verifies the documented doctor sections are exactly the ones the report renders
+def test_the_documented_doctor_sections_match_the_code():
+    text = (DOCS_DIR / "troubleshooting.md").read_text(encoding="utf-8")
+
+    for section in monitor.DOCTOR_SECTIONS:
+        assert f"**{section}**" in text, f"the {section} doctor section is not documented"
+
+
 # Verifies every setting the config template ships is described somewhere on the site, since an undocumented setting is one nobody can use
 def test_every_configuration_setting_is_documented():
     settings = sorted(set(re.findall(r"(?m)^([A-Z][A-Z0-9_]*) =", monitor.CONFIG_BLOCK)))

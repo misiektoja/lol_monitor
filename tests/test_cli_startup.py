@@ -745,7 +745,7 @@ def test_a_test_email_with_no_mail_server_names_the_settings(lm_module, monkeypa
     assert run_main(lm_module, monkeypatch, ["--send-test-email", "--config-file", "none"]) == 1
 
     output = capsys.readouterr().out
-    assert "The mail server settings are incomplete" in output
+    assert "* Error: The mail server settings are incomplete, SMTP_HOST is not set" in output
     assert "Set SMTP_HOST, SMTP_USER, SENDER_EMAIL and RECEIVER_EMAIL first" in output
 
 

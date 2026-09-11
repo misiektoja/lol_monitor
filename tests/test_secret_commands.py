@@ -335,13 +335,30 @@ def test_a_sign_in_is_refused_while_the_mail_server_is_unconfigured(lm_module, m
 
 
 @pytest.mark.parametrize("name", ["SMTP_HOST", "SMTP_USER", "SENDER_EMAIL", "RECEIVER_EMAIL"])
-# Verifies every setting a sign-in needs is one the completeness check actually reads
+# Verifies every setting a sign-in needs is one the completeness check actually reads, and is the one it names
 def test_every_setting_a_sign_in_needs_is_checked(lm_module, monkeypatch, name):
-    assert lm_module.mail_sign_in_settings_complete() is True
+    assert lm_module.mail_sign_in_settings_missing() == []
 
     monkeypatch.setattr(lm_module, name, "")
 
-    assert lm_module.mail_sign_in_settings_complete() is False
+    assert lm_module.mail_sign_in_settings_missing() == [name]
+
+
+# Verifies the refusal names the one setting that is unset rather than sending the reader to check all four
+def test_the_refusal_names_the_one_missing_setting(lm_module, monkeypatch):
+    monkeypatch.setattr(lm_module, "SMTP_USER", "your_smtp_user")
+
+    with pytest.raises(lm_module.SecretConfigurationError, match="^The mail server settings are incomplete, SMTP_USER is not set$"):
+        lm_module.smtp_sign_in("entered-password")
+
+
+# Verifies two unset settings are listed together in the plural, in the order the sign-in reads them
+def test_the_refusal_lists_every_missing_setting_before_the_prompt(lm_module, monkeypatch, tmp_path):
+    monkeypatch.setattr(lm_module, "SMTP_HOST", "")
+    monkeypatch.setattr(lm_module, "RECEIVER_EMAIL", "")
+
+    with pytest.raises(lm_module.SecretConfigurationError, match="^The mail server settings are incomplete, SMTP_HOST and RECEIVER_EMAIL are not set$"):
+        lm_module.run_set_smtp_password(env_file=tmp_path / ".env", interactive=True, input_func=refuse_prompt, getpass_func=refuse_prompt)
 
 
 # ---------------------------------------------------------------------------

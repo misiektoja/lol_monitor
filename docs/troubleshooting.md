@@ -217,7 +217,7 @@ Ctrl+C during the questions, or choosing to discard the answers, ends setup with
 
 ### `The mail server settings are incomplete`
 
-`--set-smtp-password` signs in before it saves, so it needs `SMTP_HOST`, `SMTP_USER`, `SENDER_EMAIL` and `RECEIVER_EMAIL` first. Fill those in, then run it again.
+`--set-smtp-password` signs in before it saves, so it needs `SMTP_HOST`, `SMTP_USER`, `SENDER_EMAIL` and `RECEIVER_EMAIL` first. The message ends by naming the ones still unset and it appears before the password prompt, so nothing has to be typed first. Fill those in, then run it again. `--send-test-email` reports the same thing.
 
 ### A match is missing from the output
 
