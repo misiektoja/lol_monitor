@@ -8,6 +8,7 @@ Real-time tracker for League of Legends players' activity, with detailed match r
 - **HTML email notifications** when a player starts or finishes a match, plus a match summary and error alerts
 - **Discord and ntfy webhook alerts** carrying the same events, with each channel keeping its own alert settings
 - **CSV export** of every reported match with timestamps, including custom games
+- **Guided setup** through `--setup`, which asks a few questions and writes a ready-to-run configuration, with a review summary and per-section editing before anything is saved
 - **Flexible configuration** through config files, dotenv files, environment variables and command-line arguments
 - Possibility to **control the running copy** of the script via signals
 - **Utility tools** for CSV format conversion and match history comparison
@@ -18,6 +19,8 @@ Real-time tracker for League of Legends players' activity, with detailed match r
 1. [Install it](installation.md)
 2. [Set it up and run it for the first time](setup-and-first-run.md)
 3. [Tune the configuration](configuration.md)
+
+In a hurry, `lol_monitor --setup` asks a few questions and writes both files for you.
 
 If something does not work, [Troubleshooting](troubleshooting.md) covers the failures that come up most often.
 

@@ -1,6 +1,6 @@
 # Configuration
 
-Most settings can be passed as command-line arguments. Anything you want to keep between runs belongs in a configuration file, and anything secret belongs in a dotenv file or an environment variable.
+Most settings can be passed as command-line arguments. Anything you want to keep between runs belongs in a configuration file, and anything secret belongs in a dotenv file or an environment variable. [`--setup`](setup-and-first-run.md#guided-setup) writes both files for you. This page covers changing them afterwards, or writing them by hand.
 
 ## Configuration File
 
@@ -66,7 +66,11 @@ Then `lol_monitor` alone starts monitoring that player. A positional argument st
 lol_monitor "other_name#tag" euw1
 ```
 
+[`--setup`](setup-and-first-run.md#guided-setup) asks whether to save the target. Declining leaves `RIOT_ID` and `REGION` empty and the printed start commands include the Riot ID and region instead.
+
 ## SMTP Settings
+
+[`--setup`](setup-and-first-run.md#guided-setup) collects these for you and signs in to the mail server before saving them. To configure them by hand, set the SMTP settings in `lol_monitor.conf`.
 
 Email notifications need the SMTP block in the configuration file filled in:
 
@@ -98,7 +102,7 @@ Which events produce mail is covered under [Email Notifications](usage.md#email-
 
 ## Webhook Settings
 
-Webhooks send the same alerts as email to a Discord channel or an ntfy topic. They are switched off until you set a destination:
+Webhooks send the same alerts as email to a Discord channel or an ntfy topic. They are switched off until you set a destination. [`--setup`](setup-and-first-run.md#guided-setup) collects the service, the destination and the alert switches together:
 
 | Setting | Meaning |
 | --- | --- |
@@ -170,7 +174,7 @@ Which events produce a webhook is covered under [Webhook Notifications](usage.md
 
 Keep `RIOT_API_KEY`, `SMTP_PASSWORD`, `WEBHOOK_URL` and `NTFY_ACCESS_TOKEN` in an environment variable or a dotenv file rather than in the configuration file.
 
-The tool can write the dotenv file for you. Each command reads the value hidden, checks it against the real service and only then saves it:
+[`--setup`](setup-and-first-run.md#guided-setup) writes every secret it collects to the dotenv file, and never to the configuration file. To store one on its own afterwards, the tool can write the dotenv file for you. Each command reads the value hidden, checks it against the real service and only then saves it:
 
 ```sh
 lol_monitor --set-riot-api-key
@@ -293,7 +297,7 @@ Without it, lines are printed in full and `--doctor` says so. Truncation is off 
 
 ## Coloured Output
 
-Colour is on by default and marks what a value is rather than decorating the line: player names, identifiers, champions, ranks, dates, links and the `[PASS]`/`[WARN]`/`[FAIL]`/`[SKIP]` markers each get their own colour. The log file is never coloured, so a log attached to a bug report stays plain text.
+Colour is on by default and marks what a value is rather than decorating the line: player names, identifiers, champions, ranks, dates, links and the `[PASS]`/`[WARN]`/`[FAIL]`/`[SKIP]` markers each get their own colour. The log file is never coloured, so a log attached to a bug report stays plain text. `COLORED_OUTPUT` and `COLOR_THEME` apply to monitoring output and to the [`--setup`](setup-and-first-run.md#guided-setup) and `--doctor` screens alike.
 
 Colour switches itself off when the output is not a terminal you are watching. That covers redirected or piped output, a `NO_COLOR` environment variable of any value, a `TERM` of `dumb` or empty and a `--no-color` run. The startup summary reports the resolved state next to the setting, so `False (setting: True)` means colour was configured but the terminal did not qualify.
 

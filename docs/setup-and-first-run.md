@@ -1,5 +1,25 @@
 # Setup & First Run
 
+## Guided Setup
+
+The quickest way to a working configuration is to answer a few questions:
+
+```sh
+lol_monitor --setup
+```
+
+It asks for the Riot ID and region to monitor, whether to save that target in the config file, how often to check while the player is in a game and while they are not, your Riot API key, whether you want email or webhook alerts and where output goes. The output questions cover the per-target log file and an optional CSV path, and leaving the CSV answer blank disables it. A CSV path with no extension is saved with `.csv` added. Enter accepts the shown default and Ctrl+C cancels. **Nothing is written until you choose Save**: the answers are held until the end, where a summary shows exactly what is about to be written and lets you go back and change **one section without losing the other answers**. The summary's **File destinations** section changes where the configuration and dotenv files are written. Moving the dotenv file asks the authentication and notification questions again, since a secret you chose to keep was never going to reach the new file.
+
+Answers are accepted in the formats people actually paste. The Riot ID takes the game name plus the tag line written as `riot_id_name#tag`, and the region takes the short code from [Region Codes](#region-codes) rather than the display name. Intervals take **`30s`, `2m`, `1.5h`, `1h 30m`, `1d`** or a plain number of seconds. Supported units are `s`, `m`, `h` and `d`. Once the API key step has a key Riot accepts, setup asks Riot whether that account exists, so a mistyped game name or the wrong region is caught before anything is written.
+
+For webhook alerts, setup asks which service receives them, then takes the Discord webhook URL or an ntfy topic. A bare ntfy.sh topic name is expanded to its full URL. For ntfy it also offers a separate access token.
+
+Every answer setup cannot use offers a way out, so one value you cannot produce right now does not cost you the answers already given. A blank answer asks whether to continue without it and names what stops working, and a rejected one offers to enter it again. Declining switches the channel that needed it off, so half a mail server or a webhook with no destination is never written. Email setup signs in to the mail server before saving, so a wrong password or an unreachable host is caught during setup instead of at the first alert. No email is sent. A refused sign-in offers the mail server questions again, and if the server was only unreachable the answers are kept so `--doctor` can check them later.
+
+Secrets are typed at a hidden prompt and go to the dotenv file. Non-secret settings go to the config file. Both destinations are checked before the first question, so an unwritable path or a directory given by mistake is reported straight away rather than after you have answered everything. `--setup` needs somewhere to put both files, so it refuses `--config-file none` and `--env-file none`. A configuration file already in place is replaced only after you agree, and setup offers to write somewhere else instead. The replaced file is backed up first. A rebuilt file starts from the settings already in place with your answers applied over them, and a setting you left alone keeps the wording the template ships. A section you decline is cleared rather than carried over, so declining email leaves no mail server behind. A secret already in the dotenv file is never replaced without asking. The dotenv file is replaced without a backup, so the secret you replaced is not left behind in a `.bak` file. When it finishes, setup offers to run [`--doctor`](troubleshooting.md#doctor-preflight) and prints the exact commands to start monitoring. It then offers to **start monitoring right away** once that doctor run passed.
+
+Setup runs before any connectivity check, so a machine with no network can still be configured. If there is no terminal to answer on, setup says so and points at `--generate-config` instead of hanging.
+
 ## Quick Start
 
 Grab a [Riot API key](#riot-api-key), then track a player by passing their Riot ID and region:
@@ -40,9 +60,11 @@ For anything longer than a day, apply for a persistent personal or production ke
 
 Provide the `RIOT_API_KEY` secret one of these ways:
 
-- Pass it at runtime with `-r` / `--riot-api-key`
+- Answer the questions in `--setup`, which checks the key with Riot and saves it for you (recommended)
+- Save and check it through a hidden prompt with [`--set-riot-api-key`](configuration.md#storing-secrets)
 - Set it as an [environment variable](configuration.md#storing-secrets), for example `export RIOT_API_KEY=...`
 - Add it to a [dotenv file](configuration.md#storing-secrets) as `RIOT_API_KEY=...` for persistent use
+- Pass it at runtime with `-r` / `--riot-api-key`
 
 As a fallback you can hard-code it in the configuration file or the source.
 

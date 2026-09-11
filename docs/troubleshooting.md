@@ -181,6 +181,18 @@ The host did not answer. The delivery is retried once and then reported. Monitor
 
 `--set-riot-api-key`, `--set-smtp-password` and `--set-webhook-url` read the value hidden, which needs a terminal. In a script or a container write the dotenv file directly instead.
 
+### `The setup wizard needs an interactive terminal (TTY)`
+
+[`--setup`](setup-and-first-run.md#guided-setup) asks questions, so it needs a terminal to answer on. In a script or a container use `--generate-config` and edit the files instead.
+
+### `--setup requires a config destination`
+
+[`--setup`](setup-and-first-run.md#guided-setup) writes both files, so it cannot run with `--config-file none` or `--env-file none`. Give each one a writable path.
+
+### `Setup cancelled. Destination files were not changed`
+
+Ctrl+C during the questions, or choosing to discard the answers, ends setup without writing anything. Nothing reaches disk until you choose Save, so the previous configuration is still in place. An interrupt after the save says the setup is saved instead, and only skips the optional doctor run or launch.
+
 ### `The mail server settings are incomplete`
 
 `--set-smtp-password` signs in before it saves, so it needs `SMTP_HOST`, `SMTP_USER`, `SENDER_EMAIL` and `RECEIVER_EMAIL` first. Fill those in, then run it again.

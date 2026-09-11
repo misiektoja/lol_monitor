@@ -20,7 +20,13 @@ Powerful tool for real-time monitoring of **LoL (League of Legends) players' act
 pip install lol_monitor
 ```
 
-Track a player by passing their Riot ID, written as `riot_id_name#tag`, and their region code:
+The guided setup asks a few questions and writes a ready-to-run configuration:
+
+```sh
+lol_monitor --setup
+```
+
+Or track a player straight away by passing their Riot ID, written as `riot_id_name#tag`, and their region code:
 
 ```sh
 lol_monitor <riot_id> <region> -r "your_riot_api_key"
@@ -38,6 +44,7 @@ lol_monitor <riot_id> <region> -r "your_riot_api_key"
 - **HTML email notifications** when a player starts or finishes a match, plus a match summary and error alerts
 - **Discord and ntfy webhook alerts** carrying the same events, with each channel keeping its own alert settings
 - **CSV export** of every reported match with timestamps, including custom games
+- **Guided setup** through `--setup`, which asks a few questions and writes a ready-to-run configuration, with a review summary and per-section editing before anything is saved
 - **Flexible configuration** through config files, dotenv files, environment variables and command-line arguments
 - Possibility to **control the running copy** of the script via signals
 - **Utility tools** for CSV format conversion and match history comparison
