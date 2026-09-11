@@ -1010,6 +1010,11 @@ def recovery_fix_with_guide(fix, guide_url):
     return f"{fix}\nGuide: {guide_url}"
 
 
+# Escapes text for an HTML email body and keeps its line breaks, which HTML would otherwise collapse into spaces
+def html_text(text):
+    return html.escape(text).replace("\n", "<br>")
+
+
 # Returns the advice a cancelled secret entry reports, worded the same way by every one-shot secret command
 def secret_entry_cancelled_advice(subject, flag, guide_url):
     return make_recovery_advice("secret.entry", f"{subject[:1].upper()}{subject[1:]} setup was cancelled and the dotenv file was not changed", recovery_fix_with_guide(f"Run {flag} again when you have the value ready", guide_url), False)
@@ -4785,7 +4790,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
             m_body = f"{advice.summary}{nl_ch}{nl_ch}To fix: {advice.fix}{nl_ch}{nl_ch}LoL Monitor will retry in {display_time(sleep_interval)}.{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
             m_body_html = (
                 f"<html><head></head><body>"
-                f"{html.escape(advice.summary)}<br><br>To fix: {html.escape(advice.fix)}<br><br>"
+                f"{html_text(advice.summary)}<br><br>To fix: {html_text(advice.fix)}<br><br>"
                 f"LoL Monitor will retry in {html.escape(display_time(sleep_interval))}."
                 f"{get_cur_ts('<br><br>Timestamp: ')}"
                 f"</body></html>"

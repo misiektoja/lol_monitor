@@ -721,6 +721,19 @@ def test_a_monitoring_failure_alerts_both_channels_once(lm_module, riot_api, fak
     assert "To fix:" in sent_emails[0]["body"]
 
 
+# The guide link sits under the fix in the HTML body too, since HTML renders the newline the fix carries as a space
+def test_the_guide_link_keeps_its_own_line_in_the_html_body(lm_module, riot_api, fake_clock, monkeypatch, sent_emails, capsys):
+    monkeypatch.setattr(lm_module, "ERROR_NOTIFICATION", True)
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 1800)
+
+    run_checks(lm_module, riot_api, monkeypatch, always_failing, 8)
+
+    parts = sent_emails[0]["body_html"].split("<br>")
+    fix_index = next(index for index, part in enumerate(parts) if part.startswith("To fix: "))
+    assert parts[fix_index + 1].startswith("Guide: https://")
+    assert "\n" not in parts[fix_index]
+
+
 # Verifies a failure that changes category earns each channel a new alert, since it is a different failure
 def test_a_changed_failure_category_earns_a_new_alert(lm_module, riot_api, fake_clock, monkeypatch, sent_emails, capsys):
     monkeypatch.setattr(lm_module, "ERROR_NOTIFICATION", True)
