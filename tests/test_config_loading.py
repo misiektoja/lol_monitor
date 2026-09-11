@@ -1,8 +1,15 @@
-"""Tests that a config file is read as data and never executed."""
+"""Tests that a config file is read as data and never executed, including every released template."""
+
+import re
+from pathlib import Path
 
 import pytest
 
 import lol_monitor as monitor
+
+# One config template per released shape, extracted from the tag that shipped it. A user upgrading from any
+# published version arrives with one of these on disk, so the current parser has to read all of them
+RELEASED_TEMPLATES = sorted((Path(__file__).resolve().parent / "data" / "config_templates").glob("*.conf"), key=lambda path: [int(part) for part in path.stem.lstrip("v").split(".")])
 
 
 HOSTILE_CONTENT = (
@@ -103,3 +110,34 @@ def test_retired_setting_is_ignored_instead_of_rejected(tmp_path):
 
     assert monitor.load_config_file(config, namespace=namespace, report_errors=False) is True
     assert retired not in namespace
+
+
+# Verifies the suite still carries a template per released config shape, so a replay cannot quietly cover nothing
+def test_every_released_config_shape_is_replayed():
+    assert [path.name for path in RELEASED_TEMPLATES] == ["v1.6.conf", "v1.7.conf", "v1.7.2.conf", "v1.8.1.conf"]
+
+
+@pytest.mark.parametrize("template", RELEASED_TEMPLATES, ids=lambda path: path.stem)
+# Verifies a config file written by any released version still loads, so an upgrade does not start with an error
+def test_a_released_config_template_still_loads(template, tmp_path):
+    config = tmp_path / "upgraded.conf"
+    config.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
+    namespace = {}
+
+    assert monitor.load_config_file(config, namespace=namespace, report_errors=False) is True
+
+
+@pytest.mark.parametrize("template", RELEASED_TEMPLATES, ids=lambda path: path.stem)
+# Verifies every setting a released template assigns still reaches the run, apart from the ones deliberately retired
+def test_every_setting_a_released_template_assigns_still_arrives(template, tmp_path):
+    config = tmp_path / "upgraded.conf"
+    content = template.read_text(encoding="utf-8")
+    config.write_text(content, encoding="utf-8")
+    assigned = {match.group(1) for match in re.finditer(r"^([A-Z][A-Z0-9_]*)\s*=", content, re.M)}
+    namespace = {}
+
+    monitor.load_config_file(config, namespace=namespace, report_errors=False)
+
+    missing = assigned - set(namespace) - monitor.RETIRED_CONFIG_SETTINGS
+    assert not missing, f"{template.name} sets values the current parser drops: {sorted(missing)}"
+

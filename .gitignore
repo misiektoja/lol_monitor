@@ -168,6 +168,8 @@ cython_debug/
 
 # Config files
 *.conf
+# Except the released config templates the suite replays through the current parser
+!tests/data/config_templates/*.conf
 
 # Local development and temporary files
 local/

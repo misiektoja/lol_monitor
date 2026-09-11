@@ -37,6 +37,7 @@ and again before anything is published to PyPI.
 
 | File | Area under test |
 | --- | --- |
+| `data/config_templates/` | One configuration template per released shape, replayed through the current parser |
 | `conftest.py` | Import setup, deterministic globals and the Riot API, SMTP, webhook and clock test doubles |
 | `test_cli_startup.py` | Command line handling, config and dotenv loading, startup validation, listing mode and the effective-settings banner |
 | `test_config_loading.py` | Declarative config parsing, retired settings and refusal of executable config content |
