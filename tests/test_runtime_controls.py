@@ -194,6 +194,29 @@ def test_connectivity_check(lm_module, monkeypatch, capsys):
     assert "The connectivity endpoint could not be reached" in capsys.readouterr().out
 
 
+# Verifies the endpoint and the timeout are read when the check runs, so a config file is not ignored
+def test_the_connectivity_check_reads_its_settings_at_call_time(lm_module, monkeypatch):
+    monkeypatch.setattr(lm_module, "CHECK_INTERNET_URL", "https://configured.example.test/")
+    monkeypatch.setattr(lm_module, "CHECK_INTERNET_TIMEOUT", 11)
+    seen = {}
+
+    monkeypatch.setattr(lm_module.req, "get", lambda url, timeout=None, verify=True: seen.update(url=url, timeout=timeout) or object())
+
+    assert lm_module.check_internet() is True
+    assert seen == {"url": "https://configured.example.test/", "timeout": 11}
+
+
+# Verifies an explicit endpoint still wins over the configured one, which the doctor and the tests rely on
+def test_an_explicit_endpoint_wins(lm_module, monkeypatch):
+    monkeypatch.setattr(lm_module, "CHECK_INTERNET_URL", "https://configured.example.test/")
+    seen = {}
+
+    monkeypatch.setattr(lm_module.req, "get", lambda url, timeout=None, verify=True: seen.update(url=url) or object())
+
+    assert lm_module.check_internet("https://explicit.example.test/", 3) is True
+    assert seen["url"] == "https://explicit.example.test/"
+
+
 # Verifies an executable is found on PATH and a missing one is reported by name
 def test_executable_resolution(lm_module):
     assert lm_module.resolve_executable("sh").endswith("sh")

@@ -924,9 +924,12 @@ def signal_handler(sig, frame):
 
 
 # Checks internet connectivity
-def check_internet(url=CHECK_INTERNET_URL, timeout=CHECK_INTERNET_TIMEOUT):
+def check_internet(url=None, timeout=None):
+    # Read at call time, since a default bound at import would ignore whatever the config file set
+    selected_url = CHECK_INTERNET_URL if url is None else url
+    selected_timeout = CHECK_INTERNET_TIMEOUT if timeout is None else timeout
     try:
-        _ = req.get(url, timeout=timeout, verify=VERIFY_SSL)
+        _ = req.get(selected_url, timeout=selected_timeout, verify=VERIFY_SSL)
         return True
     except req.RequestException as e:
         print_recovery_error(e, context="connectivity", debug=True)
