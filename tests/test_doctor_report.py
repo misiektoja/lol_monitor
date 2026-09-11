@@ -836,3 +836,21 @@ def test_a_row_carries_its_advice_and_refuses_to_go_without(lm_module):
     assert not hasattr(advice, "guide_url")
     with pytest.raises(ValueError):
         lm_module.make_doctor_check("Configuration", "WARN", "a warning row", "a detail worth keeping")
+
+
+# A string such as "false" counts as on, so an on/off setting holding anything but True or False is named in one row
+def test_invalid_boolean_settings_are_reported_in_one_row(lm_module, monkeypatch):
+    monkeypatch.setattr(lm_module, "ERROR_NOTIFICATION", "false", raising=False)
+    monkeypatch.setattr(lm_module, "SMTP_SSL", 1, raising=False)
+
+    check = row_labelled(lm_module.doctor_check_configuration(), "One or more on/off settings are invalid")
+
+    assert check.status == "FAIL"
+    assert "ERROR_NOTIFICATION must be True or False, not 'false'" in check.detail
+    assert "SMTP_SSL must be True or False, not 1" in check.detail
+    assert check.advice.fix.startswith("Set the reported settings to True or False")
+
+
+# The shipped defaults are all real booleans, so a run with nothing overridden never sees the on/off row
+def test_the_shipped_defaults_pass_the_boolean_check(lm_module):
+    assert lm_module.runtime_boolean_errors() == []

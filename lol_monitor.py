@@ -1425,6 +1425,11 @@ def write_config_file(destination, content):
     return {"path": str(destination_path), "backup_path": backup_path}
 
 
+# Raised when an existing config is not replaced because nobody could confirm it, as opposed to a path in the way of writing one
+class ConfigExistsError(FileExistsError):
+    pass
+
+
 # Asks before replacing a config file that already exists, so a generated template cannot land silently
 def confirm_generated_config_replacement(destination, force=False, interactive=None, input_func=input):
     destination_path = Path(destination).expanduser()
@@ -1432,7 +1437,7 @@ def confirm_generated_config_replacement(destination, force=False, interactive=N
         return True
     terminal_is_interactive = bool(sys.stdin.isatty()) if interactive is None else bool(interactive)
     if not terminal_is_interactive:
-        raise FileExistsError(f"Config file '{destination_path}' already exists and there is no terminal to confirm replacing it")
+        raise ConfigExistsError(f"Config file '{destination_path}' already exists and there is no terminal to confirm replacing it")
     try:
         answer = str(read_interactively(input_func, f"Config file '{destination_path}' exists. Replace it and keep a timestamped backup? [y/N]: ")).strip().casefold()
     except (EOFError, KeyboardInterrupt):
@@ -1958,12 +1963,14 @@ def truncate_string_per_line(message, truncate_width, tabsize=8):
         current_width = 0
         truncated = []
         position = 0
+        style_open = False
         cut = False
         while position < len(expanded_line):
             # A colour sequence is copied through free of charge, so styling never eats into the visible width
             escape = SGR_SEQUENCE_RE.match(expanded_line, position)
             if escape:
                 truncated.append(escape.group(0))
+                style_open = escape.group(0) not in ("\x1b[0m", "\x1b[m")
                 position = escape.end()
                 continue
             character = expanded_line[position]
@@ -1984,6 +1991,9 @@ def truncate_string_per_line(message, truncate_width, tabsize=8):
                     width = wcwidth(dropped)
                     current_width -= width if width and width > 0 else 0
             truncated.append(TRUNCATION_MARKER)
+        # The cut may have dropped the reset, which would leave the colour running into every later line
+        if cut and style_open:
+            truncated.append(ANSI_RESET)
         truncated_lines.append("".join(truncated))
     return "\n".join(truncated_lines)
 
@@ -5331,6 +5341,17 @@ def doctor_output_destination_checks(riot_id=None):
     return checks
 
 
+# Names every on/off setting holding something other than True or False, since a string such as "false" would count as on
+def runtime_boolean_errors():
+    errors = []
+    for statement in ast.parse(CONFIG_BLOCK, "<built-in-config>", "exec").body:
+        if isinstance(statement, ast.Assign) and len(statement.targets) == 1 and isinstance(statement.targets[0], ast.Name) and isinstance(statement.value, ast.Constant) and isinstance(statement.value.value, bool):
+            value = globals().get(statement.targets[0].id)
+            if not isinstance(value, bool):
+                errors.append(f"{statement.targets[0].id} must be True or False, not {value!r}")
+    return errors
+
+
 # Returns all type and range errors in settings that control runtime timing or counts
 def runtime_configuration_errors():
     errors = []
@@ -5392,6 +5413,11 @@ def doctor_check_configuration(config_path=None, env_path=None, riot_id=None, re
         numeric_detail = "Invalid numeric settings: " + "; ".join(numeric_errors)
         advice = make_recovery_advice("config.invalid", "One or more numeric settings are invalid", recovery_fix_with_guide("Correct the reported settings in the configuration file", CONFIG_FILE_GUIDE_URL), False, numeric_detail)
         checks.append(make_doctor_check("Configuration", "FAIL", "One or more numeric settings are invalid", numeric_detail, advice))
+    boolean_errors = runtime_boolean_errors()
+    if boolean_errors:
+        boolean_detail = "Invalid on/off settings: " + "; ".join(boolean_errors)
+        advice = make_recovery_advice("config.invalid", "One or more on/off settings are invalid", recovery_fix_with_guide("Set the reported settings to True or False in the configuration file", CONFIG_FILE_GUIDE_URL), False, boolean_detail)
+        checks.append(make_doctor_check("Configuration", "FAIL", "One or more on/off settings are invalid", boolean_detail, advice))
 
     try:
         ascii_log_separators_enabled()
@@ -6908,7 +6934,7 @@ def main():
                 sys.exit(0)
         except (ValueError, IndexError):
             pass
-        except FileExistsError as exc:
+        except ConfigExistsError as exc:
             print_recovery_error(exc, context="file.exists", detail=str(exc))
             sys.exit(1)
         except OSError as exc:

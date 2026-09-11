@@ -342,3 +342,21 @@ def restore_stdout():
     original = sys.stdout
     yield
     sys.stdout = original
+
+
+# Verifies a cut line closes the colour it opened after the marker, so the truncated tail does not paint every later line
+def test_a_truncated_line_closes_its_open_colour():
+    pytest.importorskip("wcwidth")
+
+    truncated = monitor.truncate_string_per_line("\x1b[31m0123456789ABCDEF\x1b[0m", 10)
+
+    assert truncated == "\x1b[31m0123456" + monitor.TRUNCATION_MARKER + monitor.ANSI_RESET
+    assert visible_width(truncated) == 10
+
+
+# Verifies no extra reset is added when the colour closed before the cut or the line was never cut
+def test_a_closed_or_uncut_colour_gains_no_extra_reset():
+    pytest.importorskip("wcwidth")
+
+    assert monitor.truncate_string_per_line("\x1b[31m0123\x1b[0m456789ABCDEF", 10) == "\x1b[31m0123\x1b[0m456" + monitor.TRUNCATION_MARKER
+    assert monitor.truncate_string_per_line("\x1b[31m0123\x1b[0m", 10) == "\x1b[31m0123\x1b[0m"
