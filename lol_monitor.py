@@ -128,6 +128,14 @@ DEBUG_MODE = False
 #   "Off"  - preserve Unicode separators in logs
 ASCII_LOG_SEPARATORS = "Auto"
 
+# Max characters per line when printing to screen, to stop long lines from wrapping
+# Does not affect log file output
+# Set to 999 to auto-detect the terminal width
+# Applies only when DISABLE_LOGGING is False
+# Needs the optional wcwidth library, otherwise lines are printed in full
+# Can also be set via the --truncate flag
+TRUNCATE_CHARS = 0
+
 # Width of horizontal line
 HORIZONTAL_LINE = 113
 
@@ -305,6 +313,7 @@ DISABLE_LOGGING = False
 VERBOSE_MODE = False
 DEBUG_MODE = False
 ASCII_LOG_SEPARATORS = "Auto"
+TRUNCATE_CHARS = 0
 HORIZONTAL_LINE = 0
 CLEAR_SCREEN = False
 COLORED_OUTPUT = True
@@ -1392,6 +1401,78 @@ def unwrap_terminal_stream(stream):
     return stream
 
 
+# Marker appended to a line the terminal truncation cut, so a shortened line never looks complete
+TRUNCATION_MARKER = "..."
+
+# A separator line carries nothing that could be cut off, so a marker on one would report a loss that did not happen
+SEPARATOR_ONLY_RE = re.compile(r"^(\S)\1*$")
+
+# Value of TRUNCATE_CHARS that means "measure the terminal instead of using a fixed width"
+TERMINAL_WIDTH_SENTINEL = 999
+
+
+# Truncates each line to a display width, expanding tabs and counting double-width characters correctly
+def truncate_string_per_line(message, truncate_width, tabsize=8):
+    try:
+        from wcwidth import wcwidth
+    except ImportError:
+        # Without a way to measure display width, cutting by character count would break wide glyphs
+        return message
+    marker_width = len(TRUNCATION_MARKER)
+    truncated_lines = []
+    for line in message.split("\n"):
+        expanded_line = line.expandtabs(tabsize)
+        current_width = 0
+        truncated = []
+        position = 0
+        cut = False
+        while position < len(expanded_line):
+            # A colour sequence is copied through free of charge, so styling never eats into the visible width
+            escape = SGR_SEQUENCE_RE.match(expanded_line, position)
+            if escape:
+                truncated.append(escape.group(0))
+                position = escape.end()
+                continue
+            character = expanded_line[position]
+            character_width = wcwidth(character)
+            if character_width is None or character_width < 0:
+                character_width = 0
+            if current_width + character_width > truncate_width:
+                cut = True
+                break
+            truncated.append(character)
+            current_width += character_width
+            position += 1
+        if cut and truncate_width > marker_width and not SEPARATOR_ONLY_RE.match(SGR_SEQUENCE_RE.sub("", expanded_line)):
+            # The marker replaces the last characters kept, so the line still fits the width that was asked for
+            while truncated and current_width > truncate_width - marker_width:
+                dropped = truncated.pop()
+                if not SGR_SEQUENCE_RE.fullmatch(dropped):
+                    width = wcwidth(dropped)
+                    current_width -= width if width and width > 0 else 0
+            truncated.append(TRUNCATION_MARKER)
+        truncated_lines.append("".join(truncated))
+    return "\n".join(truncated_lines)
+
+
+# Applies the configured terminal truncation to text on its way to the screen, before any colour is added
+def truncate_for_terminal(message):
+    return truncate_string_per_line(message, TRUNCATE_CHARS) if TRUNCATE_CHARS else message
+
+
+# Resolves the CLI and configured truncation settings, expanding the terminal-width sentinel
+def resolve_truncate_chars(cli_value, configured_value, logging_disabled):
+    truncate_chars = configured_value if cli_value is None else cli_value
+    # A run with no log file has no full copy of a cut line, so truncation would lose output for good
+    if logging_disabled:
+        return 0
+    if truncate_chars == TERMINAL_WIDTH_SENTINEL:
+        terminal_size = shutil.get_terminal_size()
+        verbose_print(f"Detected terminal width: {terminal_size.columns} characters")
+        return terminal_size.columns
+    return max(0, truncate_chars)
+
+
 # Colour-aware stdout wrapper installed before the logging policy is known, so output written
 # before then is coloured exactly once by the same rules the Logger uses afterwards
 class ColorStream(object):
@@ -1399,7 +1480,7 @@ class ColorStream(object):
         self.terminal = stream
 
     def write(self, message):
-        self.terminal.write(apply_color_to_text(message))
+        self.terminal.write(apply_color_to_text(truncate_for_terminal(message)))
         self.terminal.flush()
 
     # Writes one message to the terminal while matching the Logger interface
@@ -1429,7 +1510,7 @@ class Logger(object):
     def write(self, message):
         # Colour codes are stripped on the way to the file, so a log stays plain text
         self.logfile.write(normalize_log_separators(ANSI_ESCAPE_RE.sub("", message).expandtabs(8)))
-        self.terminal.write(apply_color_to_text(message))
+        self.terminal.write(apply_color_to_text(truncate_for_terminal(message)))
         self.terminal.flush()
         self.logfile.flush()
 
@@ -1440,7 +1521,7 @@ class Logger(object):
 
     # Writes text meant for the reader at the terminal, which the log file has its own version of
     def terminal_only(self, message):
-        self.terminal.write(apply_color_to_text(message))
+        self.terminal.write(apply_color_to_text(truncate_for_terminal(message)))
         self.terminal.flush()
 
     def flush(self):
@@ -3611,6 +3692,15 @@ def doctor_check_environment(version_info=None, spec_finder=None):
     else:
         advice = make_recovery_advice("dependency.missing", "Optional dependency python-dotenv is not installed", recovery_fix_with_guide(f"Install it with: {pip_install_command('python-dotenv')}. Or export the secrets as environment variables", INSTALL_GUIDE_URL), False)
         checks.append(make_doctor_check("Environment", "WARN", advice.summary, "Secrets can only come from environment variables or the configuration file. Every other feature is unaffected", advice))
+
+    if module_present("wcwidth"):
+        checks.append(make_doctor_check("Environment", "PASS", "Optional dependency wcwidth is installed", "Used only to measure display width for terminal truncation"))
+    elif TRUNCATE_CHARS:
+        advice = make_recovery_advice("dependency.missing", "Optional dependency wcwidth is not installed", recovery_fix_with_guide(f"Install it with: {pip_install_command('wcwidth')}. Or switch terminal truncation off", INSTALL_GUIDE_URL), False)
+        checks.append(make_doctor_check("Environment", "WARN", advice.summary, "Terminal truncation is switched on but lines are printed in full. Every other feature is unaffected", advice))
+    else:
+        # A warning about a library nothing in this run would call is noise, so the row states why it was not needed
+        checks.append(make_doctor_check("Environment", "SKIP", "Optional dependency wcwidth was not checked", "Terminal truncation is off, so nothing would measure display width"))
     return checks
 
 
@@ -4110,6 +4200,7 @@ def build_startup_summary(target=None, config_path=None, env_path=None, log_path
         StartupSummaryRow("Forbidden matches", str(INCLUDE_FORBIDDEN_MATCHES), concise=bool(INCLUDE_FORBIDDEN_MATCHES)),
         StartupSummaryRow("Liveness output", display_time(LIVENESS_CHECK_INTERVAL) if LIVENESS_CHECK_INTERVAL else "Disabled", concise=bool(LIVENESS_CHECK_INTERVAL)),
         StartupSummaryRow("CSV output", CSV_FILE or "Disabled", concise=bool(CSV_FILE)),
+        StartupSummaryRow("Terminal truncation", f"{TRUNCATE_CHARS} chars" if TRUNCATE_CHARS else "Disabled", concise=bool(TRUNCATE_CHARS)),
         StartupSummaryRow("Install method", install_method_display_name()),
         StartupSummaryRow("Secrets from dotenv", ", ".join(sorted(from_dotenv)) if from_dotenv else "None"),
         StartupSummaryRow("Secrets from environment", ", ".join(sorted(from_environment)) if from_environment else "None"),
@@ -4128,7 +4219,7 @@ def build_startup_summary(target=None, config_path=None, env_path=None, log_path
 
 
 def main():
-    global CLI_CONFIG_PATH, CONFIG_DISCOVERY_DISABLED, COMMAND_LINE_SECRET_KEYS, EXPORTED_SECRET_KEYS, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT, INCLUDE_FORBIDDEN_MATCHES, DEBUG_MODE, COLORED_OUTPUT
+    global CLI_CONFIG_PATH, CONFIG_DISCOVERY_DISABLED, COMMAND_LINE_SECRET_KEYS, EXPORTED_SECRET_KEYS, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT, INCLUDE_FORBIDDEN_MATCHES, DEBUG_MODE, COLORED_OUTPUT, TRUNCATE_CHARS
 
     if "--generate-config" in sys.argv:
         config_content = CONFIG_BLOCK.strip("\n") + "\n"
@@ -4369,6 +4460,13 @@ def main():
         default=None,
         help="Switch off coloured terminal output (overrides COLORED_OUTPUT)"
     )
+    opts.add_argument(
+        "--truncate",
+        dest="truncate",
+        metavar="N",
+        type=int,
+        help="Max characters per screen line (not the log), use 999 to auto-detect terminal width, ignored with -d"
+    )
 
     args = parser.parse_args()
 
@@ -4483,6 +4581,8 @@ def main():
 
     if args.disable_logging is True:
         DISABLE_LOGGING = True
+
+    TRUNCATE_CHARS = resolve_truncate_chars(args.truncate, TRUNCATE_CHARS, DISABLE_LOGGING)
 
     if args.csv_file:
         CSV_FILE = os.path.expanduser(args.csv_file)

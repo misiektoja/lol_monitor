@@ -155,6 +155,10 @@ If any SMTP setting is still a shipped placeholder, email is switched off at sta
 
 Some matches need an OAuth (RSO) access token that the tool does not hold. By default those are skipped without a notice. Set `INCLUDE_FORBIDDEN_MATCHES = True` or pass `-f` to see a notice where each one was skipped.
 
+### Long lines wrap and make the output hard to read
+
+Set `TRUNCATE_CHARS` or pass `--truncate N` to cut each screen line to a maximum width, with `999` to use the width of the terminal. The log file keeps the full line, which is also why the setting is ignored when logging is off with `-d`. It needs the optional `wcwidth` library and `--doctor` says whether that is installed. See [Terminal Truncation](configuration.md#terminal-truncation).
+
 ## Reporting a Problem
 
 Include the version and the exact message you saw:

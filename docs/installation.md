@@ -7,6 +7,7 @@ Install from PyPI for the usual case, or download the single script if you would
 * Python 3.12 or higher
 * Libraries: [pulsefire](https://github.com/iann838/pulsefire), `requests`, `python-dateutil`, `python-dotenv`
 * Optional: [pandas](https://pypi.org/project/pandas/), needed only by the [match history comparison tool](tools.md#match-history-comparison-tool)
+* Optional: [wcwidth](https://pypi.org/project/wcwidth/), needed only to measure display width for [terminal truncation](configuration.md#terminal-truncation)
 
 Tested on:
 

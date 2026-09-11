@@ -181,6 +181,7 @@ The startup summary reports the state as `TLS verification: On` or `Off, server 
 | `LOL_LOGFILE` | | Base name for the log file, written as `lol_monitor_<riot_id_name>.log`. May include a directory |
 | `DISABLE_LOGGING` | `-d` | Switches the log file off |
 | `ASCII_LOG_SEPARATORS` | | `"Auto"` uses ASCII separator lines on Windows only, `"On"` everywhere, `"Off"` nowhere. Terminal separators stay Unicode |
+| `TRUNCATE_CHARS` | `--truncate N` | Max display width per screen line, `999` to auto-detect the terminal width. See [Terminal Truncation](#terminal-truncation) |
 | `HORIZONTAL_LINE` | | Width of the separator line |
 | `COLORED_OUTPUT` | `--no-color` | Whether terminal output is coloured. See [Coloured Output](#coloured-output) |
 | `CLEAR_SCREEN` | | Whether the terminal is cleared at startup. A one-shot command such as `--doctor`, `-l` or `--help`, a `--debug` run and any redirected output are never cleared |
@@ -188,6 +189,20 @@ The startup summary reports the state as `TLS verification: On` or `Off, server 
 | `CHECK_INTERNET_URL` | | Endpoint used to verify connectivity at startup |
 | `LOL_ACTIVE_CHECK_SIGNAL_VALUE` | | Seconds each `TRAP` or `ABRT` signal adds to or removes from the in-game interval |
 | `REGION_TO_CONTINENT` | | Maps each region code to its routing continent |
+
+## Terminal Truncation
+
+Long paths, long game labels and long error text wrap across several screen lines and make a run hard to follow. `TRUNCATE_CHARS`, or `--truncate N` for a single run, cuts each screen line to a maximum display width and marks the cut with `...`. Set it to `999` to use the width of the terminal the run started in.
+
+**The log file always keeps the full line**, so nothing is lost. That is also why truncation is ignored when logging is switched off with `-d`: without a log file there would be no full copy of a cut line.
+
+Width is measured in display columns rather than characters, so a wide glyph in a Korean or Japanese player name costs two columns and is never printed as half of itself. This needs the optional [wcwidth](https://pypi.org/project/wcwidth/) library:
+
+```bash
+pip install wcwidth
+```
+
+Without it, lines are printed in full and `--doctor` says so. Truncation is off by default.
 
 ## Coloured Output
 

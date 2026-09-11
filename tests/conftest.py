@@ -221,6 +221,7 @@ def isolated_secret_environment():
 def deterministic_globals(monkeypatch):
     monkeypatch.setattr(lm, "ASCII_LOG_SEPARATORS", "Auto", raising=False)
     monkeypatch.setattr(lm, "HORIZONTAL_LINE", 20, raising=False)
+    monkeypatch.setattr(lm, "TRUNCATE_CHARS", 0, raising=False)
     monkeypatch.setattr(lm, "STATUS_NOTIFICATION", False, raising=False)
     monkeypatch.setattr(lm, "ERROR_NOTIFICATION", False, raising=False)
     monkeypatch.setattr(lm, "LOL_CHECK_INTERVAL", 150, raising=False)
