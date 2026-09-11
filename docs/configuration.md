@@ -251,7 +251,7 @@ lol_monitor <riot_id> <region> -k 60 -c 120
 | --- | --- | --- |
 | `LOL_CHECK_INTERVAL` | `-c` | Seconds between checks while the player is not in a game. Default 150 |
 | `LOL_ACTIVE_CHECK_INTERVAL` | `-k` | Seconds between checks while the player is in a game. Default 45 |
-| `LIVENESS_CHECK_INTERVAL` | | Seconds between liveness messages in the output. Set to 0 to disable. Default 43200 |
+| `LIVENESS_CHECK_INTERVAL` | | Seconds of quiet before the run says it is alive, and how often a lasting failure is repeated. Set to 0 to disable, which makes a failure print on every check instead. Default 43200 |
 | `CHECK_INTERNET_TIMEOUT` | | Seconds allowed for the startup connectivity check. Default 5 |
 
 Riot's development key allows 100 requests every two minutes, and each check while the player is in a game spends several of them. `--doctor` warns when `LOL_ACTIVE_CHECK_INTERVAL` drops below 10 seconds, which is where the extra calls a live match report makes stop fitting.

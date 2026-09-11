@@ -278,12 +278,17 @@ def test_the_polling_interval_follows_the_player(lm_module, riot_api, fake_clock
 
 # Verifies the liveness line is printed while an idle player produces no other output
 def test_liveness_check_reports_the_loop_is_alive(lm_module, riot_api, fake_clock, monkeypatch, capsys):
-    monkeypatch.setattr(lm_module, "LIVENESS_CHECK_COUNTER", 2)
+    # Off, because a banner that only explains itself in verbose is the split this contract exists to prevent
+    monkeypatch.setattr(lm_module, "VERBOSE_MODE", False)
+    monkeypatch.setattr(lm_module, "DEBUG_MODE", False)
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 300)
     script_profile(riot_api)
 
     run_loop(lm_module, riot_api, [{}, {}, {}])
 
-    assert "Liveness check, timestamp:" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert f"* Monitoring healthy for {RIOT_ID}. The user is not in a match with no match change since the last check" in output
+    assert "Liveness check, timestamp:" in output
 
 
 # Verifies an unexpected failure is retried instead of ending the run
@@ -305,7 +310,11 @@ def test_an_unexpected_failure_is_retried(lm_module, riot_api, fake_clock, monke
         asyncio.run(lm_module.lol_monitor_user(RIOT_ID, "eun1", ""))
 
     output = capsys.readouterr().out
-    assert output.count("* Retrying in 2 minutes, 30 seconds") == 2
+    # The first failure takes the one short retry, the second waits the polling interval
+    assert "* Error: The Riot API is temporarily unavailable (retrying in 5 seconds)" in output
+    assert "* Error: The Riot API is temporarily unavailable (retrying in 2 minutes, 30 seconds)" not in output
+    assert output.count("* Error: The Riot API is temporarily unavailable") == 1
+    assert fake_clock.slept[:2] == [lm_module.TRANSIENT_RETRY_SECONDS, lm_module.LOL_CHECK_INTERVAL]
     # The same category twice renders its hint once, so a lasting outage does not repeat the advice every cycle
     assert output.count("To fix:") == 1
 
@@ -332,3 +341,407 @@ def test_a_rejected_api_key_is_alerted_once(lm_module, riot_api, fake_clock, mon
     assert "Riot rejected the configured API key" in capsys.readouterr().out
     assert len(sent_emails) == 1
     assert sent_emails[0]["subject"] == f"lol_monitor: API key error! (user: {USER})"
+
+
+# ---------------------------------------------------------------------------
+# What a long run prints: the liveness banner, the outage reporter and the shared failure line
+# ---------------------------------------------------------------------------
+
+
+# Runs the loop for a fixed number of checks with the in-game answer the caller supplies
+def run_checks(lm_module, riot_api, monkeypatch, answer, checks):
+    script_profile(riot_api)
+    riot_api.script("get_lol_match_v5_match_ids_by_puuid", lambda **kwargs: [])
+    remaining = {"n": checks}
+
+    async def counted(puuid, region):
+        remaining["n"] -= 1
+        if remaining["n"] < 0:
+            raise LoopFinished
+        return answer(remaining["n"])
+
+    monkeypatch.setattr(lm_module, "is_user_in_match", counted)
+    with pytest.raises(LoopFinished):
+        asyncio.run(lm_module.lol_monitor_user(RIOT_ID, "eun1", ""))
+
+
+# Raises the Riot outage every check
+def always_failing(_remaining):
+    raise RuntimeError("500 Internal Server Error")
+
+
+# Skips the in-game report, which is covered by its own tests and would need a live match payload here
+async def skip_match_report(*args, **kwargs):
+    return 0
+
+
+# Reports no live snapshot, so the custom game capture has nothing to arm
+async def no_live_snapshot(*args, **kwargs):
+    return None
+
+
+# Verifies the banner is timed against the setting rather than counted in checks, which is what drifts when
+# a failing run retries on a different interval than a healthy one
+def test_the_liveness_banner_is_timed_not_counted(lm_module, riot_api, fake_clock, monkeypatch, capsys):
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 1800)
+    monkeypatch.setattr(lm_module, "LOL_CHECK_INTERVAL", 300)
+
+    run_checks(lm_module, riot_api, monkeypatch, lambda n: False, 36)
+
+    # Checks land every five minutes over three hours, so the half-hourly reminder fires five times
+    assert capsys.readouterr().out.count("Monitoring healthy for") == 5
+
+
+# Verifies a check interval longer than the liveness interval still yields at most one banner per check,
+# which is what the removed counter needed a floor to achieve
+def test_a_poll_slower_than_the_banner_does_not_repeat_it(lm_module, riot_api, fake_clock, monkeypatch, capsys):
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 60)
+    monkeypatch.setattr(lm_module, "LOL_CHECK_INTERVAL", 3600)
+
+    run_checks(lm_module, riot_api, monkeypatch, lambda n: False, 4)
+
+    # The banner is due on every check after the first, and a run cannot print between checks
+    assert capsys.readouterr().out.count("Monitoring healthy for") == 3
+
+
+# Verifies a player who stays in a match still gets the banner, since gating it on the idle state is what
+# left a week-long session with no periodic output at all
+def test_a_player_in_a_match_still_gets_the_banner(lm_module, riot_api, fake_clock, monkeypatch, capsys):
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 300)
+    monkeypatch.setattr(lm_module, "LOL_ACTIVE_CHECK_INTERVAL", 60)
+    # The in-game report runs on the transition only, so the run starts already in a match
+    monkeypatch.setattr(lm_module, "print_current_match", skip_match_report)
+    monkeypatch.setattr(lm_module, "get_current_match_details", no_live_snapshot)
+
+    run_checks(lm_module, riot_api, monkeypatch, lambda n: True, 20)
+
+    assert f"* Monitoring healthy for {RIOT_ID}. The user is in a match with no match change since the last check" in capsys.readouterr().out
+
+
+# Verifies the banner names the state as a fact rather than being gated on it
+def test_the_banner_names_the_state_it_is_not_gated_on(lm_module, capsys):
+    lm_module.print_liveness_banner(f"Monitoring healthy for {RIOT_ID}. The user is in a match with no match change since the last check")
+
+    output = capsys.readouterr().out
+    assert output.startswith(f"* Monitoring healthy for {RIOT_ID}. The user is in a match with no match change since the last check\n")
+    assert "Liveness check, timestamp:" in output
+
+
+# Verifies the banner is switched off entirely by the setting, which is the state the outage reporter falls back for
+def test_the_banner_is_switched_off_by_the_setting(lm_module, riot_api, fake_clock, monkeypatch, capsys):
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 0)
+
+    run_checks(lm_module, riot_api, monkeypatch, lambda n: False, 20)
+
+    assert "Liveness check, timestamp:" not in capsys.readouterr().out
+
+
+# Verifies a lasting failure is reported once and then carried by the liveness banner, rather than printing
+# one block per check for as long as it lasts
+def test_a_lasting_failure_is_reported_once_then_carried_by_the_banner(lm_module, riot_api, fake_clock, monkeypatch, capsys):
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 1800)
+    monkeypatch.setattr(lm_module, "LOL_CHECK_INTERVAL", 300)
+
+    run_checks(lm_module, riot_api, monkeypatch, always_failing, 130)
+
+    output = capsys.readouterr().out
+    assert output.count("* Error: The Riot API is temporarily unavailable") == 1
+    assert output.count("* Monitoring degraded for") == 21
+    assert "The Riot API is temporarily unavailable since " in output
+
+
+# Verifies the degraded reminder carries the failure and when it started, so it says strictly more than the
+# per-check line it replaced
+def test_the_degraded_reminder_names_the_failure_and_when_it_started(lm_module, capsys):
+    advice = lm_module.classify_recovery_error(RuntimeError("500 Internal Server Error"))
+
+    lm_module.print_outage_liveness(RIOT_ID, advice, TS)
+
+    output = capsys.readouterr().out
+    assert f"* Monitoring degraded for {RIOT_ID}. {advice.summary} since {lm_module.get_date_from_ts(TS)}" in output
+    assert "Liveness check, timestamp:" in output
+
+
+# Verifies the summary keeps its per-check cadence when the banner that would carry the reminder is off,
+# since going fully silent for anyone who disabled it is a regression rather than a feature
+def test_the_summary_keeps_its_cadence_when_the_banner_is_off(lm_module, riot_api, fake_clock, monkeypatch, capsys):
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 0)
+
+    run_checks(lm_module, riot_api, monkeypatch, always_failing, 6)
+
+    output = capsys.readouterr().out
+    assert output.count("* Error: The Riot API is temporarily unavailable") == 6
+    # The advice is still rendered once, so the repeats stay one line each
+    assert output.count("To fix:") == 1
+
+
+# Verifies a failure that clears says so, since a throttled failure no longer stops printing when it is over
+def test_a_cleared_failure_is_reported_with_how_long_it_lasted(lm_module, riot_api, fake_clock, monkeypatch, capsys):
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 1800)
+    monkeypatch.setattr(lm_module, "LOL_CHECK_INTERVAL", 300)
+
+    def clears_after_ten(remaining):
+        if remaining > 20:
+            raise RuntimeError("500 Internal Server Error")
+        return False
+
+    run_checks(lm_module, riot_api, monkeypatch, clears_after_ten, 30)
+
+    # Nine checks failed: the first waits the short retry, the other eight wait the polling interval
+    assert f"* Monitoring recovered for {RIOT_ID} after 40 minutes, 5 seconds" in capsys.readouterr().out
+
+
+# Verifies the recovery line restarts the quiet period, or the healthy banner lands immediately after it
+# because the timer had been running for the whole outage
+def test_the_recovery_line_restarts_the_quiet_period(lm_module, riot_api, fake_clock, monkeypatch, capsys):
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 1800)
+    monkeypatch.setattr(lm_module, "LOL_CHECK_INTERVAL", 300)
+
+    def clears_near_the_end(remaining):
+        if remaining > 3:
+            raise RuntimeError("500 Internal Server Error")
+        return False
+
+    # Three checks follow the recovery, which is fifteen minutes: less than the half-hour quiet period it restarts
+    run_checks(lm_module, riot_api, monkeypatch, clears_near_the_end, 18)
+
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.startswith(("* Monitoring recovered", "* Monitoring healthy"))]
+    assert lines and lines[0].startswith("* Monitoring recovered")
+    assert not lines[1:], "a healthy banner followed the recovery line without a fresh quiet period"
+
+
+# Verifies a failure that changes category is a different failure, so it is reported in full again
+def test_a_failure_that_changes_category_is_reported_again(lm_module, riot_api, fake_clock, monkeypatch, capsys):
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 1800)
+
+    def changing(remaining):
+        raise RuntimeError("500 Internal Server Error" if remaining > 4 else "401 Unauthorized")
+
+    run_checks(lm_module, riot_api, monkeypatch, changing, 8)
+
+    output = capsys.readouterr().out
+    assert "* Error: The Riot API is temporarily unavailable" in output
+    assert "* Error: Riot rejected the configured API key" in output
+
+
+# Verifies a rate limit that lasts is reminded on the liveness cadence too, rather than only reported once
+def test_a_lasting_rate_limit_is_reminded_on_the_same_cadence(lm_module, riot_api, fake_clock, monkeypatch, capsys):
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 1800)
+    monkeypatch.setattr(lm_module, "LOL_CHECK_INTERVAL", 300)
+
+    def limited(_remaining):
+        raise RuntimeError("429 Too Many Requests")
+
+    run_checks(lm_module, riot_api, monkeypatch, limited, 24)
+
+    output = capsys.readouterr().out
+    assert output.count("* Error: Riot is rate limiting requests") == 1
+    assert output.count("* Monitoring degraded for") == 3
+
+
+# Verifies a failure while the player is in a match waits the active interval, since that is what the run
+# would have waited had the check succeeded
+def test_a_failure_in_a_match_waits_the_active_interval(lm_module, riot_api, fake_clock, monkeypatch):
+    monkeypatch.setattr(lm_module, "LOL_CHECK_INTERVAL", 300)
+    monkeypatch.setattr(lm_module, "LOL_ACTIVE_CHECK_INTERVAL", 60)
+    monkeypatch.setattr(lm_module, "print_current_match", skip_match_report)
+    monkeypatch.setattr(lm_module, "get_current_match_details", no_live_snapshot)
+    state = {"ingame": False}
+
+    def in_a_match_then_failing(remaining):
+        if state["ingame"]:
+            raise RuntimeError("500 Internal Server Error")
+        state["ingame"] = True
+        return True
+
+    run_checks(lm_module, riot_api, monkeypatch, in_a_match_then_failing, 4)
+
+    # The first check enters the match, the second spends the short retry, the rest wait the active interval
+    assert fake_clock.slept == [60, lm_module.TRANSIENT_RETRY_SECONDS, 60, 60]
+
+
+# Verifies the failure line puts the label first, the failure second and the schedule in parentheses, which
+# is the one shape every monitor in this family prints
+def test_the_failure_line_puts_the_variable_part_last(lm_module):
+    advice = lm_module.classify_recovery_error(RuntimeError("500 Internal Server Error"))
+
+    assert lm_module.render_monitor_recovery(advice, "retrying in 5 minutes", with_fix=False) == "* Error: The Riot API is temporarily unavailable (retrying in 5 minutes)"
+
+
+# Verifies the raw exception text reaches a debug run, since the summary alone is not enough to file a report
+def test_the_failure_line_carries_the_technical_detail_in_debug(lm_module, monkeypatch):
+    advice = lm_module.classify_recovery_error(RuntimeError("500 Internal Server Error"))
+    quiet = lm_module.render_monitor_recovery(advice)
+    monkeypatch.setattr(lm_module, "DEBUG_MODE", True)
+    loud = lm_module.render_monitor_recovery(advice)
+
+    assert "Technical detail:" not in quiet
+    assert f"Technical detail: {advice.detail}" in loud
+
+
+# Verifies a detail that only repeats the summary is dropped, since a line saying nothing costs a line
+def test_a_detail_that_repeats_the_summary_is_dropped(lm_module, monkeypatch):
+    advice = lm_module.classify_recovery_error(RuntimeError("500 Internal Server Error"))
+    monkeypatch.setattr(lm_module, "DEBUG_MODE", True)
+
+    assert "Technical detail:" not in lm_module.render_monitor_recovery(advice._replace(detail=advice.summary))
+
+
+# Verifies a sub-operation takes the label slot rather than inventing a second sentence shape
+def test_a_label_replaces_the_error_word_rather_than_the_sentence(lm_module):
+    advice = lm_module.classify_recovery_error(RuntimeError("500 Internal Server Error"))
+
+    assert lm_module.render_monitor_recovery(advice, "", with_fix=False, label="Warning").startswith("* Warning: ")
+
+
+# Verifies advice is a To fix line rather than a second starred line, since one failure gets one report
+def test_the_failure_report_is_one_starred_line(lm_module, riot_api, fake_clock, monkeypatch, capsys):
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 1800)
+
+    run_checks(lm_module, riot_api, monkeypatch, always_failing, 4)
+
+    monitoring = capsys.readouterr().out.split("Timestamp:", 1)[1]
+    starred = [line for line in monitoring.splitlines() if line.startswith("* ")]
+    assert starred == ["* Error: The Riot API is temporarily unavailable (retrying in 5 seconds)"]
+
+
+# Verifies one short retry absorbs a blip, and only one, so a lasting outage still waits the polling interval
+def test_only_one_short_retry_is_spent_per_outage(lm_module, riot_api, fake_clock, monkeypatch):
+    monkeypatch.setattr(lm_module, "LOL_CHECK_INTERVAL", 300)
+
+    run_checks(lm_module, riot_api, monkeypatch, always_failing, 4)
+
+    assert fake_clock.slept == [lm_module.TRANSIENT_RETRY_SECONDS, 300, 300, 300]
+
+
+# Verifies a rejected credential is not retried quickly, since nothing about it resolves in five seconds
+def test_a_rejected_credential_skips_the_short_retry(lm_module, riot_api, fake_clock, monkeypatch):
+    monkeypatch.setattr(lm_module, "LOL_CHECK_INTERVAL", 300)
+
+    def rejected(_remaining):
+        raise RuntimeError("401 Unauthorized")
+
+    run_checks(lm_module, riot_api, monkeypatch, rejected, 3)
+
+    assert fake_clock.slept == [300, 300, 300]
+
+
+# Verifies a fresh short retry is available after the run recovers, so the next blip is absorbed too
+def test_the_short_retry_is_available_again_after_a_recovery(lm_module, riot_api, fake_clock, monkeypatch):
+    monkeypatch.setattr(lm_module, "LOL_CHECK_INTERVAL", 300)
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 0)
+
+    def blip(remaining):
+        if remaining in (3, 1):
+            raise RuntimeError("500 Internal Server Error")
+        return False
+
+    run_checks(lm_module, riot_api, monkeypatch, blip, 5)
+
+    assert fake_clock.slept.count(lm_module.TRANSIENT_RETRY_SECONDS) == 2
+
+
+# Verifies a rate limit waits the period Riot named rather than burning the short retry on it
+def test_a_rate_limit_waits_the_period_riot_named(lm_module, riot_api, fake_clock, monkeypatch):
+    monkeypatch.setattr(lm_module, "LOL_CHECK_INTERVAL", 300)
+
+    class RateLimited(RuntimeError):
+        response = type("Response", (), {"headers": {"Retry-After": "42"}})()
+
+    def limited(_remaining):
+        raise RateLimited("429 Too Many Requests")
+
+    run_checks(lm_module, riot_api, monkeypatch, limited, 3)
+
+    assert fake_clock.slept == [42, 42, 42]
+
+
+# Verifies a rate limit with no period named falls back to the polling interval rather than to zero
+def test_a_rate_limit_without_a_period_waits_the_polling_interval(lm_module, riot_api, fake_clock, monkeypatch):
+    monkeypatch.setattr(lm_module, "LOL_CHECK_INTERVAL", 300)
+
+    def limited(_remaining):
+        raise RuntimeError("429 Too Many Requests")
+
+    run_checks(lm_module, riot_api, monkeypatch, limited, 2)
+
+    assert fake_clock.slept == [300, 300]
+
+
+# Verifies a period the service asked for is capped, so a header the tool cannot vouch for cannot stall a run
+def test_a_hostile_rate_limit_period_is_capped(lm_module):
+    hostile = type("Error", (), {"response": type("Response", (), {"headers": {"Retry-After": "999999"}})()})()
+
+    assert lm_module.riot_retry_after_seconds(hostile, 300) == lm_module.RIOT_MAX_RETRY_AFTER_SECONDS
+
+
+# Verifies the cap bounds only what the service asked for, since clamping the tool's own polling interval
+# would make a rate-limited run poll faster than it was configured to
+def test_the_cap_does_not_shorten_the_tools_own_interval(lm_module):
+    beyond_the_cap = int(lm_module.RIOT_MAX_RETRY_AFTER_SECONDS) + 600
+
+    assert lm_module.riot_retry_after_seconds(RuntimeError("429 Too Many Requests"), beyond_the_cap) == beyond_the_cap
+
+
+# Verifies any monitoring failure alerts both channels, and once per category rather than once per check
+def test_a_monitoring_failure_alerts_both_channels_once(lm_module, riot_api, fake_clock, monkeypatch, sent_emails, capsys):
+    monkeypatch.setattr(lm_module, "ERROR_NOTIFICATION", True)
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 1800)
+
+    run_checks(lm_module, riot_api, monkeypatch, always_failing, 8)
+
+    assert len(sent_emails) == 1
+    assert sent_emails[0]["subject"] == f"lol_monitor: monitoring error (user: {USER})"
+    assert "The Riot API is temporarily unavailable" in sent_emails[0]["body"]
+    assert "To fix:" in sent_emails[0]["body"]
+
+
+# Verifies a failure that changes category earns each channel a new alert, since it is a different failure
+def test_a_changed_failure_category_earns_a_new_alert(lm_module, riot_api, fake_clock, monkeypatch, sent_emails, capsys):
+    monkeypatch.setattr(lm_module, "ERROR_NOTIFICATION", True)
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 1800)
+
+    def changing(remaining):
+        raise RuntimeError("500 Internal Server Error" if remaining > 4 else "401 Unauthorized")
+
+    run_checks(lm_module, riot_api, monkeypatch, changing, 8)
+
+    assert [email["subject"] for email in sent_emails] == [f"lol_monitor: monitoring error (user: {USER})", f"lol_monitor: API key error! (user: {USER})"]
+
+
+# Verifies a delivery on a check the reporter keeps quiet still closes its block, so the line is not left
+# looking like a run that stopped there
+@pytest.mark.parametrize("alerts,expected_blocks", [(False, 1), (True, 2)])
+def test_an_alert_on_a_quiet_check_still_closes_its_block(lm_module, riot_api, fake_clock, monkeypatch, sent_emails, capsys, alerts, expected_blocks):
+    monkeypatch.setattr(lm_module, "ERROR_NOTIFICATION", alerts)
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 1800)
+
+    # The first failure spends the short retry and reaches no alert, so the delivery lands on the second
+    # check, where the reporter has already gone quiet about the same category and prints nothing itself
+    run_checks(lm_module, riot_api, monkeypatch, always_failing, 4)
+
+    blocks = capsys.readouterr().out.split("Timestamp:", 1)[1].count("Timestamp:")
+    assert len(sent_emails) == (1 if alerts else 0)
+    assert blocks == expected_blocks, "the alert was delivered on a check that printed no trailer"
+
+
+# Verifies every suppressed report is still traced, so a support transcript loses nothing to the throttling
+def test_a_suppressed_failure_is_still_traced_in_debug(lm_module, riot_api, fake_clock, monkeypatch, capsys):
+    monkeypatch.setattr(lm_module, "DEBUG_MODE", True)
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 1800)
+
+    run_checks(lm_module, riot_api, monkeypatch, always_failing, 6)
+
+    output = capsys.readouterr().out
+    assert output.count("outcome=failed, code=riot.unavailable") == 6
+    assert output.count("* Error: The Riot API is temporarily unavailable") == 1
+
+
+# Verifies the monitoring loop prints no verbose line of its own, so nothing it prints can float without a trailer
+def test_the_loop_prints_no_standalone_verbose_line(lm_module, riot_api, fake_clock, monkeypatch, capsys):
+    monkeypatch.setattr(lm_module, "VERBOSE_MODE", True)
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 1800)
+
+    run_checks(lm_module, riot_api, monkeypatch, lambda n: False, 5)
+
+    assert capsys.readouterr().out.split("Timestamp:", 1)[1].split("\n", 2)[2].strip() == ""

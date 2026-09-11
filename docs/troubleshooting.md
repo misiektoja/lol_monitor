@@ -48,7 +48,7 @@ Running doctor without a target checks everything except the monitored account. 
 
 Two flags control how much the tool explains about itself.
 
-`--verbose` reports what the tool is doing in plain `* ` lines: which notification categories were switched off and why, and each message that was delivered. During monitoring it stays quiet, so a run that finds nothing prints nothing. Use `--debug` when you want a line per completed check.
+`--verbose` reports what the tool is doing in plain `* ` lines: which notification categories were switched off and why, and each message that was delivered. During monitoring it stays quiet, so a run that finds nothing prints nothing beyond the liveness banner described under [What a Long Run Prints](#what-a-long-run-prints). Use `--debug` when you want a line per completed check.
 
 ```sh
 lol_monitor <riot_id> <region> --verbose
@@ -74,6 +74,20 @@ The two modes are independent, so pass both to see everything. Either can also b
 Debug mode is the fastest way to find out why part of a report is missing. Ranked information, champion mastery and champion name lookups each degrade quietly when Riot refuses them, and debug names the call that failed.
 
 Secret values are never printed by either mode. Redaction happens inside both printers rather than at each call site, so a known secret is replaced with `<redacted>` no matter which line interpolates it.
+
+## What a Long Run Prints
+
+A run that finds nothing still says it is alive. The banner prints in any mode, with or without `--verbose`: `* Monitoring healthy for <riot_id>` naming whether the player is in a match, followed by `Liveness check, timestamp:`. It is timed rather than counted in checks, so it appears once per `LIVENESS_CHECK_INTERVAL` of quiet, measured from the last thing the run printed. A player who stays in a match for a week is reported just as often as an idle one.
+
+A monitoring failure is reported as `* Error: <what failed> (retrying in <time>)`, with the `To fix:` paragraph under it the first time that category appears. Every monitor in this family prints that same line.
+
+During a long outage the failure is reported in full once, then the liveness banner takes over with `* Monitoring degraded for <riot_id>`, the summary of what is still failing and when it started. A two-day Riot outage prints one report and one reminder per liveness interval instead of one block per check. The reminder follows the same clock, so an outage that retries faster than the normal polling interval does not report more often. When the failure clears, `* Monitoring recovered for <riot_id>` reports how long it lasted, and the quiet period starts again from there.
+
+Setting `LIVENESS_CHECK_INTERVAL` to 0 removes the banner that would carry the reminder, so the one-line summary goes back to printing on every failed check rather than going silent.
+
+A failure worth retrying, such as a timeout or a Riot outage, gets **one short retry** before the tool falls back to waiting a full polling interval, and a fresh one becomes available after the run recovers. A **rate limit** waits for the period Riot asked for, capped so a header the tool cannot vouch for cannot stall a run, and falls back to the polling interval when Riot named none. A **rejected API key** is not retried at all, since nothing about it resolves in five seconds.
+
+Error alerts follow the same throttling. Any monitoring failure delivers **one email and one webhook per failure category**, not one per check, and a failure that changes category earns each channel a new alert. Turn them off with `ERROR_NOTIFICATION = False` and the webhook error setting.
 
 ## When Something Goes Wrong
 

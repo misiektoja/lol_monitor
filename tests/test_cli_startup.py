@@ -123,6 +123,17 @@ def test_config_file_settings_reach_the_monitor(lm_module, monkeypatch, monitor_
     assert monitor_calls[0] == {"riotid": RIOT_ID, "region": REGION, "csv_file_name": ""}
 
 
+# Verifies a saved liveness interval reaches the loop as the number of seconds it names, since a cadence
+# counted in checks would drift whenever a check waits something other than the polling interval
+def test_the_saved_liveness_interval_reaches_the_loop_in_seconds(lm_module, monkeypatch, monitor_calls, isolated_working_directory):
+    config = isolated_working_directory / "custom.conf"
+    config.write_text("LOL_CHECK_INTERVAL = 300\nLIVENESS_CHECK_INTERVAL = 21600\n", encoding="utf-8")
+
+    assert run_main(lm_module, monkeypatch, ["--config-file", str(config), RIOT_ID, REGION]) == 0
+
+    assert lm_module.LIVENESS_REMINDER_SECONDS == 21600
+
+
 # Verifies a config path that does not exist is refused instead of being silently ignored
 def test_missing_config_file_is_refused(lm_module, monkeypatch, capsys, isolated_working_directory):
     assert run_main(lm_module, monkeypatch, ["--config-file", str(isolated_working_directory / "absent.conf"), RIOT_ID, REGION]) == 1
@@ -237,7 +248,7 @@ def test_interval_flags_override_the_configuration(lm_module, monkeypatch, monit
 
     assert lm_module.LOL_CHECK_INTERVAL == 600
     assert lm_module.LOL_ACTIVE_CHECK_INTERVAL == 20
-    assert lm_module.LIVENESS_CHECK_COUNTER == lm_module.LIVENESS_CHECK_INTERVAL / 600
+    assert lm_module.LIVENESS_REMINDER_SECONDS == lm_module.LIVENESS_CHECK_INTERVAL
 
 
 # Verifies the notification flags switch on exactly the alerts they name

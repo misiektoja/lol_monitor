@@ -150,6 +150,33 @@ The file is created if it does not exist. Columns:
 
 Files written by v1.7.2 or earlier use the older column set. The [CSV format converter](tools.md#csv-format-converter) rewrites them.
 
+## A Run That Finds Nothing
+
+Monitoring is quiet by design: a check that finds no new match and no change in whether the player is in a game prints nothing. So that silence can be told apart from a dead process, the run prints a liveness banner once per `LIVENESS_CHECK_INTERVAL` of quiet:
+
+```
+* Monitoring healthy for Faker#KR1. The user is not in a match with no match change since the last check
+Liveness check, timestamp:	Thu 01 Jan 2026, 00:50:00
+```
+
+A failure that lasts is reported once and then carried on the same cadence, and it says when it started:
+
+```
+* Error: The Riot API is temporarily unavailable (retrying in 5 seconds)
+To fix: This is usually a Riot outage. The tool will keep retrying
+Timestamp:			Thu 01 Jan 2026, 00:20:00
+
+* Monitoring degraded for Faker#KR1. The Riot API is temporarily unavailable since Thu 01 Jan 2026, 00:20:00
+Liveness check, timestamp:	Thu 01 Jan 2026, 00:50:05
+
+* Monitoring recovered for Faker#KR1 after 1 hour, 5 seconds
+Timestamp:			Thu 01 Jan 2026, 01:20:05
+```
+
+Each block closes with its timestamp and a horizontal rule, so no line is left looking like a run that stopped there.
+
+[What a Long Run Prints](troubleshooting.md#what-a-long-run-prints) covers the retry and alert behaviour behind these lines.
+
 ## Signal Controls (macOS/Linux/Unix)
 
 Signals change the behaviour of a running copy without restarting it:

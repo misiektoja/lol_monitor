@@ -290,7 +290,7 @@ def deterministic_globals(monkeypatch):
     monkeypatch.setattr(lm, "LOL_ACTIVE_CHECK_INTERVAL", 45, raising=False)
     monkeypatch.setattr(lm, "LOL_ACTIVE_CHECK_SIGNAL_VALUE", 30, raising=False)
     monkeypatch.setattr(lm, "LIVENESS_CHECK_INTERVAL", 43200, raising=False)
-    monkeypatch.setattr(lm, "LIVENESS_CHECK_COUNTER", 288, raising=False)
+    monkeypatch.setattr(lm, "LIVENESS_REMINDER_SECONDS", 43200, raising=False)
     monkeypatch.setattr(lm, "INCLUDE_FORBIDDEN_MATCHES", False, raising=False)
     monkeypatch.setattr(lm, "RIOT_API_KEY", "riot-api-key-test-value", raising=False)
     monkeypatch.setattr(lm, "RIOT_ID", "", raising=False)

@@ -16,6 +16,10 @@ REGION = "eun1"
 # The closed vocabulary every outbound trace line reports its result with
 OUTCOMES = ("OK", "failed", "degraded", "skipped")
 
+# The lines that bracket a check rather than perform an operation. A wait has no result to report, so requiring
+# one would mean inventing an outcome for time passing
+CHECK_BRACKETS = ("Starting check", "Next check", "Retry wait")
+
 
 # Verifies a diagnostic line renders as an operation followed by named fields, which is what makes a trace scannable
 def test_a_diagnostic_line_is_an_operation_and_named_fields(lm_module):
@@ -297,7 +301,7 @@ def test_a_traced_run_reports_the_result_of_every_operation(lm_module, riot_api,
             traced.setdefault(match.group(1), []).append(match.group(2) or "")
 
     assert len(traced) > 5, f"the run only traced {sorted(traced)}"
-    silent = sorted(operation for operation, lines in traced.items() if not any("outcome=" in fields for fields in lines))
+    silent = sorted(operation for operation, lines in traced.items() if operation not in CHECK_BRACKETS and not any("outcome=" in fields for fields in lines))
     assert silent == [], f"operations traced without ever reporting a result: {', '.join(silent)}"
 
 
@@ -312,9 +316,12 @@ def test_a_quiet_cycle_prints_nothing_in_verbose(lm_module):
 
 # Verifies a completed cycle is traced in debug with the wait before the next one, which is where a line per check belongs
 def test_a_completed_cycle_is_traced_in_debug(lm_module):
-    fields = [{keyword.arg for keyword in call.keywords} for call in debug_print_calls(lm_module) if render_literal(call.args[0] if call.args else None) == "Monitoring check"]
+    traced = {render_literal(call.args[0] if call.args else None): {keyword.arg for keyword in call.keywords} for call in debug_print_calls(lm_module)}
+    waits = {operation: names for operation, names in traced.items() if operation in ("Next check", "Retry wait")}
 
-    assert any({"outcome", "next_check"} <= names for names in fields), "no completed cycle reports its result and the wait before the next one"
+    assert "outcome" in traced.get("Completed check", set()), "no completed cycle reports its result"
+    assert set(waits) == {"Next check", "Retry wait"}, f"a wait is never traced: {sorted({'Next check', 'Retry wait'} - set(waits))}"
+    assert all({"due_in", "reason"} <= names for names in waits.values()), "a wait is traced without saying how long it is and why"
 
 
 # Verifies the answer Riot gives for a player who is not in a game is traced as a successful check

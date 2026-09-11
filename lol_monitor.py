@@ -401,6 +401,7 @@ LOL_CHECK_INTERVAL = 0
 LOL_ACTIVE_CHECK_INTERVAL = 0
 INCLUDE_FORBIDDEN_MATCHES = False
 LIVENESS_CHECK_INTERVAL = 0
+LIVENESS_REMINDER_SECONDS = 0
 CHECK_INTERNET_URL = ""
 CHECK_INTERNET_TIMEOUT = 0
 VERIFY_SSL = True
@@ -467,7 +468,11 @@ FIXED_LENGTH_SECRET_KEYS = frozenset(("RIOT_API_KEY",))
 # in sanitize_error_text that match the assignment and header forms an error can actually expose.
 MIN_REDACTABLE_SECRET_LENGTH = 12
 
-LIVENESS_CHECK_COUNTER = LIVENESS_CHECK_INTERVAL / LOL_CHECK_INTERVAL
+# One short retry absorbs a transient failure without waiting a whole polling interval
+TRANSIENT_RETRY_SECONDS = 5
+
+# Riot names its own wait on a rate limit, but a header the tool cannot vouch for is not allowed to stall a run
+RIOT_MAX_RETRY_AFTER_SECONDS = 3600.0
 
 stdout_bck = None
 csvfieldnames = ['Match Start', 'Match Stop', 'Duration', 'Game Mode', 'Victory', 'Kills', 'Deaths', 'Assists', 'Champion', 'Level', 'Role', 'Lane', 'Team 1', 'Team 2']
@@ -1135,6 +1140,91 @@ class RecoveryHintTracker:
     # Clears suppression after a successful cycle, so a recurrence is reported again
     def reset(self):
         self.last_code = None
+
+
+# Decides how a lasting failure is reported: in full when it is new, then on the liveness cadence while it lasts
+class OutageReporter:
+    # Starts with no failure recorded, so the first failure of any category is reported in full
+    def __init__(self):
+        self.code = None
+        self.since = 0
+        self.reported_at = 0
+
+    # Records one failed check and returns "full" for a new failure, "degraded" once the liveness interval has passed,
+    # "repeat" while the liveness banner is switched off or "" while the same failure is merely continuing
+    def failed(self, advice, liveness_interval):
+        now = int(time.time())
+        if advice.code != self.code:
+            self.code = advice.code
+            self.since = now
+            self.reported_at = now
+            return "full"
+        # With the liveness banner off there is nothing to carry the reminder, so the summary keeps its old cadence
+        if not liveness_interval:
+            return "repeat"
+        # Timed rather than counted, because a failing run usually retries on a different interval than a healthy one
+        if now - self.reported_at >= liveness_interval:
+            self.reported_at = now
+            return "degraded"
+        return ""
+
+    # Clears the failure after a successful check and returns how long it lasted, or None when none was active
+    def recovered(self):
+        if not self.code:
+            return None
+        lasted = int(time.time()) - self.since
+        self.code = None
+        self.since = 0
+        self.reported_at = 0
+        return lasted
+
+
+# Reports that nothing changed, so a quiet run still says it is alive on the liveness cadence
+def print_liveness_banner(message):
+    print(f"* {sanitize_error_text(message)}")
+    print_cur_ts("Liveness check, timestamp:\t")
+
+
+# Reports a lasting failure on the liveness cadence, so a broken run still says it is alive without repeating itself
+def print_outage_liveness(target, advice, since):
+    print(f"* Monitoring degraded for {target}. {advice.summary} since {get_date_from_ts(since)}")
+    print_cur_ts("Liveness check, timestamp:\t")
+
+
+# Reports that a failure cleared, since a throttled failure no longer stops printing when it is over
+def print_outage_recovery(target, lasted):
+    print(f"* Monitoring recovered for {target} after {display_time(max(1, lasted))}")
+    print_cur_ts("Timestamp:\t\t\t")
+
+
+# Renders one monitoring failure in the shape every monitor in this family prints
+def render_monitor_recovery(advice, retry_note="", with_fix=True, label="Error"):
+    lines = [f"* {label}: {advice.summary}" + (f" ({retry_note})" if retry_note else "")]
+    if with_fix:
+        lines.append(f"To fix: {advice.fix}")
+        # A detail that only repeats the summary spends a line saying nothing, which is section 15.52's rule for rows
+        if DEBUG_MODE and advice.detail and advice.detail != advice.summary:
+            lines.append(f"Technical detail: {sanitize_error_text(advice.detail)}")
+    return "\n".join(lines)
+
+
+# Prints one monitoring failure, repeating the fix only when the failure category changes
+def print_monitor_recovery(error, context, tracker, retry_note="", label="Error"):
+    advice = classify_recovery_error(error, context)
+    print(render_monitor_recovery(advice, retry_note, tracker is None or tracker.should_render(advice), label))
+    return advice
+
+
+# Returns the wait Riot asked for on a rate limit, falling back to the polling interval when it named none
+def riot_retry_after_seconds(error, fallback):
+    headers = getattr(getattr(error, "response", None), "headers", {}) or {}
+    candidates = [headers.get("Retry-After"), headers.get("X-Rate-Limit-Retry-After")] if hasattr(headers, "get") else []
+    for candidate in candidates:
+        seconds = parse_retry_after_seconds(candidate)
+        if seconds is not None:
+            return max(1, int(round(min(max(0.0, seconds), RIOT_MAX_RETRY_AFTER_SECONDS))))
+    # The fallback is the tool's own polling interval, so the cap on what a service asked for does not apply to it
+    return max(1, int(round(fallback)))
 
 
 # Restores Python's default Ctrl+C behavior while a prompt waits, so the prompt reports the outcome instead of the signal handler
@@ -4307,7 +4397,10 @@ async def save_custom_match_to_csv(snapshot: dict, riotid_name: str, start_ts: i
 # Main function that monitors gaming activity of the specified LoL user
 async def lol_monitor_user(riotid, region, csv_file_name):
 
-    alive_counter = 0
+    alive_since = int(time.time())
+    outage = OutageReporter()
+    transient_retry_used = False
+    error_delivery_code = None
     last_match_start_ts = 0
     last_match_stop_ts = 0
     puuid = None
@@ -4438,7 +4531,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
 
             processed_new_match_in_this_cycle = False
             check_count += 1
-            debug_print("Monitoring check", check=f"#{check_count}", user=riotid, in_game=ingame)
+            debug_print("Starting check", check=f"#{check_count}", user=riotid, in_game=ingame)
 
             latest_match_ids = await get_latest_match_ids(puuid, region, count=10)
 
@@ -4558,44 +4651,99 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                     current_match_start_ts = 0
 
             ingame_old = ingame
-            alive_counter += 1
             error_email_sent = False
             error_webhook_sent = False
+            error_delivery_code = None
+            transient_retry_used = False
             hint_tracker.reset()
 
-            if LIVENESS_CHECK_COUNTER and alive_counter >= LIVENESS_CHECK_COUNTER:
-                print_cur_ts("Liveness check, timestamp:\t")
-                alive_counter = 0
+            outage_lasted = outage.recovered()
+            if outage_lasted is not None:
+                print_outage_recovery(riotid, outage_lasted)
+                # The quiet period restarts here, or the recovery line is followed straight away by a healthy banner
+                alive_since = int(time.time())
+
+            debug_print("Completed check", check=f"#{check_count}", user=riotid, outcome="OK", in_game=ingame)
+
+            if LIVENESS_REMINDER_SECONDS and int(time.time()) - alive_since >= LIVENESS_REMINDER_SECONDS:
+                print_liveness_banner(f"Monitoring healthy for {riotid}. The user is {'in a match' if ingame else 'not in a match'} with no match change since the last check")
+                alive_since = int(time.time())
 
             wait_seconds = LOL_ACTIVE_CHECK_INTERVAL if (ingame or (game_finished_ts and (int(time.time()) - game_finished_ts) <= LOL_CHECK_INTERVAL)) else LOL_CHECK_INTERVAL
-            debug_print("Monitoring check", check=f"#{check_count}", user=riotid, outcome="OK", in_game=ingame, next_check=f"{wait_seconds}s")
+            debug_print("Next check", check=f"#{check_count}", due_in=display_time(wait_seconds), reason="user is in a match" if ingame else "user is not in a match")
             time.sleep(wait_seconds)
 
         except Exception as e:
+            sleep_interval = LOL_ACTIVE_CHECK_INTERVAL if ingame else LOL_CHECK_INTERVAL
             advice = classify_recovery_error(e)
-            # The detail carries the failing request, which is how one Riot failure is told from another
-            if hint_tracker.should_render(advice):
-                print(render_recovery_error(RecoveryError(advice)))
-            else:
-                print(f"* Error: {advice.summary}")
-            debug_print("Monitoring check", check=f"#{check_count}", outcome="failed", code=advice.code, error=f"{type(e).__name__}: {e}")
-            print(f"* Retrying in {display_time(LOL_CHECK_INTERVAL)}")
+            debug_print("Completed check", check=f"#{check_count}", user=riotid, outcome="failed", code=advice.code, error=f"{type(e).__name__}: {e}")
+            # A failure that changed category is a different failure, so each channel is allowed one alert for it
+            if advice.code != error_delivery_code:
+                error_email_sent = False
+                error_webhook_sent = False
+                error_delivery_code = advice.code
+            # A failure that has not changed is left to the liveness cadence rather than repeated every check
+            outage_outcome = outage.failed(advice, LIVENESS_REMINDER_SECONDS)
+            delivery_reported = False
+
+            if advice.code == "riot.rate_limited":
+                # A rate limit carries its own wait, so it skips the retry path rather than burning an attempt
+                retry_after = riot_retry_after_seconds(e, sleep_interval)
+                retry_note = f"retrying in {display_time(retry_after)}"
+                if outage_outcome == "full":
+                    print_monitor_recovery(e, "runtime", hint_tracker, retry_note)
+                    print_cur_ts("Timestamp:\t\t\t")
+                elif outage_outcome == "degraded":
+                    print_outage_liveness(riotid, advice, outage.since)
+                elif outage_outcome == "repeat":
+                    print(render_monitor_recovery(advice, retry_note, with_fix=False))
+                    print_cur_ts("Timestamp:\t\t\t")
+                debug_print("Retry wait", check=f"#{check_count}", due_in=display_time(retry_after), reason="riot rate limited the request")
+                time.sleep(retry_after)
+                continue
+
+            # One short retry absorbs a blip without waiting a whole polling interval
+            transient_retry = advice.retryable and not transient_retry_used
+            retry_note = f"retrying in {display_time(TRANSIENT_RETRY_SECONDS if transient_retry else sleep_interval)}"
+            if outage_outcome == "full":
+                print_monitor_recovery(e, "runtime", hint_tracker, retry_note)
+            elif outage_outcome == "degraded":
+                print_outage_liveness(riotid, advice, outage.since)
+            elif outage_outcome == "repeat":
+                print(render_monitor_recovery(advice, retry_note, with_fix=False))
+            if transient_retry:
+                transient_retry_used = True
+                if outage_outcome in ("full", "repeat"):
+                    print_cur_ts("Timestamp:\t\t\t")
+                debug_print("Retry wait", check=f"#{check_count}", due_in=display_time(TRANSIENT_RETRY_SECONDS), reason="one short retry before the full interval")
+                time.sleep(TRANSIENT_RETRY_SECONDS)
+                continue
+
             if advice.code == "auth.api_key_invalid":
-                if (ERROR_NOTIFICATION and not error_email_sent) or (webhook_event_enabled("error") and not error_webhook_sent):
-                    m_subject = f"lol_monitor: API key error! (user: {riotid_name})"
-                    m_body = f"{advice.summary}: {sanitize_error_text(e)}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                    m_body_html = (
-                        f"<html><head></head><body>"
-                        f"{html.escape(advice.summary)}: <b>{html.escape(sanitize_error_text(e))}</b>"
-                        f"{get_cur_ts('<br><br>Timestamp: ')}"
-                        f"</body></html>"
-                    )
-                    email_delivered, webhook_delivered = send_notification_channels("error", m_subject, m_body, m_body_html, email_enabled=ERROR_NOTIFICATION and not error_email_sent, webhook_enabled=webhook_event_enabled("error") and not error_webhook_sent, ntfy_priority=5, ntfy_tags="warning")
-                    error_email_sent = error_email_sent or email_delivered
-                    error_webhook_sent = error_webhook_sent or webhook_delivered
-            print_cur_ts("Timestamp:\t\t\t")
-            debug_print("Retry wait", check=f"#{check_count}", next_check=f"{LOL_CHECK_INTERVAL}s")
-            time.sleep(LOL_CHECK_INTERVAL)
+                m_subject = f"lol_monitor: API key error! (user: {riotid_name})"
+            else:
+                m_subject = f"lol_monitor: monitoring error (user: {riotid_name})"
+            m_body = f"{advice.summary}{nl_ch}{nl_ch}To fix: {advice.fix}{nl_ch}{nl_ch}LoL Monitor will retry in {display_time(sleep_interval)}.{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+            m_body_html = (
+                f"<html><head></head><body>"
+                f"{html.escape(advice.summary)}<br><br>To fix: {html.escape(advice.fix)}<br><br>"
+                f"LoL Monitor will retry in {html.escape(display_time(sleep_interval))}."
+                f"{get_cur_ts('<br><br>Timestamp: ')}"
+                f"</body></html>"
+            )
+            if (ERROR_NOTIFICATION and not error_email_sent) or (webhook_event_enabled("error") and not error_webhook_sent):
+                email_delivered, webhook_delivered = send_notification_channels("error", m_subject, m_body, m_body_html, email_enabled=ERROR_NOTIFICATION and not error_email_sent, webhook_enabled=webhook_event_enabled("error") and not error_webhook_sent, ntfy_priority=5, ntfy_tags="warning")
+                error_email_sent = error_email_sent or email_delivered
+                error_webhook_sent = error_webhook_sent or webhook_delivered
+                # A delivery line can land on a check the outage reporter keeps quiet, and a line with nothing
+                # under it reads as a run that stopped there
+                delivery_reported = email_delivered or webhook_delivered
+
+            if outage_outcome in ("full", "repeat") or delivery_reported:
+                print_cur_ts("Timestamp:\t\t\t")
+
+            debug_print("Retry wait", check=f"#{check_count}", due_in=display_time(sleep_interval), reason="waiting out the failure")
+            time.sleep(sleep_interval)
             continue
 
 
@@ -6277,7 +6425,7 @@ def validate_secret_action_args(args, parser, action_dest, action_flag, permitte
 
 
 def main():
-    global CLI_CONFIG_PATH, CONFIG_DISCOVERY_DISABLED, COMMAND_LINE_SECRET_KEYS, EXPORTED_SECRET_KEYS, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT, INCLUDE_FORBIDDEN_MATCHES, DEBUG_MODE, COLORED_OUTPUT, TRUNCATE_CHARS, WEBHOOK_ENABLED
+    global CLI_CONFIG_PATH, CONFIG_DISCOVERY_DISABLED, COMMAND_LINE_SECRET_KEYS, EXPORTED_SECRET_KEYS, DOTENV_FILE, LIVENESS_REMINDER_SECONDS, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT, INCLUDE_FORBIDDEN_MATCHES, DEBUG_MODE, COLORED_OUTPUT, TRUNCATE_CHARS, WEBHOOK_ENABLED
 
     if "--generate-config" in sys.argv:
         config_content = CONFIG_BLOCK.strip("\n") + "\n"
@@ -6742,7 +6890,6 @@ def main():
     # Applied before the report so every row it prints describes the run this command line asked for
     if args.check_interval:
         LOL_CHECK_INTERVAL = args.check_interval
-        LIVENESS_CHECK_COUNTER = LIVENESS_CHECK_INTERVAL / LOL_CHECK_INTERVAL
 
     if args.active_interval:
         LOL_ACTIVE_CHECK_INTERVAL = args.active_interval
@@ -6757,6 +6904,11 @@ def main():
         ERROR_NOTIFICATION = False
 
     apply_webhook_cli_overrides(args, parser)
+
+    # Timed rather than counted, because a failing run retries on a different interval than a healthy one, so a
+    # cadence derived from the polling interval drifts by however much the two differ. Derived after the
+    # configuration file is read, so a saved LIVENESS_CHECK_INTERVAL reaches the loop
+    LIVENESS_REMINDER_SECONDS = LIVENESS_CHECK_INTERVAL if LIVENESS_CHECK_INTERVAL > 0 else 0
 
     if args.disable_logging is True:
         DISABLE_LOGGING = True
