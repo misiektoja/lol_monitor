@@ -565,15 +565,15 @@ def test_a_failure_in_a_match_waits_the_active_interval(lm_module, riot_api, fak
 def test_the_failure_line_puts_the_variable_part_last(lm_module):
     advice = lm_module.classify_recovery_error(RuntimeError("500 Internal Server Error"))
 
-    assert lm_module.render_monitor_recovery(advice, "retrying in 5 minutes", with_fix=False) == "* Error: The Riot API is temporarily unavailable (retrying in 5 minutes)"
+    assert lm_module.render_recovery_advice(advice, retry_note="retrying in 5 minutes", with_fix=False) == "* Error: The Riot API is temporarily unavailable (retrying in 5 minutes)"
 
 
 # Verifies the raw exception text reaches a debug run, since the summary alone is not enough to file a report
 def test_the_failure_line_carries_the_technical_detail_in_debug(lm_module, monkeypatch):
     advice = lm_module.classify_recovery_error(RuntimeError("500 Internal Server Error"))
-    quiet = lm_module.render_monitor_recovery(advice)
+    quiet = lm_module.render_recovery_advice(advice)
     monkeypatch.setattr(lm_module, "DEBUG_MODE", True)
-    loud = lm_module.render_monitor_recovery(advice)
+    loud = lm_module.render_recovery_advice(advice)
 
     assert "Technical detail:" not in quiet
     assert f"Technical detail: {advice.detail}" in loud
@@ -584,14 +584,14 @@ def test_a_detail_that_repeats_the_summary_is_dropped(lm_module, monkeypatch):
     advice = lm_module.classify_recovery_error(RuntimeError("500 Internal Server Error"))
     monkeypatch.setattr(lm_module, "DEBUG_MODE", True)
 
-    assert "Technical detail:" not in lm_module.render_monitor_recovery(advice._replace(detail=advice.summary))
+    assert "Technical detail:" not in lm_module.render_recovery_advice(advice._replace(detail=advice.summary))
 
 
 # Verifies a sub-operation takes the label slot rather than inventing a second sentence shape
 def test_a_label_replaces_the_error_word_rather_than_the_sentence(lm_module):
     advice = lm_module.classify_recovery_error(RuntimeError("500 Internal Server Error"))
 
-    assert lm_module.render_monitor_recovery(advice, "", with_fix=False, label="Warning").startswith("* Warning: ")
+    assert lm_module.render_recovery_advice(advice, retry_note="", with_fix=False, label="Warning").startswith("* Warning: ")
 
 
 # Verifies advice is a To fix line rather than a second starred line, since one failure gets one report

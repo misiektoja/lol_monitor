@@ -334,7 +334,7 @@ def test_a_fingerprint_discloses_no_part_of_the_value(lm_module):
 # Verifies the fix is rendered whenever this printer runs, since its caller only reaches it on a new failure
 # category and the throttling of a lasting outage is the outage reporter's job rather than a second guard's
 def test_the_printed_failure_carries_its_fix(lm_module, capsys):
-    lm_module.print_monitor_recovery(RuntimeError("429 rate limit exceeded"), "runtime", "retrying in 5 seconds")
+    lm_module.print_recovery_error(RuntimeError("429 rate limit exceeded"), "runtime", retry_note="retrying in 5 seconds")
 
     printed = capsys.readouterr().out
     assert printed.startswith("* Error: Riot is rate limiting requests (retrying in 5 seconds)\n")
@@ -563,3 +563,50 @@ def test_the_guide_guard_still_inspects_the_source(lm_module):
 
     assert len(inspected) > 40
     assert all(any(marker in summary for _, summary in bare) for marker in GUIDELESS_ADVICE), "an allowlisted summary stopped matching a builder"
+
+
+# One concept carried three names across this family: a renderer taking a built advice, a renderer taking the
+# failure itself, and a third pair named after the monitoring loop. Pinned here so a call copied from a sibling
+# cannot quietly mean something else
+def test_the_recovery_printers_share_one_contract(lm_module):
+    advice_first = ("advice", "debug", "retry_note", "with_fix", "label")
+    error_first = ("error", "context", "debug", "detail", "retry_note", "with_fix", "label")
+
+    assert tuple(inspect.signature(lm_module.render_recovery_advice).parameters) == advice_first
+    assert tuple(inspect.signature(lm_module.print_recovery_advice).parameters) == advice_first
+    assert tuple(inspect.signature(lm_module.render_recovery_error).parameters) == error_first
+    assert tuple(inspect.signature(lm_module.print_recovery_error).parameters) == error_first
+
+
+# The advice pair prints what the caller built, so a summary the classifier would never produce survives the trip
+def test_the_advice_printer_does_not_reclassify(lm_module, capsys):
+    lm_module.DEBUG_MODE = False
+    advice = lm_module.make_recovery_advice("network.timeout", "a summary no rule produces", "a fix of its own", True)
+
+    returned = lm_module.print_recovery_advice(advice)
+
+    assert capsys.readouterr().out == "* Error: a summary no rule produces\nTo fix: a fix of its own\n"
+    assert returned is advice
+
+
+# The error pair classifies what the caller hands it, which is the difference between the two front doors
+def test_the_error_printer_classifies_what_it_was_given(lm_module, capsys):
+    lm_module.DEBUG_MODE = False
+
+    returned = lm_module.print_recovery_error(RuntimeError("429 rate limit exceeded"), context="runtime")
+
+    assert returned.code != "unknown"
+    assert capsys.readouterr().out.startswith(f"* Error: {returned.summary}\n")
+
+
+# Both front doors reach the same renderer, so the retry note, the label and a suppressed fix behave the same way
+def test_both_front_doors_render_the_same_line(lm_module):
+    lm_module.DEBUG_MODE = False
+    error = RuntimeError("429 rate limit exceeded")
+    advice = lm_module.classify_recovery_error(error, "runtime")
+
+    through_advice = lm_module.render_recovery_advice(advice, retry_note="retrying in 5 minutes", with_fix=False, label="Warning")
+    through_error = lm_module.render_recovery_error(error, "runtime", retry_note="retrying in 5 minutes", with_fix=False, label="Warning")
+
+    assert through_advice == through_error
+    assert through_advice == f"* Warning: {advice.summary} (retrying in 5 minutes)"

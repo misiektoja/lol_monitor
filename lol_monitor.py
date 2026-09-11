@@ -1161,23 +1161,31 @@ def classify_recovery_error(error=None, context="runtime", detail=""):
     return advice("unknown", safe_detail or "The request could not be completed", "Check the technical detail below and the monitoring log for the failing request", True, DIAGNOSTICS_GUIDE_URL)
 
 
-# Renders one structured failure as the shared Error, To fix and optional Technical detail block
-def render_recovery_error(error=None, context="runtime", debug=None, detail=""):
-    advice = classify_recovery_error(error, context, detail)
-    # Resolved here rather than at each call site, so one flag decides whether the technical line is printed
-    show_debug = DEBUG_MODE if debug is None else debug
-    lines = [f"* Error: {advice.summary}", f"To fix: {advice.fix}"]
-    # A detail that only repeats the summary spends a line saying nothing, which is section 15.52's rule for rows
-    if show_debug and advice.detail and advice.detail != advice.summary:
-        lines.append(f"Technical detail: {sanitize_error_text(advice.detail)}")
+# Renders one built advice as the shared Error, To fix and optional Technical detail block
+def render_recovery_advice(advice, debug=None, retry_note="", with_fix=True, label="Error"):
+    lines = [f"* {label}: {advice.summary}" + (f" ({retry_note})" if retry_note else "")]
+    if with_fix:
+        lines.append(f"To fix: {advice.fix}")
+        # A detail that only repeats the summary spends a line saying nothing, which is section 15.52's rule for rows
+        if (DEBUG_MODE if debug is None else debug) and advice.detail and advice.detail != advice.summary:
+            lines.append(f"Technical detail: {sanitize_error_text(advice.detail)}")
     return "\n".join(lines)
 
 
-# Prints one structured recovery error and returns its stable advice
-def print_recovery_error(error=None, context="runtime", debug=None, detail=""):
-    advice = classify_recovery_error(error, context, detail)
-    print(render_recovery_error(RecoveryError(advice), debug=debug))
+# Classifies one failure and renders it through the shared recovery block
+def render_recovery_error(error=None, context="runtime", debug=None, detail="", retry_note="", with_fix=True, label="Error"):
+    return render_recovery_advice(classify_recovery_error(error, context, detail), debug, retry_note, with_fix, label)
+
+
+# Prints one built advice through the shared recovery block and returns it
+def print_recovery_advice(advice, debug=None, retry_note="", with_fix=True, label="Error"):
+    print(render_recovery_advice(advice, debug, retry_note, with_fix, label))
     return advice
+
+
+# Classifies one failure, prints it through the shared recovery block and returns its stable advice
+def print_recovery_error(error=None, context="runtime", debug=None, detail="", retry_note="", with_fix=True, label="Error"):
+    return print_recovery_advice(classify_recovery_error(error, context, detail), debug, retry_note, with_fix, label)
 
 
 # Decides how a lasting failure is reported: in full when it is new, then on the liveness cadence while it lasts
@@ -1233,24 +1241,6 @@ def print_outage_liveness(target, advice, since):
 def print_outage_recovery(target, lasted):
     print(f"* Monitoring recovered for {target} after {display_time(max(1, lasted))}")
     print_cur_ts("Timestamp:\t\t\t")
-
-
-# Renders one monitoring failure in the shape every monitor in this family prints
-def render_monitor_recovery(advice, retry_note="", with_fix=True, label="Error"):
-    lines = [f"* {label}: {advice.summary}" + (f" ({retry_note})" if retry_note else "")]
-    if with_fix:
-        lines.append(f"To fix: {advice.fix}")
-        # A detail that only repeats the summary spends a line saying nothing, which is section 15.52's rule for rows
-        if DEBUG_MODE and advice.detail and advice.detail != advice.summary:
-            lines.append(f"Technical detail: {sanitize_error_text(advice.detail)}")
-    return "\n".join(lines)
-
-
-# Prints one monitoring failure in full, which is the only state its caller reports from
-def print_monitor_recovery(error, context, retry_note="", label="Error"):
-    advice = classify_recovery_error(error, context)
-    print(render_monitor_recovery(advice, retry_note, True, label))
-    return advice
 
 
 # Returns the wait Riot asked for on a rate limit, falling back to the polling interval when it named none
@@ -3009,7 +2999,7 @@ def reload_secrets_signal_handler(sig, frame):
                 print("* No .env file found, skipping env-var reload")
         except ImportError:
             env_path = None
-            print_monitor_recovery(RecoveryError(missing_dependency_advice("python-dotenv", "The env-var reload was skipped")), "runtime", label="Warning")
+            print_recovery_advice(missing_dependency_advice("python-dotenv", "The env-var reload was skipped"), label="Warning")
 
     global WEBHOOK_PROVIDER
     webhook_url_changed = False
@@ -4738,12 +4728,12 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                 retry_after = riot_retry_after_seconds(e, sleep_interval)
                 retry_note = f"retrying in {display_time(retry_after)}"
                 if outage_outcome == "full":
-                    print_monitor_recovery(e, "runtime", retry_note)
+                    print_recovery_error(e, "runtime", retry_note=retry_note)
                     print_cur_ts("Timestamp:\t\t\t")
                 elif outage_outcome == "degraded":
                     print_outage_liveness(riotid, advice, outage.since)
                 elif outage_outcome == "repeat":
-                    print(render_monitor_recovery(advice, retry_note, with_fix=False))
+                    print(render_recovery_advice(advice, retry_note=retry_note, with_fix=False))
                     print_cur_ts("Timestamp:\t\t\t")
                 debug_print("Retry wait", check=f"#{check_count}", due_in=display_time(retry_after), reason="riot rate limited the request")
                 time.sleep(retry_after)
@@ -4753,11 +4743,11 @@ async def lol_monitor_user(riotid, region, csv_file_name):
             transient_retry = advice.retryable and not transient_retry_used
             retry_note = f"retrying in {display_time(TRANSIENT_RETRY_SECONDS if transient_retry else sleep_interval)}"
             if outage_outcome == "full":
-                print_monitor_recovery(e, "runtime", retry_note)
+                print_recovery_error(e, "runtime", retry_note=retry_note)
             elif outage_outcome == "degraded":
                 print_outage_liveness(riotid, advice, outage.since)
             elif outage_outcome == "repeat":
-                print(render_monitor_recovery(advice, retry_note, with_fix=False))
+                print(render_recovery_advice(advice, retry_note=retry_note, with_fix=False))
             if transient_retry:
                 transient_retry_used = True
                 if outage_outcome in ("full", "repeat"):
@@ -6929,7 +6919,7 @@ def main():
             if env_path:
                 retry_command = render_command([args.riot_id, args.region]) if args.riot_id and args.region else None
                 alternative = f"Then re-run: {retry_command}" if retry_command else "Or export the secrets as environment variables"
-                print_monitor_recovery(RecoveryError(missing_dependency_advice("python-dotenv", f"The dotenv file '{env_path}' was not loaded", alternative)), "runtime", label="Warning")
+                print_recovery_advice(missing_dependency_advice("python-dotenv", f"The dotenv file '{env_path}' was not loaded", alternative), label="Warning")
 
     # Exported secrets apply on their own, so a dotenv file is an alternative to the environment rather than a precondition
     load_secrets_from_environment()
