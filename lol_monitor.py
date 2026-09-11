@@ -218,6 +218,10 @@ VERBOSE_MODE = False
 # Can also be enabled via the --debug flag, which turns it on regardless of this setting
 DEBUG_MODE = False
 
+# Whether verbose output confirms each delivered email and webhook alert
+# Applies only when VERBOSE_MODE is enabled
+DELIVERY_CONFIRMATIONS = True
+
 # Controls conversion of separator-only log lines to ASCII:
 #   "Auto" - enable on Windows only (default)
 #   "On"   - enable on every operating system
@@ -424,6 +428,7 @@ LOL_LOGFILE = ""
 DISABLE_LOGGING = False
 VERBOSE_MODE = False
 DEBUG_MODE = False
+DELIVERY_CONFIRMATIONS = True
 ASCII_LOG_SEPARATORS = "Auto"
 TRUNCATE_CHARS = 0
 HORIZONTAL_LINE = 0
@@ -902,6 +907,12 @@ def debug_print(_operation, **fields):
 def verbose_print(message):
     if VERBOSE_MODE:
         print(f"* {sanitize_error_text(message)}")
+
+
+# Prints one delivery confirmation in verbose mode unless DELIVERY_CONFIRMATIONS turns them off
+def verbose_delivery_print(message):
+    if DELIVERY_CONFIRMATIONS:
+        verbose_print(message)
 
 
 # Records a swallowed exception in debug output so a silently degraded feature can still be diagnosed
@@ -2365,7 +2376,7 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15, image_bytes=N
         debug_print("Email delivery", recipient=RECEIVER_EMAIL, outcome="failed", error=f"{type(e).__name__}: {e}")
         print_recovery_error(e, context="email")
         return 1
-    verbose_print(f"Email delivered to {RECEIVER_EMAIL}: {subject}")
+    verbose_delivery_print(f"Email delivered to {RECEIVER_EMAIL}: '{subject}'")
     return 0
 
 
@@ -2951,7 +2962,7 @@ def send_webhook(title, description, notification_type="status", force=False, sl
             else:
                 response = post_webhook_request(json=discord_payload, headers=request_headers)
             if 200 <= response.status_code <= 299:
-                verbose_print(f"Webhook delivered through {webhook_provider_display_name(provider)}: {webhook_values['title']}")
+                verbose_delivery_print(f"Webhook delivered through {webhook_provider_display_name(provider)}: '{webhook_values['title']}'")
                 debug_print("Webhook delivery", channel=provider, status=response.status_code, outcome="OK")
                 return 0
             retryable = response.status_code == 429 or 500 <= response.status_code <= 599

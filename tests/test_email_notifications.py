@@ -26,7 +26,17 @@ def test_a_delivered_message_is_traced_with_its_recipient(lm_module, monkeypatch
 
     lm_module.send_email("LoL user is in game now", "body text", "", True)
 
-    assert "* Email delivered to alerts@example.test: LoL user is in game now" in capsys.readouterr().out
+    assert "* Email delivered to alerts@example.test: 'LoL user is in game now'" in capsys.readouterr().out
+
+
+# Verifies DELIVERY_CONFIRMATIONS drops the delivery line without turning the rest of verbose mode off
+def test_delivery_confirmations_can_be_turned_off(lm_module, monkeypatch, smtp_double, capsys):
+    monkeypatch.setattr(lm_module, "VERBOSE_MODE", True)
+    monkeypatch.setattr(lm_module, "DELIVERY_CONFIRMATIONS", False)
+
+    assert lm_module.send_email("LoL user is in game now", "body text", "", True) == 0
+
+    assert "Email delivered" not in capsys.readouterr().out
 
 
 # Verifies a plain SMTP session skips the TLS upgrade when the operator turned SSL off

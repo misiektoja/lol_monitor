@@ -48,7 +48,7 @@ Running doctor without a target checks everything except the monitored account. 
 
 Two flags control how much the tool explains about itself.
 
-`--verbose` reports what the tool is doing in plain `* ` lines: which notification categories were switched off and why, and each message that was delivered. During monitoring it stays quiet, so a run that finds nothing prints nothing beyond the liveness banner described under [What a Long Run Prints](#what-a-long-run-prints). Use `--debug` when you want a line per completed check.
+`--verbose` reports what the tool is doing in plain `* ` lines: which notification categories were switched off and why, and each message that was delivered. The delivery lines name the recipient or the webhook provider and quote the subject. Set `DELIVERY_CONFIRMATIONS = False` to drop them and keep the rest of verbose mode. During monitoring it stays quiet, so a run that finds nothing prints nothing beyond the liveness banner described under [What a Long Run Prints](#what-a-long-run-prints). Use `--debug` when you want a line per completed check.
 
 ```sh
 lol_monitor <riot_id> <region> --verbose

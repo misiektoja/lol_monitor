@@ -685,8 +685,20 @@ def test_a_delivered_alert_is_traced_with_its_provider(discord, webhook_session,
     assert discord.send_webhook("LoL user is in game now", "body", "status", sleeper=RecordingSleeper()) == 0
 
     printed = capsys.readouterr().out
-    assert "* Webhook delivered through Discord: LoL user is in game now" in printed
+    assert "* Webhook delivered through Discord: 'LoL user is in game now'" in printed
     assert DISCORD_URL not in printed
+
+
+# Verifies DELIVERY_CONFIRMATIONS drops the delivery line without turning the rest of verbose mode off
+def test_delivery_confirmations_can_be_turned_off(discord, webhook_session, monkeypatch, capsys):
+    from conftest import FakeWebhookResponse
+    monkeypatch.setattr(discord, "VERBOSE_MODE", True)
+    monkeypatch.setattr(discord, "DELIVERY_CONFIRMATIONS", False)
+    webhook_session.responses.append(FakeWebhookResponse(204))
+
+    assert discord.send_webhook("LoL user is in game now", "body", "status", sleeper=RecordingSleeper()) == 0
+
+    assert "Webhook delivered" not in capsys.readouterr().out
 
 
 # Verifies a retried delivery that succeeds reports success rather than the failure that preceded it
