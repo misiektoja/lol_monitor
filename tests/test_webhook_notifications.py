@@ -235,9 +235,10 @@ def test_the_non_text_placeholders_keep_their_type(lm_module):
     assert rendered == {"color": 123, "fields": [{"name": "n"}]}
 
 
-# Verifies a placeholder the tool does not supply is left as written rather than crashing the delivery
-def test_an_unknown_placeholder_is_left_as_written(lm_module):
-    assert lm_module.format_payload("{not_a_placeholder}", {"title": "T"}) == "{not_a_placeholder}"
+# Reports an unknown field before attempting delivery
+def test_an_unknown_placeholder_names_the_template_error(lm_module):
+    with pytest.raises(ValueError, match="not_a_placeholder"):
+        lm_module.format_payload("{not_a_placeholder}", {"title": "T"})
 
 
 # Verifies the alert text is sanitized and bounded, so a hostile player name cannot drive the receiving service
