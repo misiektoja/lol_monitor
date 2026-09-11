@@ -993,6 +993,31 @@ class Logger(object):
         pass
 
 
+# The startup banner every tool in this family opens with: a boxed glyph beside the tool name, the shared
+# "Monitor" wordmark under it and the version on its own line. The wordmarks are pyfiglet's standard font
+STARTUP_BANNER = r"""
+ .---------------.    _          _
+|  \\        //  |   | |    ___ | |
+|   \\======//   |   | |   / _ \| |
+|   //======\\   |   | |__| (_) | |___
+|  //        \\  |   |_____\___/|_____|
+ '---------------'
+                      __  __             _ _
+                     |  \/  | ___  _ __ (_) |_ ___  _ __
+                     | |\/| |/ _ \| '_ \| | __/ _ \| '__|
+                     | |  | | (_) | | | | | || (_) | |
+                     |_|  |_|\___/|_| |_|_|\__\___/|_|"""
+
+# Where both wordmarks start, which the version line shares so the three read as one block
+STARTUP_BANNER_WORDMARK_COLUMN = 21
+
+
+# Prints the ASCII startup banner with a separately aligned version
+def print_startup_banner():
+    print(STARTUP_BANNER)
+    print(f"{'':{STARTUP_BANNER_WORDMARK_COLUMN}}v{VERSION}\n")
+
+
 # Signal handler when user presses Ctrl+C
 def signal_handler(sig, frame):
     sys.stdout = stdout_bck
@@ -3627,7 +3652,7 @@ def main():
 
     clear_screen(CLEAR_SCREEN)
 
-    print(f"League of Legends Monitoring Tool v{VERSION}\n")
+    print_startup_banner()
 
     parser = argparse.ArgumentParser(
         prog="lol_monitor",
