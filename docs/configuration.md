@@ -365,3 +365,16 @@ export LOL_MONITOR_INSTALL_METHOD=pip
 ```
 
 Set `LOL_MONITOR_IN_CONTAINER=true` to have the summary say so.
+
+
+### Reloading secrets and backup contents
+
+On systems with SIGHUP, reloading applies changes from the selected dotenv file. Removing a file-owned
+assignment restores its independently configured fallback or clears the value when no fallback exists.
+A read or parsing failure keeps the last usable credentials and reports how to correct the file.
+Values exported when the process started continue to take precedence during reload.
+
+
+Setup's configuration backup blanks inline secret assignments from older configurations while retaining
+other settings and comments. General `--generate-config` backups remain exact copies and can contain
+inline credentials. The dotenv file is not backed up during secret replacement.
