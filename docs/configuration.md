@@ -319,7 +319,7 @@ Long paths, long game labels and long error text wrap across several screen line
 
 **The log file always keeps the full line**, so nothing is lost. That is also why truncation is ignored when logging is switched off with `-d`: without a log file there would be no full copy of a cut line.
 
-Width is measured in display columns rather than characters, so a wide glyph in a Korean or Japanese player name costs two columns and is never printed as half of itself. This needs the optional [wcwidth](https://pypi.org/project/wcwidth/) library:
+Width is measured in display columns rather than characters, so a wide glyph in a Korean or Japanese player name costs two columns and is never printed as half of itself. This needs the optional [wcwidth](https://pypi.org/project/wcwidth/) library. Without it every character counts as one column and a line holding wide glyphs can run past the limit:
 
 ```bash
 pip install wcwidth

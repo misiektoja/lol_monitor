@@ -130,11 +130,11 @@ def test_each_line_is_cut_on_its_own():
     assert visible_width(truncated.split("\n")[0]) == 10
 
 
-# Verifies text is left in full without wcwidth, since cutting by character count would break wide glyphs
-def test_text_is_left_alone_without_wcwidth(without_wcwidth):
+# Verifies the width cap still applies without wcwidth, counting every character as one column
+def test_the_width_cap_still_applies_without_wcwidth(without_wcwidth):
     line = "plain text that is much too long"
 
-    assert monitor.truncate_string_per_line(line, 12) == line
+    assert monitor.truncate_string_per_line(line, 12) == "plain tex..."
 
 
 # Verifies the flag wins over the configured value, which is how one run is widened or narrowed
