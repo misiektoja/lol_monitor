@@ -379,3 +379,12 @@ def test_no_csv_write_failure_prints_its_own_line(lm_module):
 
     assert guarded >= 3, f"only {guarded} CSV writes are guarded, so this no longer covers them"
     assert not offenders, "CSV write failures reported outside the recovery block:\n" + "\n".join(offenders)
+
+
+# Verifies added context does not replace the error text the rules read, which used to make every such failure unknown
+@pytest.mark.parametrize("message, expected", [("429 rate limit exceeded", "riot.rate_limited"), ("404 not found", "target.not_found")])
+def test_a_caller_supplied_detail_does_not_hide_the_error(lm_module, message, expected):
+    advice = lm_module.classify_recovery_error(Exception(message), detail="Cannot fetch the latest match IDs")
+
+    assert advice.code == expected
+    assert "Cannot fetch the latest match IDs" in advice.detail
