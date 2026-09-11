@@ -230,7 +230,9 @@ def test_other_match_failures_are_reported(lm_module, riot_api, fake_clock, caps
     result = asyncio.run(lm_module.process_and_print_single_match("EUN1_1", PUUID, USER, "eun1", False, None))
 
     assert result == (0, 0)
-    assert "unexpected error occurred while processing match EUN1_1" in capsys.readouterr().out
+    printed = capsys.readouterr().out
+    assert "* Error: The Riot API is temporarily unavailable" in printed
+    assert "To fix: " in printed
 
 
 # Verifies a match is fetched from the API when the caller has nothing cached

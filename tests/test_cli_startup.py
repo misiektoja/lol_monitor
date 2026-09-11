@@ -441,7 +441,9 @@ def test_listing_range_is_passed_through(lm_module, monkeypatch, listing_calls):
 def test_an_inverted_listing_range_is_refused(lm_module, monkeypatch, listing_calls, capsys):
     assert run_main(lm_module, monkeypatch, ["-l", "-m", "20", "-n", "5", RIOT_ID, REGION]) == 1
 
-    assert "cannot be greater than max matches" in capsys.readouterr().out
+    printed = capsys.readouterr().out
+    assert "* Error: The lowest match number (20) is above the highest (5)" in printed
+    assert "To fix: Raise -n / --recent-matches-count or lower -m / --min-recent-matches" in printed
     assert listing_calls == []
 
 

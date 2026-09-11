@@ -132,7 +132,7 @@ def test_startup_without_history_is_called_out(lm_module, riot_api, fake_clock, 
 
     run_loop(lm_module, riot_api, [])
 
-    assert "Could not fetch initial match history" in capsys.readouterr().out
+    assert "No match history to start from" in capsys.readouterr().out
 
 
 # Verifies a Riot ID that cannot be resolved stops the run instead of monitoring nothing

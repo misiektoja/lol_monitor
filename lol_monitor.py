@@ -669,6 +669,10 @@ def pip_install_command(requirement):
     return " ".join(quote_command_argument(part) for part in (sys.executable or "python3", "-m", "pip", "install", requirement))
 
 
+# Returns advice for an optional library that is missing, naming the exact install command for this interpreter
+def missing_dependency_advice(package, effect, alternative=""): return make_recovery_advice("dependency.missing", f"{effect} because the optional '{package}' library is missing", recovery_fix_with_guide(f"Install it with: {pip_install_command(package)}" + (f". {alternative}" if alternative else ""), INSTALL_GUIDE_URL), False)
+
+
 # Raised when a private setting cannot be checked or saved safely
 class SecretConfigurationError(Exception):
     pass
@@ -2962,7 +2966,7 @@ def reload_secrets_signal_handler(sig, frame):
                 print("* No .env file found, skipping env-var reload")
         except ImportError:
             env_path = None
-            print("* python-dotenv not installed, skipping env-var reload")
+            print_monitor_recovery(RecoveryError(missing_dependency_advice("python-dotenv", "The env-var reload was skipped")), "runtime", label="Warning")
 
     global WEBHOOK_PROVIDER
     webhook_url_changed = False
@@ -3776,7 +3780,7 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
                     return 0, 0
                 else:
                     debug_swallowed_exception("Match details", e)
-                    print(f"* An unexpected error occurred while processing match {match_id}: {e}")
+                    print_recovery_error(e, detail=f"Cannot process match {match_id}: {e}")
                     return 0, 0
 
     try:
@@ -3994,7 +3998,7 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
                     print()
                     send_notification_channels("status", m_subject, m_body, m_body_html, email_enabled=True)
         else:
-            print(f"* An unexpected error occurred while processing match {match_id}: {e}")
+            print_recovery_error(e, detail=f"Cannot process match {match_id}: {e}")
 
         return 0, 0
 
@@ -4077,7 +4081,7 @@ async def print_match_history(puuid: str, riotid_name: str, region: str, matches
                             accessible_match_ids.append(match_id)
                             processed_count += 1
                     else:
-                        print(f"* Warning: Error processing match {match_id}: {e}")
+                        print_recovery_error(e, detail=f"Cannot process match {match_id}: {e}")
 
     if len(accessible_match_ids) < range_size:
         print(f"* Warning: Not enough displayable matches found. Requested {range_size} matches (from #{matches_min} to #{matches_num}), found: {len(accessible_match_ids)}")
@@ -4433,13 +4437,13 @@ async def lol_monitor_user(riotid, region, csv_file_name):
     try:
         summoner_info = await get_summoner_details(puuid, region)
     except Exception as e:
-        print(f"* Warning: Could not fetch summoner details: {e}")
+        print_recovery_error(e, detail=f"Cannot read the summoner details: {e}")
         summoner_info = {"summoner_level": "N/A", "revision_date": "N/A"}
 
     try:
         ranked_info = await get_ranked_info(puuid, region)
     except Exception as e:
-        print(f"* Warning: Could not fetch ranked information: {e}")
+        print_recovery_error(e, detail=f"Cannot read the ranked information: {e}")
         ranked_info = {
             "solo_duo": {"tier": "N/A", "rank": "N/A", "lp": "N/A", "wins": 0, "losses": 0},
             "flex": {"tier": "N/A", "rank": "N/A", "lp": "N/A", "wins": 0, "losses": 0},
@@ -4448,7 +4452,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
     try:
         mastery_info = await get_champion_mastery(puuid, region, top_n=3)
     except Exception as e:
-        print(f"* Warning: Could not fetch champion mastery: {e}")
+        print_recovery_error(e, detail=f"Cannot read the champion mastery: {e}")
 
     print(f"Riot ID (name#tag):\t\t{riotid}")
     print(f"Riot PUUID:\t\t\t{puuid}")
@@ -4504,8 +4508,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
     try:
         initial_match_ids = await get_latest_match_ids(puuid, region, count=20)
     except Exception as e:
-        print(f"* Warning: Could not fetch initial match history due to an error: {e}")
-        print("* The tool will start with no history and detect the first new match played")
+        print_recovery_error(e, detail=f"Cannot read the initial match history: {e}")
 
     if initial_match_ids:
         processed_match_ids.update(initial_match_ids)
@@ -4513,9 +4516,9 @@ async def lol_monitor_user(riotid, region, csv_file_name):
         try:
             last_match_start_ts, last_match_stop_ts = await process_and_print_single_match(initial_match_ids[0], puuid, riotid_name, region, False, None)
         except Exception as e:
-            print(f"* Warning: Could not display details for the last known match: {e}")
+            print_recovery_error(e, detail=f"Cannot display the last known match: {e}")
     else:
-        print("* Warning: Could not fetch initial match history. Will detect first new match played")
+        print("* No match history to start from, the first new match played will be detected")
 
     ingame = False
     ingame_old = False
@@ -4597,7 +4600,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                             current_custom_snapshot = None
                             current_match_start_ts = 0
                     except Exception as e:
-                        print(f"* Warning: Could not capture current match details: {e}")
+                        print_recovery_error(e, detail=f"Cannot capture the current match details: {e}")
                         current_custom_snapshot = None
                         current_match_start_ts = 0
 
@@ -4645,7 +4648,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                     print(f"*** Saved custom game match to CSV (no completion within {display_time(CUSTOM_SAVE_DELAY)})")
                     print_cur_ts("\nTimestamp:\t\t\t")
                 except Exception as e:
-                    print(f"* Warning: Could not save custom game match to CSV: {e}")
+                    print_recovery_error(e, context="file", detail=f"Cannot save the custom game match to the CSV file: {e}")
                     print_cur_ts("\nTimestamp:\t\t\t")
                 finally:
                     pending_custom = None
@@ -6875,8 +6878,8 @@ def main():
             env_path = DOTENV_FILE if DOTENV_FILE else None
             if env_path:
                 retry_command = render_command([args.riot_id, args.region]) if args.riot_id and args.region else None
-                retry_line = f"Once installed, re-run this tool with:\n    {retry_command}\n" if retry_command else "Once installed, re-run this tool\n"
-                print(f"* Warning: Cannot load dotenv file '{env_path}' because 'python-dotenv' is not installed\n\nTo install it, run:\n    pip3 install python-dotenv\n\n{retry_line}")
+                alternative = f"Then re-run: {retry_command}" if retry_command else "Or export the secrets as environment variables"
+                print_monitor_recovery(RecoveryError(missing_dependency_advice("python-dotenv", f"The dotenv file '{env_path}' was not loaded", alternative)), "runtime", label="Warning")
 
     # Exported secrets apply on their own, so a dotenv file is an alternative to the environment rather than a precondition
     load_secrets_from_environment()
@@ -7041,7 +7044,7 @@ def main():
                 matches_min = 1
 
         if matches_min > matches_num:
-            print(f"* Min matches ({matches_min}) cannot be greater than max matches ({matches_num})")
+            print_recovery_error(RecoveryError(make_recovery_advice("config.invalid", f"The lowest match number ({matches_min}) is above the highest ({matches_num})", recovery_fix_with_guide("Raise -n / --recent-matches-count or lower -m / --min-recent-matches", USAGE_GUIDE_URL), False)))
             sys.exit(1)
 
         list_operation = "* Listing & saving" if CSV_FILE else "* Listing"

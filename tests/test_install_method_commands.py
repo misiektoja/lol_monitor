@@ -164,4 +164,5 @@ def test_the_dotenv_warning_names_the_command_to_re_run(lm_module, monkeypatch, 
         lm_module.main()
 
     output = capsys.readouterr().out
-    assert f"Once installed, re-run this tool with:\n    python3 lol_monitor.py '{RIOT_ID}' {REGION} --env-file {env_file}" in output
+    assert "* Warning: The dotenv file" in output
+    assert f"Then re-run: python3 lol_monitor.py '{RIOT_ID}' {REGION} --env-file {env_file}" in output
