@@ -436,6 +436,7 @@ SMTP_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#smtp-settings"
 TLS_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#tls-verification"
 INSTALL_GUIDE_URL = f"{DOCS_BASE_URL}/installation/"
 DOCTOR_GUIDE_URL = f"{DOCS_BASE_URL}/troubleshooting/#doctor-preflight"
+DIAGNOSTICS_GUIDE_URL = f"{DOCS_BASE_URL}/troubleshooting/#verbose-and-debug-output"
 SECRETS_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#storing-secrets"
 OUTPUT_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#output-and-files"
 USAGE_GUIDE_URL = f"{DOCS_BASE_URL}/usage/"
@@ -1065,7 +1066,7 @@ def classify_recovery_error(error=None, context="runtime", detail=""):
         if status == 429 or "rate limit" in message:
             return advice("riot.rate_limited", "Riot rate limited the player lookup", "Wait for the reported period then try again", True, INTERVALS_GUIDE_URL)
         if "timed out" in message or "timeout" in message:
-            return advice("network.timeout", "The Riot API request timed out", "Check connectivity then try again", True)
+            return advice("network.timeout", "The Riot API request timed out", "Check connectivity then try again", True, DIAGNOSTICS_GUIDE_URL)
         if status in (401, 403) or "unauthorized" in message or "forbidden" in message:
             return advice("auth.api_key_invalid", "Riot rejected the configured API key", f"A development key expires 24 hours after it is issued, so copy a fresh one from {RIOT_API_KEY_REGISTRATION_URL}", False, RIOT_API_KEY_GUIDE_URL)
         if "region_to_continent" in message:
@@ -1075,7 +1076,8 @@ def classify_recovery_error(error=None, context="runtime", detail=""):
         return advice("target.not_found", safe_detail or "Riot has no account for that Riot ID", "Check the game name and the tag line, since a renamed account cannot be monitored", False, USAGE_GUIDE_URL)
 
     if context == "connectivity":
-        # Classified from the error, because the detail names the endpoint rather than the failure
+        # Classified from the error, because the detail names the endpoint rather than the failure. No guide,
+        # since no page covers this check and the doctor report already ends with the troubleshooting link
         cause = str(error or "").lower()
         if "timed out" in cause or "timeout" in cause:
             return advice("network.timeout", "The connectivity endpoint did not answer in time", "Check network, DNS, proxy and CHECK_INTERNET_URL settings", True)
@@ -1110,12 +1112,12 @@ def classify_recovery_error(error=None, context="runtime", detail=""):
     if status == 404 or "not found" in message:
         return advice("target.not_found", "Riot has no account for the monitored Riot ID", "Check the game name and the tag line, since a renamed account cannot be monitored", False, USAGE_GUIDE_URL)
     if (status is not None and status >= 500) or any(term in message for term in ("internal server error", "service unavailable", "bad gateway")):
-        return advice("riot.unavailable", "The Riot API is temporarily unavailable", "This is usually a Riot outage. The tool will keep retrying", True)
+        return advice("riot.unavailable", "The Riot API is temporarily unavailable", "This is usually a Riot outage. The tool will keep retrying", True, DIAGNOSTICS_GUIDE_URL)
     if "timed out" in message or "timeout" in message:
-        return advice("network.timeout", "The Riot API request timed out", "Check connectivity. The tool will keep retrying", True)
+        return advice("network.timeout", "The Riot API request timed out", "Check connectivity. The tool will keep retrying", True, DIAGNOSTICS_GUIDE_URL)
     if any(term in message for term in ("connection", "name resolution", "network is unreachable", "no connectivity")):
-        return advice("network.unavailable", "Riot could not be reached", "Check connectivity, DNS and any proxy. The tool will keep retrying", True)
-    return advice("unknown", safe_detail or "The request could not be completed", "Check the technical detail below and the monitoring log for the failing request", True)
+        return advice("network.unavailable", "Riot could not be reached", "Check connectivity, DNS and any proxy. The tool will keep retrying", True, DIAGNOSTICS_GUIDE_URL)
+    return advice("unknown", safe_detail or "The request could not be completed", "Check the technical detail below and the monitoring log for the failing request", True, DIAGNOSTICS_GUIDE_URL)
 
 
 # Renders one structured failure as the shared Error, To fix and optional Technical detail block
@@ -4835,7 +4837,7 @@ def doctor_check_environment(version_info=None, spec_finder=None):
     if tuple(selected_version)[:2] >= MINIMUM_PYTHON_VERSION:
         checks.append(make_doctor_check("Environment", "PASS", f"Python {version_text} is supported", minimum_detail))
     else:
-        advice = make_recovery_advice("dependency.missing", f"Python {version_text} is unsupported", f"Install Python {MINIMUM_PYTHON_VERSION_TEXT} or newer then retry", False)
+        advice = make_recovery_advice("dependency.missing", f"Python {version_text} is unsupported", recovery_fix_with_guide(f"Install Python {MINIMUM_PYTHON_VERSION_TEXT} or newer then retry", INSTALL_GUIDE_URL), False)
         checks.append(make_doctor_check("Environment", "FAIL", advice.summary, minimum_detail, advice))
 
     find_spec = importlib.util.find_spec if spec_finder is None else spec_finder
