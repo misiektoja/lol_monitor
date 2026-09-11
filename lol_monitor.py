@@ -2951,7 +2951,7 @@ def send_webhook(title, description, notification_type="status", force=False, sl
             else:
                 response = post_webhook_request(json=discord_payload, headers=request_headers)
             if 200 <= response.status_code <= 299:
-                verbose_print(f"Webhook delivered through {provider}: {webhook_values['title']}")
+                verbose_print(f"Webhook delivered through {webhook_provider_display_name(provider)}: {webhook_values['title']}")
                 debug_print("Webhook delivery", channel=provider, status=response.status_code, outcome="OK")
                 return 0
             retryable = response.status_code == 429 or 500 <= response.status_code <= 599

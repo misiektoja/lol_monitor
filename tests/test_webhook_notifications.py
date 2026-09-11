@@ -685,7 +685,7 @@ def test_a_delivered_alert_is_traced_with_its_provider(discord, webhook_session,
     assert discord.send_webhook("LoL user is in game now", "body", "status", sleeper=RecordingSleeper()) == 0
 
     printed = capsys.readouterr().out
-    assert "* Webhook delivered through discord: LoL user is in game now" in printed
+    assert "* Webhook delivered through Discord: LoL user is in game now" in printed
     assert DISCORD_URL not in printed
 
 
