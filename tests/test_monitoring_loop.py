@@ -709,6 +709,29 @@ def test_a_changed_failure_category_earns_a_new_alert(lm_module, riot_api, fake_
     assert [email["subject"] for email in sent_emails] == [f"lol_monitor: monitoring error (user: {USER})", f"lol_monitor: API key error! (user: {USER})"]
 
 
+# Verifies each channel is tracked on its own, so a channel that failed is retried on the next check while
+# the one that succeeded is not sent the same alert twice
+def test_a_failed_channel_is_retried_and_a_delivered_one_is_not(lm_module, riot_api, fake_clock, monkeypatch, sent_emails, capsys):
+    monkeypatch.setattr(lm_module, "ERROR_NOTIFICATION", True)
+    monkeypatch.setattr(lm_module, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(lm_module, "WEBHOOK_ERROR_NOTIFICATION", True)
+    monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 1800)
+    webhook_attempts = {"count": 0}
+
+    # Fails the first webhook and delivers every later one, the way an outage at the webhook service looks
+    def flaky_webhook(*args, **kwargs):
+        webhook_attempts["count"] += 1
+        return 1 if webhook_attempts["count"] == 1 else 0
+
+    monkeypatch.setattr(lm_module, "send_webhook", flaky_webhook)
+
+    run_checks(lm_module, riot_api, monkeypatch, always_failing, 8)
+
+    # The email landed once and was never resent, while the webhook was retried until it landed
+    assert len(sent_emails) == 1
+    assert webhook_attempts["count"] == 2
+
+
 # Verifies a delivery on a check the reporter keeps quiet still closes its block, so the line is not left
 # looking like a run that stopped there
 @pytest.mark.parametrize("alerts,expected_blocks", [(False, 1), (True, 2)])

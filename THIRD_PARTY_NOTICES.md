@@ -19,6 +19,7 @@ These are not part of the distributed package.
 
 | Component | License | Use |
 | --- | --- | --- |
+| [Hypothesis](https://pypi.org/project/hypothesis/) | MPL-2.0 | Property-based tests for the input normalizers |
 | [pytest](https://pypi.org/project/pytest/) | MIT | Test suite |
 | [PyYAML](https://pypi.org/project/PyYAML/) | MIT | Validating workflows and issue templates in the test suite |
 | [Ruff](https://pypi.org/project/ruff/) | MIT | Linting the module and the test suite |

@@ -3185,7 +3185,9 @@ def parse_duration_input(value):
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        return int(value) if value > 0 else None
+        # Rounded and re-checked like the text path, so a fraction of a second is refused rather than read as zero
+        seconds = int(round(value))
+        return seconds if seconds > 0 else None
     if not isinstance(value, str):
         return None
     text = value.strip().casefold().replace(",", ".")
