@@ -36,7 +36,7 @@ def test_the_classifier_only_produces_declared_codes(lm_module, context):
 def test_every_declared_code_is_reachable(lm_module):
     produced = set()
     for context in CONTEXTS:
-        for error in (RuntimeError("rate limit exceeded"), RuntimeError("request timed out"), RuntimeError("connection refused"), RuntimeError("401 Unauthorized"), RuntimeError("404 not found"), RuntimeError("500 Internal Server Error"), RuntimeError("authentication failed"), RuntimeError("the settings are incorrect"), RuntimeError("name and tagline"), RuntimeError("does not exist"), RuntimeError("Could not read dotenv destination '.env'. Check that it is a readable UTF-8 file."), RuntimeError("something surprising")):
+        for error in (RuntimeError("rate limit exceeded"), RuntimeError("request timed out"), RuntimeError("connection refused"), RuntimeError("401 Unauthorized"), RuntimeError("404 not found"), RuntimeError("500 Internal Server Error"), RuntimeError("authentication failed"), RuntimeError("the settings are incorrect"), RuntimeError("name and tagline"), RuntimeError("does not exist"), RuntimeError("Could not read dotenv destination '.env'. Check that it is a readable UTF-8 file."), OSError(24, "Too many open files"), RuntimeError("something surprising")):
             produced.add(lm_module.classify_recovery_error(error, context=context).code)
     # A doctor row builds its own advice rather than going through the classifier, so those call sites count too
     for node in ast.walk(ast.parse(inspect.getsource(lm_module))):
@@ -456,6 +456,22 @@ def reported_problems(source):
         if TROUBLE_WORDS.search(text):
             found.append((node.lineno, " ".join(text.split())))
     return found
+
+
+# Verifies a local file descriptor limit is reported as itself rather than as a failure of the call that hit it
+def test_a_file_descriptor_limit_is_not_reported_as_a_service_failure(lm_module):
+    try:
+        try:
+            raise OSError(24, "Too many open files")
+        except OSError as inner:
+            raise RuntimeError("the Riot request failed") from inner
+    except RuntimeError as error:
+        advice = lm_module.classify_recovery_error(error)
+
+    assert advice.code == "resource.exhausted"
+    assert advice.retryable is False
+    assert "not a Riot problem" in advice.summary
+    assert "ulimit -n 4096" in advice.fix
 
 
 # A problem reported without a category leaves the reader with a message and no next step
