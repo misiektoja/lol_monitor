@@ -67,7 +67,7 @@ Traced operations include configuration and secret resolution, the connectivity 
 lol_monitor <riot_id> <region> --debug
 ```
 
-`--debug` also appends the `Technical detail:` line to every error block, which carries the underlying exception for a bug report, and it leaves the terminal as it was instead of clearing it, so the output you are comparing against stays on screen. `--verbose` clears it like an ordinary run.
+`--debug` also appends the `Technical detail:` line to an error block whose underlying exception says something the summary did not, which is what a bug report needs. It also leaves the terminal as it was instead of clearing it, so the output you are comparing against stays on screen. `--verbose` clears it like an ordinary run.
 
 The two modes are independent, so pass both to see everything. Either can also be turned on permanently with the `VERBOSE_MODE` and `DEBUG_MODE` configuration settings. A flag on the command line always wins, so `--debug` still applies when the configuration file sets `DEBUG_MODE = False`.
 
