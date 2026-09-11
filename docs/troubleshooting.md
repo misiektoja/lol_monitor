@@ -61,7 +61,7 @@ lol_monitor <riot_id> <region> --verbose
 [DEBUG 23:47:21] Riot account lookup: riot_id=Faker#KR1, outcome=OK
 ```
 
-Traced operations include configuration and secret resolution, the connectivity probe, every Riot API and Data Dragon call, SMTP delivery, the log and CSV files being opened and written, each retry with the wait it chose, and every completed check with the interval before the next one. Every operation that makes an outbound call reports its result as `outcome=OK`, `outcome=failed` with an `error=` field, `outcome=degraded` or `outcome=skipped`, so a trace never stops at what was attempted:
+Traced operations include configuration and secret resolution, the connectivity probe, every Riot API and Data Dragon call, the champion icon download an email or ntfy attachment needs, SMTP delivery, the log and CSV files being opened and written, each retry with the wait it chose, and every completed check with the interval before the next one. Every operation that makes an outbound call reports its result as `outcome=OK`, `outcome=failed` with an `error=` field, `outcome=degraded` or `outcome=skipped`, so a trace never stops at what was attempted:
 
 ```sh
 lol_monitor <riot_id> <region> --debug

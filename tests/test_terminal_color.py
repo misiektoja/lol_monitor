@@ -228,6 +228,23 @@ def test_a_roster_entry_colours_the_player_and_the_champion(colored):
     assert rendered == f"- {colored['username']}misiektoja{monitor.ANSI_RESET} ({colored['champion']}Kai'Sa{monitor.ANSI_RESET})"
 
 
+# Verifies the monitored player's own entry is marked, so their line stands out among the nine others
+def test_the_monitored_players_roster_entry_is_marked(colored, monkeypatch):
+    monkeypatch.setattr(monitor, "MONITORED_PLAYER_NAME", "misiektoja")
+
+    assert monitor._colorize_line("- misiektoja (Kai'Sa)").startswith(f"- {colored['monitored_username']}misiektoja{monitor.ANSI_RESET}")
+    assert monitor._colorize_line("- rival (Zed)").startswith(f"- {colored['username']}rival{monitor.ANSI_RESET}")
+
+
+# Verifies the marked name is recorded from the reported player, with anything unusable read as no player
+def test_the_marked_player_is_recorded_from_the_report():
+    monitor.set_monitored_player_name("  misiektoja  ")
+    assert monitor.MONITORED_PLAYER_NAME == "misiektoja"
+
+    monitor.set_monitored_player_name(None)
+    assert monitor.MONITORED_PLAYER_NAME == ""
+
+
 # Verifies a champion mastery entry colours the champion and leaves the level and points beside it plain
 def test_a_mastery_entry_colours_the_champion(colored):
     rendered = monitor._colorize_line("\t\t\t\t1. Kai'Sa:            Level 7 (123,456 points)")

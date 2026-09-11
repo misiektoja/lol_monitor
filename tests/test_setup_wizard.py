@@ -623,7 +623,7 @@ def test_a_refused_mail_server_sign_in_offers_another_attempt(tmp_path, monkeypa
     monkeypatch.setattr(monitor, "_wizard_verify_smtp", lambda values, password: outcomes.pop(0))
     mail = ["smtp.gmail.com", "587", "y", "monitoring@example.test", "monitoring@example.test", "alerts@example.test"]
     answers = minimal_answers()
-    answers[5:6] = ["y"] + mail + ["y"] + mail + ["1"]
+    answers[5:6] = ["y"] + mail + ["y"] + mail + ["1", "n"]
     code = run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY, "wrong", "right"])
 
     assert code == 0
@@ -635,7 +635,7 @@ def test_declining_the_sign_in_retry_keeps_the_mail_server_settings(tmp_path, mo
     monkeypatch.setattr(monitor, "_wizard_verify_smtp", lambda values, password: monitor.classify_recovery_error(OSError("network is unreachable"), "email"))
     mail = ["smtp.gmail.com", "587", "y", "monitoring@example.test", "monitoring@example.test", "alerts@example.test"]
     answers = minimal_answers()
-    answers[5:6] = ["y"] + mail + ["n", "1"]
+    answers[5:6] = ["y"] + mail + ["n", "1", "n"]
     run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY, "mail-password"])
 
     assert "The settings were kept without being checked. Run --doctor to check the sign-in again." in capsys.readouterr().out
@@ -647,7 +647,7 @@ def test_abandoning_a_refused_sign_in_switches_email_off(tmp_path, monkeypatch, 
     monkeypatch.setattr(monitor, "_wizard_verify_smtp", lambda values, password: monitor.classify_recovery_error(monitor.smtplib.SMTPAuthenticationError(535, b"denied"), "email"))
     mail = ["smtp.gmail.com", "587", "y", "monitoring@example.test", "monitoring@example.test", "alerts@example.test"]
     answers = minimal_answers()
-    answers[5:6] = ["y"] + mail + ["n", "1"]
+    answers[5:6] = ["y"] + mail + ["n", "1", "n"]
     run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY, "mail-password"])
 
     assert "Email notifications stay off until the mail server accepts the settings." in capsys.readouterr().out
@@ -751,7 +751,7 @@ def test_a_malformed_webhook_url_can_be_abandoned(tmp_path, monkeypatch, wizard_
 # Verifies a bare ntfy topic name typed into the wizard is saved as a complete URL
 def test_a_bare_ntfy_topic_name_is_saved_as_a_url(tmp_path, monkeypatch, wizard_globals):
     answers = minimal_answers()
-    answers[6:7] = ["y", "2", "n", "1"]
+    answers[6:7] = ["y", "2", "n", "1", "n"]
     run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY, "lol-monitor-alerts"])
 
     assert 'WEBHOOK_URL="https://ntfy.sh/lol-monitor-alerts"' in (tmp_path / ".env").read_text(encoding="utf-8")
@@ -781,7 +781,7 @@ def test_no_ntfy_topic_at_all_still_offers_to_give_up(tmp_path, monkeypatch, wiz
 # Verifies a token pasted with its authorization scheme can be given up on without losing the topic already entered
 def test_a_pasted_ntfy_authorization_scheme_can_be_abandoned(tmp_path, monkeypatch, wizard_globals, capsys):
     answers = minimal_answers()
-    answers[6:7] = ["y", "2", "y", "n", "1"]
+    answers[6:7] = ["y", "2", "y", "n", "1", "n"]
     run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY, "lol-monitor-alerts", "Bearer tk_secret"])
     dotenv_text = (tmp_path / ".env").read_text(encoding="utf-8")
 
@@ -793,7 +793,7 @@ def test_a_pasted_ntfy_authorization_scheme_can_be_abandoned(tmp_path, monkeypat
 # Verifies a blank token is read as no token, so an optional answer cannot trap the wizard or save an empty secret
 def test_a_blank_ntfy_access_token_means_no_token(tmp_path, monkeypatch, wizard_globals):
     answers = minimal_answers()
-    answers[6:7] = ["y", "2", "y", "1"]
+    answers[6:7] = ["y", "2", "y", "1", "n"]
     run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY, "lol-monitor-alerts", ""])
 
     assert "NTFY_ACCESS_TOKEN" not in (tmp_path / ".env").read_text(encoding="utf-8")
@@ -802,11 +802,33 @@ def test_a_blank_ntfy_access_token_means_no_token(tmp_path, monkeypatch, wizard_
 # Verifies an accepted ntfy token reaches the dotenv file and never the configuration
 def test_an_ntfy_access_token_reaches_only_the_dotenv_file(tmp_path, monkeypatch, wizard_globals):
     answers = minimal_answers()
-    answers[6:7] = ["y", "2", "y", "1"]
+    answers[6:7] = ["y", "2", "y", "1", "n"]
     run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY, "lol-monitor-alerts", "tk_secret_value"])
 
     assert 'NTFY_ACCESS_TOKEN="tk_secret_value"' in (tmp_path / ".env").read_text(encoding="utf-8")
     assert "tk_secret_value" not in (tmp_path / "lol_monitor.conf").read_text(encoding="utf-8")
+
+
+# Verifies an accepted ntfy attachment answer is written, so the icon setting is reachable from setup
+def test_the_ntfy_icon_answer_is_written(tmp_path, monkeypatch, wizard_globals):
+    answers = minimal_answers()
+    transcript = []
+    answers[6:7] = ["y", "2", "n", "1", "y"]
+    run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY, "lol-monitor-alerts"], transcript=transcript)
+
+    assert any(prompt.startswith("Attach the champion icon") for prompt in transcript)
+    assert monitor.parse_config_content((tmp_path / "lol_monitor.conf").read_text(encoding="utf-8"))["NTFY_IMAGES"] is True
+
+
+# Verifies Discord is never asked about the ntfy attachment, since its template carries the icon URL instead
+def test_discord_is_never_asked_about_the_ntfy_icon(tmp_path, monkeypatch, wizard_globals):
+    transcript = []
+    answers = minimal_answers()
+    answers[6:7] = ["y", "1", "1"]
+    run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY, WEBHOOK_URL], transcript=transcript)
+
+    assert not any(prompt.startswith("Attach the champion icon") for prompt in transcript)
+    assert monitor.parse_config_content((tmp_path / "lol_monitor.conf").read_text(encoding="utf-8"))["NTFY_IMAGES"] is False
 
 
 # Verifies the webhook question defaults to the saved switch, so a rerun over a configured webhook proposes keeping it
@@ -974,7 +996,7 @@ def test_an_existing_dotenv_secret_is_kept_unless_the_replacement_is_confirmed(t
     (tmp_path / ".env").write_text('SMTP_PASSWORD="saved-password"\n', encoding="utf-8")
     mail = ["smtp.gmail.com", "587", "y", "monitoring@example.test", "monitoring@example.test", "alerts@example.test"]
     answers = minimal_answers()
-    answers[5:6] = ["y"] + mail + ["n", "1"]
+    answers[5:6] = ["y"] + mail + ["n", "1", "n"]
     run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY, "typed-password"])
 
     dotenv_text = (tmp_path / ".env").read_text(encoding="utf-8")
@@ -983,12 +1005,38 @@ def test_an_existing_dotenv_secret_is_kept_unless_the_replacement_is_confirmed(t
     assert "typed-password" not in dotenv_text
 
 
+# Verifies an accepted email icon answer is written, so the icon setting is reachable from setup
+def test_the_email_icon_answer_is_written(tmp_path, monkeypatch, wizard_globals):
+    transcript = []
+    mail = ["smtp.gmail.com", "587", "y", "monitoring@example.test", "monitoring@example.test", "alerts@example.test"]
+    answers = minimal_answers()
+    answers[5:6] = ["y"] + mail + ["n", "1", "y"]
+    run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY, "mail-password"], transcript=transcript)
+
+    assert any(prompt.startswith("Embed the champion icon") for prompt in transcript)
+    assert monitor.parse_config_content((tmp_path / "lol_monitor.conf").read_text(encoding="utf-8"))["EMAIL_IMAGES"] is True
+
+
+# Verifies an email setup with no match alerts is never asked about the icon, since nothing would carry one
+def test_email_without_match_alerts_is_never_asked_about_the_icon(tmp_path, monkeypatch, wizard_globals):
+    transcript = []
+    mail = ["smtp.gmail.com", "587", "y", "monitoring@example.test", "monitoring@example.test", "alerts@example.test"]
+    answers = minimal_answers()
+    answers[5:6] = ["y"] + mail + ["n", "2", "n", "y"]
+    run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY, "mail-password"], transcript=transcript)
+
+    assert not any(prompt.startswith("Embed the champion icon") for prompt in transcript)
+    values = monitor.parse_config_content((tmp_path / "lol_monitor.conf").read_text(encoding="utf-8"))
+    assert values["STATUS_NOTIFICATION"] is False
+    assert values["EMAIL_IMAGES"] is False
+
+
 # Verifies a confirmed replacement does reach the dotenv file
 def test_a_confirmed_dotenv_secret_replacement_is_written(tmp_path, monkeypatch, wizard_globals):
     (tmp_path / ".env").write_text('SMTP_PASSWORD="saved-password"\n', encoding="utf-8")
     mail = ["smtp.gmail.com", "587", "y", "monitoring@example.test", "monitoring@example.test", "alerts@example.test"]
     answers = minimal_answers()
-    answers[5:6] = ["y"] + mail + ["y", "1"]
+    answers[5:6] = ["y"] + mail + ["y", "1", "n"]
     run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY, "typed-password"])
 
     assert 'SMTP_PASSWORD="typed-password"' in (tmp_path / ".env").read_text(encoding="utf-8")
@@ -1053,7 +1101,7 @@ def test_an_unreadable_dotenv_is_reported_as_a_read_failure(tmp_path, monkeypatc
     (tmp_path / ".env").write_bytes(b"SMTP_PASSWORD=\xff\xfe not utf-8\n")
     mail = ["smtp.gmail.com", "587", "y", "monitoring@example.test", "monitoring@example.test", "alerts@example.test"]
     answers = minimal_answers()
-    answers[5:6] = ["y"] + mail + ["y", "1"]
+    answers[5:6] = ["y"] + mail + ["y", "1", "n"]
 
     code = run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY, "typed-password"])
 

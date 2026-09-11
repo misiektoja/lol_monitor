@@ -5,8 +5,8 @@ Real-time tracker for League of Legends players' activity, with detailed match r
 - **Real-time tracking** of LoL players' gaming activity, including when a match starts and when it finishes
 - **Detailed match reports** covering game mode, queue and map name, game type and version, victory or defeat, kills, deaths and assists, champion, achieved level, role, lane, both team rosters with a marker on the monitored player's team, and banned champions with pick turn
 - **Player profile information** including ranked statistics for Solo/Duo and Flex, and top champion mastery
-- **HTML email notifications** when a player starts or finishes a match, plus a match summary and error alerts
-- **Discord and ntfy webhook alerts** carrying the same events, with each channel keeping its own alert settings
+- **HTML email notifications** when a player starts or finishes a match, plus a match summary and error alerts, optionally with the champion icon embedded at the end
+- **Discord and ntfy webhook alerts** carrying the same events, with each channel keeping its own alert settings, the champion icon as a Discord thumbnail or an ntfy attachment
 - **CSV export** of every reported match with timestamps, including custom games
 - **Guided setup** through `--setup`, which asks a few questions and writes a ready-to-run configuration, with a review summary and per-section editing before anything is saved
 - **A welcome screen on a bare run**, naming the commands worth starting from and offering the wizard, plus a `--help` screen that ends with worked examples for the common tasks

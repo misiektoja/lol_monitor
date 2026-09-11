@@ -52,6 +52,7 @@ and again before anything is published to PyPI.
 | `test_help_screen.py` | The `--help` screen: option group names and order, the shared help sentences and the worked examples |
 | `test_install_method_commands.py` | Install-method detection and the printed commands built from it, including the files a run carries into them |
 | `test_match_formatting.py` | Riot IDs, game type and patch labels, participant names, team rosters and ban lists |
+| `test_notification_images.py` | The champion icon: the bounded download, the inline email attachment and the ntfy attachment with its text fallback |
 | `test_offline_e2e.py` | One end-to-end run of the real CLI against Riot and Data Dragon fixtures served over loopback |
 | `test_match_reporting.py` | The finished-match report, the in-game report, live snapshots and match history listing |
 | `test_monitoring_loop.py` | End-to-end monitoring runs: profile startup, new match detection, in-game and stopped alerts, custom game saves and error recovery |

@@ -65,6 +65,11 @@ STATUS_NOTIFICATION = False
 # Can also be disabled via the -e flag
 ERROR_NOTIFICATION = True
 
+# Whether to embed the champion icon at the end of email notifications that name a champion
+# The icon comes from the Data Dragon release the run reads its champion names from
+# A download that fails or returns something unusable falls back to a text-only email
+EMAIL_IMAGES = False
+
 # ----------------------------
 # Webhook Notifications
 # ----------------------------
@@ -150,6 +155,11 @@ WEBHOOK_TRANSFORMS = []
 # Optional ntfy access token for Bearer authentication
 # Prefer an environment variable or dotenv file instead of storing this token here
 NTFY_ACCESS_TOKEN = ""
+
+# Whether to attach the champion icon to ntfy alerts that name a champion
+# Applies only when WEBHOOK_PROVIDER is "ntfy". Discord shows the icon through WEBHOOK_TEMPLATE instead
+# An attachment that cannot be prepared or delivered falls back to a text-only alert
+NTFY_IMAGES = False
 
 # How often to check for player activity when the user is NOT in a game; in seconds
 # Can also be set using the -c flag
@@ -242,6 +252,7 @@ COLORED_OUTPUT = True
 #     "section": "bright_white",
 #     # Identity
 #     "username": "bright_cyan underline",
+#     "monitored_username": "bright_cyan underline bold",
 #     "id": "bright_magenta",
 #     # Playing status values
 #     "status_active": "green",
@@ -386,6 +397,7 @@ SENDER_EMAIL = ""
 RECEIVER_EMAIL = ""
 STATUS_NOTIFICATION = False
 ERROR_NOTIFICATION = False
+EMAIL_IMAGES = False
 WEBHOOK_ENABLED = False
 WEBHOOK_PROVIDER = ""
 WEBHOOK_URL = ""
@@ -397,6 +409,7 @@ WEBHOOK_HEADERS = {}
 WEBHOOK_TEMPLATE = {}
 WEBHOOK_TRANSFORMS = []
 NTFY_ACCESS_TOKEN = ""
+NTFY_IMAGES = False
 LOL_CHECK_INTERVAL = 0
 LOL_ACTIVE_CHECK_INTERVAL = 0
 INCLUDE_FORBIDDEN_MATCHES = False
@@ -516,6 +529,17 @@ WEBHOOK_DEFAULT_COLOR = 0xC8AA6E
 NTFY_MESSAGE_LIMIT_BYTES = 4095
 NTFY_TRUNCATION_SUFFIX = "\n\n[Notification truncated to fit ntfy's 4 KB message limit]"
 
+# A Data Dragon champion icon is a small square PNG, so a much larger response is not the icon it claims to be
+CHAMPION_ICON_LIMIT_BYTES = 262144
+CHAMPION_ICON_CHUNK_BYTES = 16384
+# The image types worth forwarding to a mail client or an ntfy attachment, mapped to their MIME subtype
+CHAMPION_ICON_CONTENT_TYPES = {"image/png": "png", "image/jpeg": "jpeg", "image/webp": "webp", "image/gif": "gif"}
+# The same champion reappears across a run, in the in-game alert and again in its match summary
+CHAMPION_ICON_CACHE_LIMIT = 8
+# The inline reference an email body points at, and the file name ntfy shows for the attachment
+EMAIL_CHAMPION_ICON_CONTENT_ID = "champion_icon"
+NTFY_CHAMPION_ICON_FILENAME = "champion"
+
 # to solve the issue: 'SyntaxError: f-string expression part cannot include a backslash'
 nl_ch = "\n"
 
@@ -544,6 +568,7 @@ from email.header import Header
 from email.utils import parsedate_to_datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
 import argparse
 import ast
 import csv
@@ -1488,6 +1513,9 @@ SGR_SEQUENCE_RE = re.compile(r"\x1b\[[0-9;]*m")
 COLOR_ENABLED = False
 _COLOR_STYLES: dict = {}
 
+# The monitored player's name, so their own roster entry can be marked among the nine other players
+MONITORED_PLAYER_NAME = ""
+
 # Default built-in colour theme. Values can be overridden via COLOR_THEME in the configuration file
 DEFAULT_COLOR_THEME = {
     # Headings and commands the tool tells you to run
@@ -1495,6 +1523,7 @@ DEFAULT_COLOR_THEME = {
     "section": "bright_white",
     # Identity
     "username": "bright_cyan underline",
+    "monitored_username": "bright_cyan underline bold",
     "id": "bright_magenta",
     # Playing status values
     "status_active": "green",
@@ -1527,7 +1556,7 @@ DEFAULT_COLOR_THEME = {
 # own colour would disappear inside it and the two sets are kept disjoint. Warnings are not on the block
 # list: yellow is the game mode colour, so a warning marks its own opening word instead of painting the line
 BLOCK_STYLE_PARTS = ("error", "email", "webhook", "info")
-NAME_STYLE_PARTS = ("username", "id", "champion", "game_mode", "rank", "link")
+NAME_STYLE_PARTS = ("username", "monitored_username", "id", "champion", "game_mode", "rank", "link")
 
 ANSI_RESET = "\033[0m"
 
@@ -1658,6 +1687,12 @@ def init_color_output(stream):
     user_theme = globals().get("COLOR_THEME") if isinstance(globals().get("COLOR_THEME"), dict) else {}
     theme = {**DEFAULT_COLOR_THEME, **(user_theme or {})}
     _COLOR_STYLES = {name: sequence for name, sequence in ((name, _build_ansi_sequence(style)) for name, style in theme.items()) if sequence}
+
+
+# Records whose roster entry the output marks, since a roster line carries no other sign of who is monitored
+def set_monitored_player_name(name):
+    global MONITORED_PLAYER_NAME
+    MONITORED_PLAYER_NAME = name.strip() if isinstance(name, str) else ""
 
 
 # Applies a configured colour style, named by the logical part, to the given text
@@ -1792,10 +1827,11 @@ def _colorize_line(line):
         label, rest = labeled_value
         return f"{label}{colorize(style_name, rest)}" + ("\n" if line.endswith("\n") else "")
 
-    # One roster entry names a player and the champion they played
+    # One roster entry names a player and the champion they played, with the monitored player's own entry marked
     roster_match = _ROSTER_ENTRY_RE.match(line.rstrip("\n"))
     if roster_match:
-        colored = f"{roster_match.group(1)}{colorize('username', roster_match.group(2))}{roster_match.group(3)}{colorize('champion', roster_match.group(4))}{roster_match.group(5)}"
+        monitored = bool(MONITORED_PLAYER_NAME) and roster_match.group(2) == MONITORED_PLAYER_NAME
+        colored = f"{roster_match.group(1)}{colorize('monitored_username' if monitored else 'username', roster_match.group(2))}{roster_match.group(3)}{colorize('champion', roster_match.group(4))}{roster_match.group(5)}"
         return colored + ("\n" if line.endswith("\n") else "")
 
     # One champion mastery entry names the champion before the level and the points it reports
@@ -2169,6 +2205,80 @@ def calculate_timespan(timestamp1, timestamp2, show_weeks=True, show_hours=True,
         return '0 seconds'
 
 
+# The icons already fetched in this run, keyed by their Data Dragon URL
+_champion_icon_cache: Dict[str, Tuple[bytes, str]] = {}
+
+
+# Returns True when a URL points at an icon on the Data Dragon host, which is the only image this tool fetches
+def champion_icon_url_is_allowed(image_url):
+    try:
+        parsed = urlsplit(str(image_url or ""))
+    except ValueError:
+        return False
+    return parsed.scheme == "https" and parsed.hostname == urlsplit(DDRAGON_BASE_URL).hostname
+
+
+# Downloads one bounded champion icon, returning its bytes and MIME subtype, or nothing when it cannot be used
+def fetch_champion_icon(image_url=""):
+    if not image_url:
+        return None
+    cached = _champion_icon_cache.get(image_url)
+    if cached is not None:
+        return cached
+    try:
+        if not champion_icon_url_is_allowed(image_url):
+            raise ValueError("a champion icon must be an HTTPS URL on the Data Dragon host")
+        debug_print("Champion icon download", url=image_url)
+        response = WEBHOOK_SESSION.get(image_url, headers={"User-Agent": f"LoLMonitor/{VERSION}"}, timeout=WEBHOOK_TIMEOUT_SECONDS, verify=VERIFY_SSL, stream=True, allow_redirects=False)
+        with response:
+            response.raise_for_status()
+            content_type = str((response.headers or {}).get("Content-Type", "")).split(";", 1)[0].strip().casefold()
+            subtype = CHAMPION_ICON_CONTENT_TYPES.get(content_type or "image/png")
+            if subtype is None:
+                raise ValueError(f"the champion icon response has unsupported content type {content_type}")
+            declared_length = (response.headers or {}).get("Content-Length")
+            if declared_length is not None and int(declared_length) > CHAMPION_ICON_LIMIT_BYTES:
+                raise ValueError(f"the champion icon exceeds {CHAMPION_ICON_LIMIT_BYTES} bytes")
+            icon_bytes = bytearray()
+            for chunk in response.iter_content(chunk_size=CHAMPION_ICON_CHUNK_BYTES):
+                if not chunk:
+                    continue
+                icon_bytes.extend(chunk)
+                if len(icon_bytes) > CHAMPION_ICON_LIMIT_BYTES:
+                    raise ValueError(f"the champion icon exceeds {CHAMPION_ICON_LIMIT_BYTES} bytes")
+        if not icon_bytes:
+            raise ValueError("the champion icon response was empty")
+        icon = (bytes(icon_bytes), subtype)
+        # Oldest first, so a long run keeps the champions it has seen most recently rather than the first ones
+        if len(_champion_icon_cache) >= CHAMPION_ICON_CACHE_LIMIT:
+            _champion_icon_cache.pop(next(iter(_champion_icon_cache)), None)
+        _champion_icon_cache[image_url] = icon
+        debug_print("Champion icon download", size=len(icon[0]), image_type=subtype, outcome="OK")
+        return icon
+    except Exception as error:
+        debug_print("Champion icon download", outcome="failed", fallback="sending without the icon", error=sanitize_error_text(error))
+        return None
+
+
+# Returns the champion icon to embed in an email, or nothing when the setting is off or the icon is unusable
+def build_email_champion_icon(image_url=""):
+    return fetch_champion_icon(image_url) if EMAIL_IMAGES and image_url else None
+
+
+# Returns the champion icon to attach to an ntfy alert, or nothing when the setting is off or the icon is unusable
+def build_ntfy_champion_icon(image_url=""):
+    return fetch_champion_icon(image_url) if NTFY_IMAGES and image_url else None
+
+
+# Adds the inline champion icon reference at the end of one HTML email body
+def add_email_champion_icon_html(body_html, image_name=EMAIL_CHAMPION_ICON_CONTENT_ID):
+    icon_html = f'<br><br><img src="cid:{html.escape(str(image_name), quote=True)}" alt="Champion icon">'
+    closing_body_index = str(body_html).casefold().rfind("</body>")
+    if closing_body_index >= 0:
+        return body_html[:closing_body_index] + icon_html + body_html[closing_body_index:]
+    return body_html + icon_html
+
+
 # Opens one authenticated SMTP session and leaves closing it to the caller
 def smtp_connect_and_login(use_ssl, smtp_timeout=15):
     smtp_object = smtplib.SMTP(SMTP_HOST, int(SMTP_PORT), timeout=smtp_timeout)
@@ -2186,7 +2296,7 @@ def smtp_connect_and_login(use_ssl, smtp_timeout=15):
 
 
 # Sends email notification
-def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
+def send_email(subject, body, body_html, use_ssl, smtp_timeout=15, image_bytes=None, image_subtype="png", image_name=EMAIL_CHAMPION_ICON_CONTENT_ID):
     fqdn_re = re.compile(r'(?=^.{4,253}$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}\.?$)')
     email_re = re.compile(r'[^@]+@[^@]+\.[^@]+')
 
@@ -2223,20 +2333,30 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
 
     try:
         smtpObj = smtp_connect_and_login(use_ssl, smtp_timeout=smtp_timeout)
-        email_msg = MIMEMultipart('alternative')
+        # An inline image needs the alternative parts wrapped in a related container, so the HTML body can point at it
+        email_msg = MIMEMultipart('related' if image_bytes else 'alternative')
         email_msg["From"] = SENDER_EMAIL
         email_msg["To"] = RECEIVER_EMAIL
         email_msg["Subject"] = str(Header(subject, 'utf-8'))
+        content_msg = MIMEMultipart('alternative') if image_bytes else email_msg
+        if image_bytes:
+            email_msg.attach(content_msg)
 
         if body:
             part1 = MIMEText(body, 'plain')
             part1 = MIMEText(body.encode('utf-8'), 'plain', _charset='utf-8')
-            email_msg.attach(part1)
+            content_msg.attach(part1)
 
         if body_html:
             part2 = MIMEText(body_html, 'html')
             part2 = MIMEText(body_html.encode('utf-8'), 'html', _charset='utf-8')
-            email_msg.attach(part2)
+            content_msg.attach(part2)
+
+        if image_bytes:
+            image_part = MIMEImage(image_bytes, _subtype=image_subtype)
+            image_part.add_header('Content-ID', f'<{image_name}>')
+            image_part.add_header('Content-Disposition', 'inline', filename=f"{image_name}.{image_subtype}")
+            email_msg.attach(image_part)
 
         smtpObj.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, email_msg.as_string())
         smtpObj.quit()
@@ -2775,7 +2895,7 @@ def post_webhook_request(**request_kwargs):
 
 
 # Sends one webhook through an isolated bounded retry path
-def send_webhook(title, description, notification_type="status", force=False, sleeper=None, image_url="", ntfy_priority=0, ntfy_tags=""):
+def send_webhook(title, description, notification_type="status", force=False, sleeper=None, image_url="", ntfy_priority=0, ntfy_tags="", discord_description=""):
     if not force and not webhook_event_enabled(notification_type):
         return 1
     if not validate_webhook_url():
@@ -2785,6 +2905,9 @@ def send_webhook(title, description, notification_type="status", force=False, sl
     if not provider:
         print_webhook_error("WEBHOOK_PROVIDER must be discord or ntfy")
         return 1
+    # Discord renders markdown in an embed and ntfy shows the body as it arrives, so each gets its own wording
+    if provider == "discord" and discord_description:
+        description = discord_description
     metadata_error = validate_ntfy_metadata(ntfy_priority, ntfy_tags) if provider == "ntfy" else None
     if metadata_error is not None:
         print_webhook_error(metadata_error)
@@ -2812,10 +2935,16 @@ def send_webhook(title, description, notification_type="status", force=False, sl
         ntfy_params["priority"] = ntfy_priority
     if provider == "ntfy" and ntfy_tags.strip():
         ntfy_params["tags"] = ntfy_tags.strip()
+    # An ntfy attachment is the request body, so the alert text moves into the query and the icon type replaces it
+    ntfy_icon = build_ntfy_champion_icon(image_url) if provider == "ntfy" else None
+    ntfy_icon_headers = dict(request_headers, **{"Content-Type": f"image/{ntfy_icon[1]}", "X-Filename": f"{NTFY_CHAMPION_ICON_FILENAME}.{ntfy_icon[1]}"}) if ntfy_icon else {}
+    use_ntfy_icon = ntfy_icon is not None
     for attempt in range(WEBHOOK_MAX_ATTEMPTS):
         debug_print("Webhook delivery", channel=provider, attempt=f"{attempt + 1}/{WEBHOOK_MAX_ATTEMPTS}")
         try:
-            if provider == "ntfy":
+            if provider == "ntfy" and use_ntfy_icon and ntfy_icon is not None:
+                response = post_webhook_request(data=ntfy_icon[0], params=dict(ntfy_params, message=ntfy_message), headers=ntfy_icon_headers)
+            elif provider == "ntfy":
                 response = post_webhook_request(data=ntfy_message.encode("utf-8"), params=ntfy_params, headers=request_headers)
             elif isinstance(discord_payload, str):
                 response = post_webhook_request(data=discord_payload, headers=request_headers)
@@ -2827,6 +2956,14 @@ def send_webhook(title, description, notification_type="status", force=False, sl
                 return 0
             retryable = response.status_code == 429 or 500 <= response.status_code <= 599
             debug_print("Webhook delivery", channel=provider, status=response.status_code, retryable=retryable, outcome="failed")
+            # The alert itself matters more than its icon, so a rejected attachment is retried as text
+            if use_ntfy_icon and attempt < WEBHOOK_MAX_ATTEMPTS - 1:
+                use_ntfy_icon = False
+                delay = webhook_retry_after_seconds(response) if response.status_code == 429 else WEBHOOK_FALLBACK_RETRY_SECONDS if retryable else 0.0
+                debug_print("NTFY attachment", status=response.status_code, outcome="failed", fallback="text-only alert")
+                if delay:
+                    sleep_func(delay)
+                continue
             if not retryable or attempt == WEBHOOK_MAX_ATTEMPTS - 1:
                 print_webhook_error(f"The webhook service returned HTTP {response.status_code}", req.HTTPError(response=response))
                 return 1
@@ -2835,6 +2972,11 @@ def send_webhook(title, description, notification_type="status", force=False, sl
             sleep_func(delay)
         except req.RequestException as exc:
             debug_swallowed_exception("Webhook request", exc)
+            if use_ntfy_icon and attempt < WEBHOOK_MAX_ATTEMPTS - 1:
+                use_ntfy_icon = False
+                debug_print("NTFY attachment", outcome="failed", fallback="text-only alert")
+                sleep_func(WEBHOOK_FALLBACK_RETRY_SECONDS)
+                continue
             if attempt == WEBHOOK_MAX_ATTEMPTS - 1:
                 print_webhook_error(f"The webhook service could not be reached ({type(exc).__name__})")
                 return 1
@@ -2844,18 +2986,22 @@ def send_webhook(title, description, notification_type="status", force=False, sl
 
 
 # Sends one alert through the enabled email and webhook channels
-def send_notification_channels(notification_type, subject, body, body_html="", email_enabled=False, webhook_enabled=None, image_url="", ntfy_priority=0, ntfy_tags=""):
+def send_notification_channels(notification_type, subject, body, body_html="", email_enabled=False, webhook_enabled=None, image_url="", ntfy_priority=0, ntfy_tags="", discord_body=""):
     email_attempted = bool(email_enabled)
     webhook_attempted = webhook_event_enabled(notification_type) if webhook_enabled is None else bool(webhook_enabled)
     email_delivered = False
     webhook_delivered = False
     if email_attempted:
         print(f"Sending email notification to {RECEIVER_EMAIL}")
-        email_delivered = send_email(subject, body, body_html, SMTP_SSL) == 0
+        email_icon = build_email_champion_icon(image_url) if body_html else None
+        if email_icon is None:
+            email_delivered = send_email(subject, body, body_html, SMTP_SSL) == 0
+        else:
+            email_delivered = send_email(subject, body, add_email_champion_icon_html(body_html), SMTP_SSL, image_bytes=email_icon[0], image_subtype=email_icon[1]) == 0
         debug_print("Email channel", event=notification_type, outcome="OK" if email_delivered else "failed")
     if webhook_attempted:
         print("Sending webhook notification")
-        webhook_delivered = send_webhook(subject, body, notification_type, force=True, image_url=image_url, ntfy_priority=ntfy_priority, ntfy_tags=ntfy_tags) == 0
+        webhook_delivered = send_webhook(subject, body, notification_type, force=True, image_url=image_url, ntfy_priority=ntfy_priority, ntfy_tags=ntfy_tags, discord_description=discord_body) == 0
         debug_print("Webhook channel", event=notification_type, outcome="OK" if webhook_delivered else "failed")
     # Delivery, not the attempt, so a channel that failed is retried while one that succeeded is not resent
     return email_delivered, webhook_delivered
@@ -3186,18 +3332,20 @@ def format_banned_champions_output(bans_by_team: Dict[int, List[Tuple[Optional[i
     return lines, shared_pool
 
 
+# Splits one roster entry into the player name and the champion part that follows it
+def split_team_member(member_str: str) -> Tuple[str, str]:
+    if " (" not in member_str:
+        return member_str, ""
+    username, rest = member_str.split(" (", 1)
+    return username, f" ({rest}"
+
+
 # Formats team members for HTML email, bolding the monitored username
 def format_team_member_html(member_str: str, monitored_username: str) -> str:
     if not member_str:
         return ""
 
-    # Extract username (everything before the first "(" if present)
-    if " (" in member_str:
-        username, rest = member_str.split(" (", 1)
-        champion_part = f" ({rest}"
-    else:
-        username = member_str
-        champion_part = ""
+    username, champion_part = split_team_member(member_str)
 
     # Bold the username if it matches the monitored user
     if username == monitored_username:
@@ -3206,6 +3354,22 @@ def format_team_member_html(member_str: str, monitored_username: str) -> str:
         username_html = html.escape(username)
 
     return username_html + html.escape(champion_part) if champion_part else username_html
+
+
+# Formats the team list for a Discord alert, bolding the monitored player's own entry in Discord markdown
+def format_teams_markdown(teams_lines: List[str], monitored_username: str) -> str:
+    if not teams_lines:
+        return ""
+
+    markdown_lines = []
+    for line in teams_lines:
+        username, champion_part = split_team_member(line[2:]) if line.startswith("- ") else ("", "")
+        if username and username == monitored_username:
+            markdown_lines.append(f"- **{username}**{champion_part}")
+        else:
+            markdown_lines.append(line)
+
+    return "\n".join(markdown_lines) + "\n"
 
 
 # Formats team list for HTML email
@@ -3545,6 +3709,8 @@ async def is_user_in_match(puuid: str, region: str):
 # Prints details of the current player's match (user is in game)
 async def print_current_match(puuid: str, riotid_name: str, region: str, last_match_start_ts: int, last_match_stop_ts: int, status_notification_flag: bool):
 
+    set_monitored_player_name(riotid_name)
+
     async with riot_api_client() as client:
 
         try:
@@ -3721,7 +3887,11 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
                 f"</body></html>"
             )
 
-            send_notification_channels("status", m_subject, m_body, m_body_html, email_enabled=status_notification_flag, image_url=champion_image_url(u_champion_name))
+            # Only the roster block differs, so the Discord wording is the same body with the monitored player marked
+            current_teams_markdown = format_teams_markdown(current_teams_str_lines, riotid_name)
+            m_body_discord = m_body.replace(current_teams_str, current_teams_markdown, 1) if current_teams_str else m_body
+
+            send_notification_channels("status", m_subject, m_body, m_body_html, email_enabled=status_notification_flag, image_url=champion_image_url(u_champion_name), discord_body=m_body_discord)
 
             return match_start_ts
         else:
@@ -3833,6 +4003,8 @@ async def get_total_match_count(puuid: str, region: str) -> int:
 
 # Processes and prints details for a single match id, handling forbidden matches
 async def process_and_print_single_match(match_id: str, puuid: str, riotid_name: str, region: str, status_notification_flag: bool, csv_file_name: Optional[str], cached_match_data: Optional[Any] = None) -> tuple[int, int]:
+
+    set_monitored_player_name(riotid_name)
 
     # Use cached match data if provided, otherwise fetch it
     if cached_match_data:
@@ -4058,8 +4230,11 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
                 f"{get_cur_ts('<br>Timestamp: ')}"
                 f"</body></html>"
             )
+            # Only the roster block differs, so the Discord wording is the same body with the monitored player marked
+            teams_markdown = format_teams_markdown(teams_lines, riotid_name)
+            m_body_discord = m_body.replace(teams_str, teams_markdown, 1) if teams_str else m_body
             print()
-            send_notification_channels("status", m_subject, m_body, m_body_html, email_enabled=True, image_url=champion_image_url(u_champion_name))
+            send_notification_channels("status", m_subject, m_body, m_body_html, email_enabled=True, image_url=champion_image_url(u_champion_name), discord_body=m_body_discord)
 
         return match_start_ts, match_stop_ts
 
@@ -5651,8 +5826,8 @@ WIZARD_SECTIONS = (
     ("Target", "Target", "Change the Riot ID and region that are monitored.", ("RIOT_ID", "REGION"), ()),
     ("Polling", "Polling interval", "Change how often Riot is checked.", ("LOL_CHECK_INTERVAL", "LOL_ACTIVE_CHECK_INTERVAL"), ()),
     ("Authentication", "Authentication", "Enter the Riot API key again.", (), ("RIOT_API_KEY",)),
-    ("Email", "Email notifications", "Change SMTP details and email events.", WIZARD_SMTP_CONFIG_KEYS + WIZARD_EMAIL_NOTIFICATION_KEYS, ("SMTP_PASSWORD",)),
-    ("Webhook", "Webhook alerts", "Change Discord or ntfy details and events.", ("WEBHOOK_ENABLED", "WEBHOOK_PROVIDER") + WIZARD_WEBHOOK_NOTIFICATION_KEYS, ("WEBHOOK_URL", "NTFY_ACCESS_TOKEN")),
+    ("Email", "Email notifications", "Change SMTP details and email events.", WIZARD_SMTP_CONFIG_KEYS + WIZARD_EMAIL_NOTIFICATION_KEYS + ("EMAIL_IMAGES",), ("SMTP_PASSWORD",)),
+    ("Webhook", "Webhook alerts", "Change Discord or ntfy details and events.", ("WEBHOOK_ENABLED", "WEBHOOK_PROVIDER", "NTFY_IMAGES") + WIZARD_WEBHOOK_NOTIFICATION_KEYS, ("WEBHOOK_URL", "NTFY_ACCESS_TOKEN")),
     ("Output", "Output files", "Change the log and CSV destinations.", ("DISABLE_LOGGING", "CSV_FILE"), ()),
     ("Destinations", "File destinations", "Change the configuration or dotenv output path.", (), ()),
 )
@@ -5805,6 +5980,7 @@ def _wizard_disable_email(state):
     # Only the alerts the wizard offers are cleared, so alerts enabled by hand survive a declined email section
     for key in WIZARD_EMAIL_NOTIFICATION_KEYS:
         state.config_values[key] = False
+    state.config_values["EMAIL_IMAGES"] = False
 
 
 # Signs in to the collected mail server without sending anything, so a refused login is caught during setup
@@ -5916,6 +6092,8 @@ def _wizard_collect_email_section(state, input_func=None, getpass_func=None):
         (("STATUS_NOTIFICATION", "Email when the player starts or stops a match?"), ("ERROR_NOTIFICATION", "Email on monitoring errors?")),
         input_func=input_func,
     ))
+    # The icon rides along with the match alerts, so it is only worth asking about once those are on
+    state.config_values["EMAIL_IMAGES"] = _wizard_ask_yes_no("Embed the champion icon at the end of those emails?", default=bool(state.config_values.get("EMAIL_IMAGES")), input_func=input_func) if state.config_values.get("STATUS_NOTIFICATION") else False
 
 
 # Switches the channel and every alert it owns off together, so a half-configured webhook cannot be written
@@ -5923,6 +6101,7 @@ def _wizard_disable_webhook(state):
     _wizard_clear_section(state, ("WEBHOOK_PROVIDER",), ("WEBHOOK_URL", "NTFY_ACCESS_TOKEN"))
     state.config_values["WEBHOOK_ENABLED"] = False
     state.config_values.update({name: False for name in WIZARD_WEBHOOK_NOTIFICATION_KEYS})
+    state.config_values["NTFY_IMAGES"] = False
 
 
 # Collects an optional ntfy access token without displaying it or contacting the service
@@ -6008,6 +6187,8 @@ def _wizard_collect_webhook_section(state, input_func=None, getpass_func=None):
         (("WEBHOOK_STATUS_NOTIFICATION", "Send a webhook alert when the player starts or stops a match?"), ("WEBHOOK_ERROR_NOTIFICATION", "Send a webhook alert when monitoring has a problem?")),
         input_func=input_func,
     ))
+    # Discord shows the icon through its own template, so only an ntfy topic needs the attachment question
+    state.config_values["NTFY_IMAGES"] = _wizard_ask_yes_no("Attach the champion icon to those ntfy alerts?", default=bool(state.config_values.get("NTFY_IMAGES")), input_func=input_func) if provider == "ntfy" and state.config_values.get("WEBHOOK_STATUS_NOTIFICATION") else False
 
 
 # Adds the .csv extension when the answer carries none, so a bare name still names a CSV file

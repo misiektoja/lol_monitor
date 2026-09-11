@@ -98,7 +98,7 @@ lol_monitor <riot_id> <region> -e
 
 Fill in the [SMTP settings](configuration.md#smtp-settings) first, otherwise nothing is sent. `--doctor` signs in to the mail server without sending anything and reports which alerts would be delivered, described in [Doctor Preflight](troubleshooting.md#doctor-preflight).
 
-Messages go out in both plain text and HTML, so match details stay readable in any mail client.
+Messages go out in both plain text and HTML, so match details stay readable in any mail client. In the HTML body the monitored player's own roster line is bold, and `EMAIL_IMAGES = True` adds the champion icon at the end of the message, described under [Champion Icon in Email](configuration.md#champion-icon-in-email).
 
 Example email:
 
@@ -117,6 +117,8 @@ lol_monitor <riot_id> <region> --webhook --webhook-status
 Save the destination once with `--set-webhook-url` rather than passing it on every run, since a URL on the command line stays in your shell history. `--webhook-url` is there for a one-off run.
 
 Email and webhooks are independent. A run can use one, both or neither, and each keeps its own alert settings.
+
+Each service shows the alert the way it renders best. Discord gets the champion icon as the embed thumbnail and the monitored player's roster line in bold, while ntfy gets the plain roster and, with `NTFY_IMAGES = True`, the icon as the notification image.
 
 Check the setup by sending one real notification:
 

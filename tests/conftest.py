@@ -181,9 +181,11 @@ def no_unexpected_smtp(monkeypatch):
 
 # Records every webhook request and replays scripted responses instead of contacting a real service
 class FakeWebhookSession:
-    def __init__(self, responses=None):
+    def __init__(self, responses=None, icons=None):
         self.responses = list(responses or [])
+        self.icons = list(icons or [])
         self.posts = []
+        self.gets = []
 
     # Records one delivery and returns or raises the next scripted response
     def post(self, url, **kwargs):
@@ -194,6 +196,40 @@ class FakeWebhookSession:
         if isinstance(scripted, BaseException):
             raise scripted
         return scripted
+
+    # Records one champion icon download and returns or raises the next scripted image response
+    def get(self, url, **kwargs):
+        self.gets.append({"url": url, **kwargs})
+        if not self.icons:
+            raise AssertionError(f"this test fetched {len(self.gets)} images but scripted fewer image responses")
+        scripted = self.icons.pop(0)
+        if isinstance(scripted, BaseException):
+            raise scripted
+        return scripted
+
+
+# Stands in for one champion icon response, carrying only what the download path reads
+class FakeImageResponse:
+    def __init__(self, content=b"", headers=None, status_code=200, error=None):
+        self.content = content
+        self.headers = {"Content-Type": "image/png", "Content-Length": str(len(content))} if headers is None else headers
+        self.status_code = status_code
+        self.error = error
+
+    # Raises the scripted failure the way requests does for an error status
+    def raise_for_status(self):
+        if self.error is not None:
+            raise self.error
+
+    # Yields the image in one chunk, which is all a small icon needs
+    def iter_content(self, chunk_size=1):
+        yield self.content
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
 
 
 # Stands in for one webhook HTTP response, carrying only what the delivery path reads
@@ -216,11 +252,22 @@ class RefusedWebhookSession:
     def post(self, url, **kwargs):
         raise AssertionError(f"this test posted a webhook to {url} without the webhook_session fixture")
 
+    # The same for the champion icon download, which shares the webhook session
+    def get(self, url, **kwargs):
+        raise AssertionError(f"this test fetched {url} without the webhook_session fixture")
+
 
 @pytest.fixture(autouse=True)
 # Keeps every test offline on the webhook side, whether or not it expects the code under test to deliver
 def no_unexpected_webhook(monkeypatch):
     monkeypatch.setattr(lm, "WEBHOOK_SESSION", RefusedWebhookSession(), raising=False)
+
+
+@pytest.fixture(autouse=True)
+# Clears the marked player and the icons one test downloaded, since both outlive the call that set them
+def no_leaked_notification_state(monkeypatch):
+    monkeypatch.setattr(lm, "MONITORED_PLAYER_NAME", "", raising=False)
+    monkeypatch.setattr(lm, "_champion_icon_cache", {}, raising=False)
 
 
 @pytest.fixture
@@ -276,6 +323,8 @@ def deterministic_globals(monkeypatch):
     monkeypatch.setattr(lm, "TRUNCATE_CHARS", 0, raising=False)
     monkeypatch.setattr(lm, "STATUS_NOTIFICATION", False, raising=False)
     monkeypatch.setattr(lm, "ERROR_NOTIFICATION", False, raising=False)
+    monkeypatch.setattr(lm, "EMAIL_IMAGES", False, raising=False)
+    monkeypatch.setattr(lm, "NTFY_IMAGES", False, raising=False)
     monkeypatch.setattr(lm, "WEBHOOK_ENABLED", False, raising=False)
     monkeypatch.setattr(lm, "WEBHOOK_PROVIDER", "discord", raising=False)
     monkeypatch.setattr(lm, "WEBHOOK_URL", "", raising=False)
@@ -319,8 +368,8 @@ def sent_emails(monkeypatch):
     delivered = []
 
     # Records one notification and reports success
-    def fake_send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
-        delivered.append({"subject": subject, "body": body, "body_html": body_html, "use_ssl": use_ssl})
+    def fake_send_email(subject, body, body_html, use_ssl, smtp_timeout=15, image_bytes=None, image_subtype="png", image_name=lm.EMAIL_CHAMPION_ICON_CONTENT_ID):
+        delivered.append({"subject": subject, "body": body, "body_html": body_html, "use_ssl": use_ssl, "image_bytes": image_bytes, "image_subtype": image_subtype})
         return 0
 
     monkeypatch.setattr(lm, "send_email", fake_send_email)

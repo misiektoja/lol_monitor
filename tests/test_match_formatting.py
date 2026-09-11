@@ -95,6 +95,41 @@ def test_members_join_their_own_team(lm_module):
     assert teams == [{"id": 100, "members": ["one", "three"]}, {"id": 200, "members": ["two", "four"]}]
 
 
+# Verifies a roster entry splits into the player and the champion beside them
+@pytest.mark.parametrize("entry,expected", [
+    ("misiektoja (Ahri)", ("misiektoja", " (Ahri)")),
+    ("misiektoja", ("misiektoja", "")),
+    ("", ("", "")),
+    ("a (b) (c)", ("a", " (b) (c)")),
+])
+def test_a_roster_entry_splits_into_player_and_champion(lm_module, entry, expected):
+    assert lm_module.split_team_member(entry) == expected
+
+
+# Verifies the Discord roster marks the monitored player and leaves every other line as it was
+def test_the_discord_roster_marks_the_monitored_player(lm_module):
+    lines = ["Team id 100: ⭐", "- misiektoja (Ahri)", "- teammate (Lux)", "", "Team id 200:", "- rival (Zed)"]
+
+    rendered = lm_module.format_teams_markdown(lines, "misiektoja")
+
+    assert rendered == "Team id 100: ⭐\n- **misiektoja** (Ahri)\n- teammate (Lux)\n\nTeam id 200:\n- rival (Zed)\n"
+
+
+# Verifies the monitored player is marked even when their champion is unknown
+def test_a_monitored_player_without_a_champion_is_marked(lm_module):
+    assert lm_module.format_teams_markdown(["- misiektoja"], "misiektoja") == "- **misiektoja**\n"
+
+
+# Verifies only an exact name is marked, so a player whose name contains the monitored one is left alone
+def test_only_an_exact_name_is_marked(lm_module):
+    assert lm_module.format_teams_markdown(["- misiektoja2 (Zed)"], "misiektoja") == "- misiektoja2 (Zed)\n"
+
+
+# Verifies an empty roster produces nothing rather than a blank line
+def test_an_empty_discord_roster_renders_as_nothing(lm_module):
+    assert lm_module.format_teams_markdown([], "misiektoja") == ""
+
+
 # Verifies a draft with no bans produces nothing to print
 def test_no_bans_produce_no_output(lm_module):
     lines, shared_pool = lm_module.format_banned_champions_output({100: [], 200: []})

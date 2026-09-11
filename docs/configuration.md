@@ -100,6 +100,14 @@ lol_monitor --send-test-email
 
 Which events produce mail is covered under [Email Notifications](usage.md#email-notifications).
 
+### Champion Icon in Email
+
+`EMAIL_IMAGES = True` embeds the champion icon at the end of the in-game and match summary emails, under the timestamp. The icon is the one the Data Dragon release serves for the champion the player used, downloaded at send time and attached to the message, so it shows without the mail client fetching anything remote.
+
+Alerts that name no champion, such as an error alert, are unaffected. If the download fails or returns something that is not a small image, the email is sent as text only.
+
+[`--setup`](setup-and-first-run.md#guided-setup) offers the setting once match emails are enabled.
+
 ## Webhook Settings
 
 Webhooks send the same alerts as email to a Discord channel or an ntfy topic. They are switched off until you set a destination. [`--setup`](setup-and-first-run.md#guided-setup) collects the service, the destination and the alert switches together:
@@ -115,6 +123,7 @@ Webhooks send the same alerts as email to a Discord channel or an ntfy topic. Th
 | `WEBHOOK_ERROR_NOTIFICATION` | Send an alert on monitoring errors, on by default |
 | `WEBHOOK_HEADERS` | Extra request headers, for example ntfy options |
 | `NTFY_ACCESS_TOKEN` | Bearer token for a private ntfy topic |
+| `NTFY_IMAGES` | Attach the champion icon to ntfy alerts |
 
 Save the destination without putting it in a file you might share:
 
@@ -146,6 +155,10 @@ Add ntfy options through `WEBHOOK_HEADERS`:
 WEBHOOK_HEADERS = {"X-Priority": "4", "X-Tags": "video_game"}
 ```
 
+`NTFY_IMAGES = True` attaches the champion icon to the alerts that name a champion, taken from the same Data Dragon release the champion names come from. ntfy shows it as the notification image and the alert text travels beside it, so the message reads the same as without the icon. An alert with no champion is sent as text, and an attachment the server rejects is retried once as a text-only alert so the alert itself still arrives.
+
+[`--setup`](setup-and-first-run.md#guided-setup) offers the setting when the destination is an ntfy topic and match alerts are enabled.
+
 ### Discord
 
 `WEBHOOK_URL` is the link from **Edit Channel -> Integrations -> Webhooks -> New Webhook -> Copy Webhook URL**. Anyone holding it can post to that channel.
@@ -153,6 +166,8 @@ WEBHOOK_HEADERS = {"X-Priority": "4", "X-Tags": "video_game"}
 Alerts are sent as an embed built from `WEBHOOK_TEMPLATE`, which supports the `title`, `description`, `version`, `image_url`, `fields`, `fields_str`, `color`, `timestamp`, `username` and `avatar_url` placeholders. Mentions are disabled on every message the tool sends, whatever the template says.
 
 `image_url` holds the champion icon on the alerts that name a champion, the in-game announcement and the finished match summary, taken from the Data Dragon release the run read its champion names from. The default template shows it as the embed thumbnail. Alerts with no champion leave it empty and the thumbnail is dropped rather than sent blank.
+
+In the roster the monitored player's own line is sent in bold, since Discord renders markdown in an embed. Only Discord gets that wording: email uses its HTML body for the same emphasis and ntfy receives the plain roster.
 
 `WEBHOOK_TRANSFORMS` applies string methods to those values before the payload is built:
 
@@ -310,7 +325,7 @@ Without it, lines are printed in full and `--doctor` says so. Truncation is off 
 
 ## Coloured Output
 
-Colour is on by default and marks what a value is rather than decorating the line: player names, identifiers, champions, ranks, dates, links and the `[PASS]`/`[WARN]`/`[FAIL]`/`[SKIP]` markers each get their own colour. The log file is never coloured, so a log attached to a bug report stays plain text. `COLORED_OUTPUT` and `COLOR_THEME` apply to monitoring output and to the [`--setup`](setup-and-first-run.md#guided-setup) and `--doctor` screens alike.
+Colour is on by default and marks what a value is rather than decorating the line: player names, identifiers, champions, ranks, dates, links and the `[PASS]`/`[WARN]`/`[FAIL]`/`[SKIP]` markers each get their own colour. In a match roster the monitored player's own entry is bold, through the `monitored_username` part, so their line stands out among the nine others. The log file is never coloured, so a log attached to a bug report stays plain text. `COLORED_OUTPUT` and `COLOR_THEME` apply to monitoring output and to the [`--setup`](setup-and-first-run.md#guided-setup) and `--doctor` screens alike.
 
 Colour switches itself off when the output is not a terminal you are watching. That covers redirected or piped output, a `NO_COLOR` environment variable of any value, a `TERM` of `dumb` or empty and a `--no-color` run. The startup summary reports the resolved state next to the setting, so `False (setting: True)` means colour was configured but the terminal did not qualify.
 

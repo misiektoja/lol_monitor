@@ -193,6 +193,37 @@ def test_the_match_summary_webhook_carries_the_champion_icon(lm_module, fake_clo
     assert thumbnail == {"url": "https://ddragon.leagueoflegends.com/cdn/15.19.1/img/champion/Ahri.png"}
 
 
+# Verifies the finished match alert marks the monitored player in the roster Discord renders
+def test_the_match_summary_discord_alert_marks_the_monitored_player(lm_module, fake_clock, monkeypatch, webhook_session):
+    from conftest import FakeWebhookResponse
+    monkeypatch.setattr(lm_module, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(lm_module, "WEBHOOK_PROVIDER", "discord")
+    monkeypatch.setattr(lm_module, "WEBHOOK_URL", "https://discord.com/api/webhooks/123/abc")
+    monkeypatch.setattr(lm_module, "WEBHOOK_STATUS_NOTIFICATION", True)
+    webhook_session.responses.append(FakeWebhookResponse(204))
+
+    report_match(lm_module, match_payload(), notify=True)
+
+    description = webhook_session.posts[0]["json"]["embeds"][0]["description"]
+    assert "- **misiektoja** (Ahri)" in description
+    assert "- teammate (Lux)" in description
+
+
+# Verifies the email keeps the plain roster, since the HTML body marks the player with its own emphasis
+def test_the_match_summary_email_keeps_the_plain_roster(lm_module, fake_clock, sent_emails):
+    report_match(lm_module, match_payload(), notify=True)
+
+    assert "- misiektoja (Ahri)" in sent_emails[0]["body"]
+    assert "**" not in sent_emails[0]["body"]
+
+
+# Verifies the report records who is monitored, which is what marks that player's line in the live output
+def test_the_report_records_the_monitored_player(lm_module, fake_clock):
+    report_match(lm_module, match_payload())
+
+    assert lm_module.MONITORED_PLAYER_NAME == USER
+
+
 # Verifies nothing is emailed while status notifications are off
 def test_no_email_without_status_notifications(lm_module, fake_clock, sent_emails):
     report_match(lm_module, match_payload())
@@ -341,6 +372,40 @@ def test_the_in_game_webhook_carries_the_champion_icon(lm_module, riot_api, fake
 
     thumbnail = webhook_session.posts[0]["json"]["embeds"][0]["thumbnail"]
     assert thumbnail == {"url": "https://ddragon.leagueoflegends.com/cdn/15.19.1/img/champion/Ahri.png"}
+
+
+# Verifies the in-game Discord alert marks the monitored player in the roster and leaves the ban list alone
+def test_the_in_game_discord_alert_marks_the_monitored_player(lm_module, riot_api, fake_clock, known_champions, monkeypatch, webhook_session):
+    from conftest import FakeWebhookResponse
+    monkeypatch.setattr(lm_module, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(lm_module, "WEBHOOK_PROVIDER", "discord")
+    monkeypatch.setattr(lm_module, "WEBHOOK_URL", "https://discord.com/api/webhooks/123/abc")
+    monkeypatch.setattr(lm_module, "WEBHOOK_STATUS_NOTIFICATION", True)
+    riot_api.script("get_lol_spectator_v5_active_game_by_summoner", live_match_payload())
+    webhook_session.responses.append(FakeWebhookResponse(204))
+
+    asyncio.run(lm_module.print_current_match(PUUID, USER, "eun1", TS - 7200, TS - 3600, False))
+
+    description = webhook_session.posts[0]["json"]["embeds"][0]["description"]
+    assert "- **misiektoja** (Ahri)" in description
+    assert "- rival (Zed)" in description
+    assert "- LeeSin (pick 1)" in description
+
+
+# Verifies an ntfy alert keeps the plain roster, since ntfy shows the body as it arrives
+def test_the_in_game_ntfy_alert_keeps_the_plain_roster(lm_module, riot_api, fake_clock, known_champions, monkeypatch, webhook_session):
+    from conftest import FakeWebhookResponse
+    monkeypatch.setattr(lm_module, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(lm_module, "WEBHOOK_PROVIDER", "ntfy")
+    monkeypatch.setattr(lm_module, "WEBHOOK_URL", "https://ntfy.sh/my-private-topic")
+    monkeypatch.setattr(lm_module, "WEBHOOK_STATUS_NOTIFICATION", True)
+    riot_api.script("get_lol_spectator_v5_active_game_by_summoner", live_match_payload())
+    webhook_session.responses.append(FakeWebhookResponse(200))
+
+    asyncio.run(lm_module.print_current_match(PUUID, USER, "eun1", TS - 7200, TS - 3600, False))
+
+    assert b"- misiektoja (Ahri)" in webhook_session.posts[0]["data"]
+    assert b"**" not in webhook_session.posts[0]["data"]
 
 
 # Verifies the in-game email names the player and carries the rosters in both bodies
