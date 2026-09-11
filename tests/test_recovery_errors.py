@@ -47,6 +47,15 @@ def test_every_declared_code_is_reachable(lm_module):
     assert produced == set(lm_module.RECOVERY_CODES), f"codes with no producer: {sorted(set(lm_module.RECOVERY_CODES) - produced)}"
 
 
+# Verifies the refusal to replace an existing file names the placeholder the siblings use and its guide section
+def test_the_existing_file_refusal_reads_the_way_the_siblings_report_it(lm_module):
+    advice = lm_module.classify_recovery_error(context="file.exists")
+
+    assert advice.code == "file.exists"
+    assert "--generate-config <new-file>" in advice.fix
+    assert f"Guide: {lm_module.CONFIG_FILE_GUIDE_URL}" in advice.fix
+
+
 # Verifies no delivery path prints at all, since a print there is an error line that skipped the recovery block
 def test_no_delivery_path_prints_outside_the_recovery_block(lm_module):
     delivery = {"send_email", "send_webhook", "print_webhook_error", "smtp_connect_and_login", "post_webhook_request"}
