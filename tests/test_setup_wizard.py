@@ -1621,3 +1621,19 @@ def test_an_interrupt_on_the_terminal_path_writes_nothing(tmp_path):
     assert "Setup cancelled. Destination files were not changed." in transcript
     assert "Traceback" not in transcript
     assert sorted(path.name for path in tmp_path.iterdir()) == []
+
+
+# Setup reports the sign-in succeeded and then writes the files a restart reads, so the value it proves has to be
+# the value the next run resolves. Startup prefers an export over the dotenv file, and setup has to agree
+def test_the_effective_secret_follows_the_startup_precedence(tmp_path, monkeypatch):
+    env_path = tmp_path / ".env"
+    env_path.write_text('SMTP_PASSWORD="saved-in-file"\n', encoding="utf-8")
+    monkeypatch.delenv("SMTP_PASSWORD", raising=False)
+    monkeypatch.setattr(monitor, "SMTP_PASSWORD", "from-config-file", raising=False)
+
+    assert monitor.effective_secret_after_setup("SMTP_PASSWORD", env_path, {}) == ("saved-in-file", False)
+    assert monitor.effective_secret_after_setup("SMTP_PASSWORD", env_path, {"SMTP_PASSWORD": "accepted"}) == ("accepted", False)
+    monkeypatch.setenv("SMTP_PASSWORD", "exported")
+    assert monitor.effective_secret_after_setup("SMTP_PASSWORD", env_path, {"SMTP_PASSWORD": "accepted"}) == ("exported", True)
+    monkeypatch.delenv("SMTP_PASSWORD", raising=False)
+    assert monitor.effective_secret_after_setup("SMTP_PASSWORD", tmp_path / "absent.env", {}) == ("from-config-file", False)
