@@ -48,6 +48,10 @@ lol_monitor riot_id_name#tag euw1
 
 `--config-file` names a file that is not there. The path is reported exactly as given, so check for a typo or an unexpanded `~`.
 
+### `Config file '<path>' already exists and there is no terminal to confirm replacing it`
+
+`--generate-config <filename>` will not overwrite a file it cannot ask about, which is what happens in a script, a cron job or a container build. Write to a different path, or pass `--force` to replace it after a timestamped backup.
+
 ### `Line N: unsupported configuration setting`
 
 The configuration file is read as data and only documented settings are accepted. The reported line names the setting. A file that fails leaves every setting at its previous value rather than applying the lines above the bad one.

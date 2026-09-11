@@ -17,6 +17,14 @@ lol_monitor --generate-config lol_monitor.conf
 !!! warning "Windows PowerShell"
     Do not use `>` for this command in PowerShell. Some versions write redirected text as UTF-16, which makes the tool report a "null bytes" error. Pass the filename to `--generate-config` instead and the tool writes a UTF-8 file itself.
 
+Passing the filename is also the safer form. When the file already exists the tool asks before replacing it and keeps a timestamped `.bak` copy of the old one next to it, readable only by you. A `>` redirect cannot do that, because the shell empties the file before the tool starts.
+
+Outside a terminal, where there is nobody to ask, the tool refuses and leaves the file alone. Pass `--force` to replace it anyway, which still writes the backup first:
+
+```sh
+lol_monitor --generate-config lol_monitor.conf --force
+```
+
 Edit the file and change whatever you need. Every setting carries a comment explaining what it does.
 
 The file is read as data, not executed. Only documented `SETTING = value` lines with plain literal values are accepted, plus a setting that reuses another setting. Imports, function calls, expressions and control flow are rejected without being run, and the rejected line is named.

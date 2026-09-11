@@ -330,7 +330,9 @@ except ModuleNotFoundError:
     raise SystemExit("Error: Couldn't find the Pulsefire library !\n\nTo install it, run:\n    pip3 install pulsefire\n\nOnce installed, re-run this tool. For more help, visit:\nhttps://pulsefire.iann838.com/usage/basic/installation/")
 import shlex
 import shutil
+import tempfile
 import unicodedata
+from contextlib import contextmanager
 from collections import namedtuple
 from pathlib import Path
 from typing import Optional, Any, Dict, List, Mapping, Tuple, TypedDict
@@ -484,7 +486,7 @@ RECOVERY_CODES = frozenset({
     "riot.rate_limited", "riot.unavailable",
     "target.missing", "target.invalid", "target.region", "target.not_found",
     "smtp.invalid", "smtp.authentication", "smtp.connection",
-    "file.unwritable",
+    "file.exists", "file.unwritable",
     "unknown",
 })
 
@@ -575,6 +577,9 @@ def classify_recovery_error(error=None, context="runtime", detail=""):
             return advice("smtp.invalid", safe_detail or "The SMTP settings are incomplete or invalid", "Check SMTP_HOST, SMTP_PORT, SENDER_EMAIL and RECEIVER_EMAIL in the configuration file", False, SMTP_GUIDE_URL)
         return advice("smtp.connection", "The SMTP server could not be reached", "Check SMTP_HOST, SMTP_PORT and SMTP_SSL, then confirm the host is reachable from this machine", True, SMTP_GUIDE_URL)
 
+    if context == "file.exists":
+        return advice("file.exists", safe_detail or "The destination file already exists", f"Re-run with --force to replace it after a timestamped backup, or write to a different path with '{render_command(['--generate-config', '<new_file>'], include_paths=False)}'", False, CONFIG_FILE_GUIDE_URL)
+
     if context == "file":
         return advice("file.unwritable", safe_detail or "A file the tool writes could not be opened", "Check that the directory exists and is writable, or choose another path", False, OUTPUT_GUIDE_URL)
 
@@ -627,6 +632,105 @@ class RecoveryHintTracker:
     # Clears suppression after a successful cycle, so a recurrence is reported again
     def reset(self):
         self.last_code = None
+
+
+# Restores Python's default Ctrl+C behavior while a prompt waits, so the prompt reports the outcome instead of the signal handler
+@contextmanager
+def default_interrupt_handling():
+    try:
+        previous_handler = signal.getsignal(signal.SIGINT)
+        signal.signal(signal.SIGINT, signal.default_int_handler)
+    except (ValueError, OSError):
+        # Handlers can only be replaced from the main thread, which is where every prompt runs
+        yield
+        return
+    try:
+        yield
+    finally:
+        try:
+            signal.signal(signal.SIGINT, previous_handler)
+        except (ValueError, OSError):
+            pass
+
+
+# Reads one visible answer with Python's default Ctrl+C behavior
+def read_interactively(reader, *args, **kwargs):
+    with default_interrupt_handling():
+        return reader(*args, **kwargs)
+
+
+# Copies an existing file to a timestamped private backup before it is replaced, returning the backup path or None
+def create_timestamped_backup(destination, attempts=100):
+    destination_path = Path(destination).expanduser()
+    if not destination_path.is_file():
+        return None
+    existing_bytes = destination_path.read_bytes()
+    stamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    for attempt in range(attempts):
+        suffix = f".{stamp}.bak" if attempt == 0 else f".{stamp}-{attempt}.bak"
+        backup_path = destination_path.with_name(destination_path.name + suffix)
+        try:
+            # O_EXCL so a backup can never overwrite an earlier one, even under a concurrent run
+            descriptor = os.open(str(backup_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError:
+            continue
+        try:
+            with os.fdopen(descriptor, "wb") as backup_file:
+                backup_file.write(existing_bytes)
+                backup_file.flush()
+                os.fsync(backup_file.fileno())
+        except Exception:
+            try:
+                os.unlink(str(backup_path))
+            except OSError:
+                pass
+            raise
+        return str(backup_path)
+    raise OSError(f"Could not create a unique backup for '{destination_path}' after {attempts} attempts")
+
+
+# Writes the configuration atomically, backing up whatever was there first
+def write_config_file(destination, content):
+    destination_path = Path(destination).expanduser()
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    backup_path = create_timestamped_backup(destination_path)
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n", prefix=f".{destination_path.name}.", suffix=".tmp", dir=str(destination_path.parent), delete=False) as temporary_file:
+            temporary_path = Path(temporary_file.name)
+            temporary_file.write(content)
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+        os.replace(str(temporary_path), str(destination_path))
+        temporary_path = None
+    finally:
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink()
+    return {"path": str(destination_path), "backup_path": backup_path}
+
+
+# Asks before replacing a config file that already exists, so a generated template cannot land silently
+def confirm_generated_config_replacement(destination, force=False, interactive=None, input_func=input):
+    destination_path = Path(destination).expanduser()
+    if not destination_path.exists() or force:
+        return True
+    terminal_is_interactive = bool(sys.stdin.isatty()) if interactive is None else bool(interactive)
+    if not terminal_is_interactive:
+        raise FileExistsError(f"Config file '{destination_path}' already exists and there is no terminal to confirm replacing it")
+    try:
+        answer = str(read_interactively(input_func, f"Config file '{destination_path}' exists. Replace it and keep a timestamped backup? [y/N]: ")).strip().casefold()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        answer = ""
+    return answer in ("y", "yes")
+
+
+# Writes one generated config atomically, backing up whatever was there first
+def write_generated_config(output_file, content, force=False, interactive=None, input_func=input):
+    destination = Path(output_file).expanduser()
+    if not confirm_generated_config_replacement(destination, force, interactive, input_func):
+        return None, False
+    return write_config_file(destination, content)["backup_path"], True
 
 
 # Reports whether separator-only log lines should use ASCII on this system
@@ -2562,13 +2666,24 @@ def main():
         try:
             idx = sys.argv.index("--generate-config")
             if idx + 1 < len(sys.argv) and not sys.argv[idx + 1].startswith("-"):
+                # Written directly rather than redirected, which avoids the UTF-16 encoding PowerShell applies to '>'
                 output_file = sys.argv[idx + 1]
-                with open(output_file, "w", encoding="utf-8") as f:
-                    f.write(config_content)
+                backup_path, written = write_generated_config(output_file, config_content, force="--force" in sys.argv)
+                if not written:
+                    print("Config was not replaced. The existing file is unchanged")
+                    sys.exit(1)
                 print(f"Config written to: {output_file}")
+                if backup_path:
+                    print(f"Previous config backed up to: {backup_path}")
                 sys.exit(0)
         except (ValueError, IndexError):
             pass
+        except FileExistsError as exc:
+            print_recovery_error(exc, context="file.exists", detail=str(exc))
+            sys.exit(1)
+        except OSError as exc:
+            print_recovery_error(exc, context="file", debug=True, detail=f"The config file could not be written: {exc}")
+            sys.exit(1)
         sys.stdout.buffer.write(config_content.encode("utf-8"))
         sys.stdout.buffer.flush()
         sys.exit(0)
@@ -2628,6 +2743,12 @@ def main():
         const=True,
         metavar="FILENAME",
         help="Print default config template and exit (on Windows PowerShell, specify a filename to avoid redirect encoding issues)",
+    )
+    conf.add_argument(
+        "--force",
+        dest="force",
+        action="store_true",
+        help="Let --generate-config replace an existing file without asking, after a timestamped backup",
     )
     conf.add_argument(
         "--env-file",

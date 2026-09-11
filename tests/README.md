@@ -40,6 +40,7 @@ and again before anything is published to PyPI.
 | `conftest.py` | Import setup, deterministic globals and the Riot API, SMTP and clock test doubles |
 | `test_cli_startup.py` | Command line handling, config and dotenv loading, startup validation, listing mode and the effective-settings banner |
 | `test_config_loading.py` | Declarative config parsing, retired settings and refusal of executable config content |
+| `test_config_writing.py` | Backups, atomic replacement and the prompt guarding a generated configuration file |
 | `test_csv_output.py` | The CSV match history, its columns and the custom game rows saved from a live snapshot |
 | `test_documentation.py` | The documentation site: navigation, links into and out of it, page structure and claims about flags and tooling |
 | `test_email_html.py` | The HTML notification body and escaping of names taken from Riot |

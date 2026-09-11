@@ -5,7 +5,7 @@ import inspect
 
 import pytest
 
-CONTEXTS = ("config", "credentials", "target.missing", "target.region", "target", "connectivity", "email", "file", "runtime")
+CONTEXTS = ("config", "credentials", "target.missing", "target.region", "target", "connectivity", "email", "file", "file.exists", "runtime")
 
 
 @pytest.fixture(autouse=True)
