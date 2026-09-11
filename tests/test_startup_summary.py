@@ -272,10 +272,10 @@ def test_the_log_file_of_a_real_run_keeps_the_full_view(lm_module, monkeypatch, 
 
 # Verifies the webhook row names the service alerts reach, since the categories alone do not say Discord or ntfy
 @pytest.mark.parametrize("provider,url,expected", [
-    ("discord", "https://discord.com/api/webhooks/1/abc", "Discord (discord.com)"),
-    ("ntfy", "https://ntfy.sh/private-topic", "ntfy (ntfy.sh, access token set)"),
+    ("discord", "https://discord.com/api/webhooks/1/abc", "Discord (enabled)"),
+    ("ntfy", "https://ntfy.sh/private-topic", "ntfy (enabled)"),
 ])
-def test_the_webhook_provider_row_names_the_service_and_its_host(lm_module, monkeypatch, provider, url, expected):
+def test_the_webhook_provider_row_names_the_service(lm_module, monkeypatch, provider, url, expected):
     monkeypatch.setattr(lm_module, "WEBHOOK_ENABLED", True)
     monkeypatch.setattr(lm_module, "WEBHOOK_PROVIDER", provider)
     monkeypatch.setattr(lm_module, "WEBHOOK_URL", url)
@@ -299,9 +299,35 @@ def test_the_webhook_provider_row_prints_no_part_of_the_url_path(lm_module, monk
 # Verifies a run with no webhook destination says so rather than naming a provider it would never post to
 def test_the_webhook_provider_row_reports_an_unconfigured_channel(lm_module, monkeypatch):
     monkeypatch.setattr(lm_module, "WEBHOOK_ENABLED", False)
-    monkeypatch.setattr(lm_module, "WEBHOOK_URL", "https://discord.com/api/webhooks/1/abc")
+    monkeypatch.setattr(lm_module, "WEBHOOK_URL", "")
 
     assert next(row.value for row in lm_module.build_startup_summary() if row.label == "Webhook provider") == "Not configured"
+
+
+# Verifies a switched-off channel still names the service it holds a destination for, which the rollup cannot say
+def test_the_webhook_provider_row_names_the_service_of_a_switched_off_channel(lm_module, monkeypatch):
+    monkeypatch.setattr(lm_module, "WEBHOOK_ENABLED", False)
+    monkeypatch.setattr(lm_module, "WEBHOOK_PROVIDER", "ntfy")
+    monkeypatch.setattr(lm_module, "WEBHOOK_URL", "https://ntfy.sh/private-topic")
+
+    assert next(row.value for row in lm_module.build_startup_summary() if row.label == "Webhook provider") == "ntfy (disabled)"
+
+
+# Verifies each channel's detail rows are indented under it while their values stay in the shared column
+def test_the_channel_detail_rows_are_indented_under_their_channel(lm_module, monkeypatch):
+    monkeypatch.setattr(lm_module, "SMTP_HOST", "smtp.example.com")
+    monkeypatch.setattr(lm_module, "SMTP_PORT", 587)
+    monkeypatch.setattr(lm_module, "RECEIVER_EMAIL", "michal.k@example.com")
+    monkeypatch.setattr(lm_module, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(lm_module, "WEBHOOK_PROVIDER", "ntfy")
+    monkeypatch.setattr(lm_module, "WEBHOOK_URL", "https://ntfy.sh/private-topic")
+
+    lines = {row.label: lm_module.format_startup_summary_row(row) for row in lm_module.build_startup_summary()}
+
+    assert lines["Notifications (webhook)"].startswith("* Notifications (webhook):")
+    for label in ("Email transport", "Email recipient", "Webhook provider"):
+        assert lines[label].startswith(f"*   {label}:")
+        assert lines[label][32] != " "
 
 
 # Verifies the ntfy attachment row appears only for a run that posts to ntfy, since Discord ignores that setting

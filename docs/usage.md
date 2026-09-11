@@ -56,9 +56,11 @@ Every run opens with the settings that are actually in effect, one per line:
 
 The short view names the target, where alerts go, where output goes and each optional feature that is switched on. A feature that is off is left out, apart from TLS verification, which appears while it is **off**.
 
-`--verbose` or `--debug` replaces it with the full view, which adds every remaining setting: the region and the routing it resolves to, the mail server and the recipient, the webhook provider and its host, whether delivery confirmations are on, the process id, the Python version and operating system, the install method, the four secret source rows, ASCII log separators and the state of both diagnostic modes. **The log file always keeps the full view**, whatever the terminal showed, so a log attached to a bug report carries every effective setting.
+`--verbose` or `--debug` replaces it with the full view, which adds every remaining setting: the region and the routing it resolves to, the mail server and the recipient, the webhook provider and whether that channel is switched on, whether delivery confirmations are on, the process id, the Python version and operating system, the install method, the four secret source rows, ASCII log separators and the state of both diagnostic modes. **The log file always keeps the full view**, whatever the terminal showed, so a log attached to a bug report carries every effective setting.
 
-No secret value appears in either view. The secret rows list names only, the webhook row names the destination host but never the path that carries an ntfy topic or a Discord token, and the recipient address is masked down to the first and last character of its local part.
+Each channel's own settings are indented under it, so the mail rows and the webhook rows read as one block rather than as separate entries.
+
+No secret value appears in either view. The secret rows list names only, the webhook row names the service but no part of the URL that carries an ntfy topic or a Discord token, and the recipient address is masked down to the first and last character of its local part.
 
 ## Listing Mode
 
