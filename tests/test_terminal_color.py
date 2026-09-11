@@ -153,6 +153,7 @@ def test_the_setting_switches_colour_off(monkeypatch):
 
 # Verifies a theme in the configuration file wins over the default for the parts it names and leaves the rest alone
 def test_a_configured_theme_overrides_only_the_parts_it_names(monkeypatch):
+    monkeypatch.delenv("NO_COLOR", raising=False)
     monkeypatch.setenv("TERM", "xterm-256color")
     monkeypatch.setattr(monitor.sys, "stdin", FakeStream(True))
     monkeypatch.setattr(monitor, "COLORED_OUTPUT", True)
