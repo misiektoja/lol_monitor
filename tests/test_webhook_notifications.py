@@ -858,7 +858,20 @@ def test_both_channel_names_reach_the_screen(discord, webhook_session, sent_emai
 
     output = capsys.readouterr().out
     assert "Sending email notification to alerts@example.test" in output
-    assert "Sending webhook notification" in output
+    assert "Sending webhook notification via Discord" in output
+
+
+# Verifies the send line names the service in every mode, since a run with the delivery confirmations off has no other clue
+@pytest.mark.parametrize("provider,expected", [("discord", "Discord"), ("ntfy", "ntfy")])
+def test_the_webhook_send_line_names_the_provider(discord, webhook_session, monkeypatch, capsys, provider, expected):
+    from conftest import FakeWebhookResponse
+    monkeypatch.setattr(discord, "WEBHOOK_PROVIDER", provider)
+    monkeypatch.setattr(discord, "DELIVERY_CONFIRMATIONS", False)
+    webhook_session.responses.append(FakeWebhookResponse(204))
+
+    discord.send_notification_channels("status", "subject", "body", webhook_enabled=True)
+
+    assert f"Sending webhook notification via {expected}" in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------------------

@@ -11,7 +11,7 @@ RIOT_ID = "misiektoja#EUNE"
 REGION = "eun1"
 
 # The rows every tool in this family prints, in the order section 15.18 fixes. A tool's own rows are filtered out
-SHARED_ROW_ORDER = ("Target", "Polling intervals", "Notifications (email)", "Notifications (webhook)", "Output", "Output logging", "Config", "Dotenv", "Liveness output", "CSV output", "Terminal truncation", "Install method", "Secrets from dotenv", "Secrets from environment", "Secrets from config file", "Secrets from command line", "TLS verification", "ASCII log separators", "Coloured output", "Verbose mode", "Debug mode", "More details")
+SHARED_ROW_ORDER = ("Target", "Polling intervals", "Notifications (email)", "Email transport", "Email recipient", "Notifications (webhook)", "Webhook provider", "Delivery confirmations", "Output", "Output logging", "Config", "Dotenv", "Liveness output", "CSV output", "Terminal truncation", "Process id", "Python version", "Operating system", "Install method", "Secrets from dotenv", "Secrets from environment", "Secrets from config file", "Secrets from command line", "TLS verification", "ASCII log separators", "Coloured output", "Verbose mode", "Debug mode", "More details")
 
 # Where every value starts, which is what makes the column line up across tools
 VALUE_COLUMN = 32
@@ -268,3 +268,120 @@ def test_the_log_file_of_a_real_run_keeps_the_full_view(lm_module, monkeypatch, 
     assert "Secrets from dotenv" in logged
     assert "Secrets from dotenv" not in capsys.readouterr().out
     assert "* Output:" not in logged
+
+
+# Verifies the webhook row names the service alerts reach, since the categories alone do not say Discord or ntfy
+@pytest.mark.parametrize("provider,url,expected", [
+    ("discord", "https://discord.com/api/webhooks/1/abc", "Discord (discord.com)"),
+    ("ntfy", "https://ntfy.sh/private-topic", "ntfy (ntfy.sh, access token set)"),
+])
+def test_the_webhook_provider_row_names_the_service_and_its_host(lm_module, monkeypatch, provider, url, expected):
+    monkeypatch.setattr(lm_module, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(lm_module, "WEBHOOK_PROVIDER", provider)
+    monkeypatch.setattr(lm_module, "WEBHOOK_URL", url)
+    monkeypatch.setattr(lm_module, "NTFY_ACCESS_TOKEN", "tk_secret")
+
+    row = next(row for row in lm_module.build_startup_summary() if row.label == "Webhook provider")
+
+    assert row.value == expected
+    assert not row.concise
+
+
+# Verifies the row never leaks the topic or token that lives in the webhook path
+def test_the_webhook_provider_row_prints_no_part_of_the_url_path(lm_module, monkeypatch):
+    monkeypatch.setattr(lm_module, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(lm_module, "WEBHOOK_PROVIDER", "ntfy")
+    monkeypatch.setattr(lm_module, "WEBHOOK_URL", "https://ntfy.sh/private-topic")
+
+    assert "private-topic" not in next(row.value for row in lm_module.build_startup_summary() if row.label == "Webhook provider")
+
+
+# Verifies a run with no webhook destination says so rather than naming a provider it would never post to
+def test_the_webhook_provider_row_reports_an_unconfigured_channel(lm_module, monkeypatch):
+    monkeypatch.setattr(lm_module, "WEBHOOK_ENABLED", False)
+    monkeypatch.setattr(lm_module, "WEBHOOK_URL", "https://discord.com/api/webhooks/1/abc")
+
+    assert next(row.value for row in lm_module.build_startup_summary() if row.label == "Webhook provider") == "Not configured"
+
+
+# Verifies the ntfy attachment row appears only for a run that posts to ntfy, since Discord ignores that setting
+@pytest.mark.parametrize("provider,present", [("ntfy", True), ("discord", False)])
+def test_the_ntfy_image_row_follows_the_provider(lm_module, monkeypatch, provider, present):
+    monkeypatch.setattr(lm_module, "WEBHOOK_PROVIDER", provider)
+
+    assert any(row.label == "ntfy images" for row in lm_module.build_startup_summary()) is present
+
+
+# Verifies the mail server is reported with the transport security in effect, which is what a silent send failure needs
+@pytest.mark.parametrize("use_ssl,expected", [(True, "smtp.example.com:587 (STARTTLS)"), (False, "smtp.example.com:587 (TLS off)")])
+def test_the_email_transport_row_names_the_server_and_its_security(lm_module, monkeypatch, use_ssl, expected):
+    monkeypatch.setattr(lm_module, "SMTP_HOST", "smtp.example.com")
+    monkeypatch.setattr(lm_module, "SMTP_PORT", 587)
+    monkeypatch.setattr(lm_module, "SMTP_SSL", use_ssl)
+
+    assert next(row.value for row in lm_module.build_startup_summary() if row.label == "Email transport") == expected
+
+
+# Verifies an unset mail server says so instead of printing a half-built address
+def test_the_email_transport_row_reports_an_unconfigured_server(lm_module, monkeypatch):
+    monkeypatch.setattr(lm_module, "SMTP_HOST", "")
+    monkeypatch.setattr(lm_module, "SMTP_PORT", 0)
+
+    assert next(row.value for row in lm_module.build_startup_summary() if row.label == "Email transport") == "Not configured"
+
+
+# Verifies the recipient keeps enough shape to spot a typo while the address itself does not survive a pasted log
+@pytest.mark.parametrize("address,expected", [
+    ("michal.k@example.com", "m******k@example.com"),
+    ("ab@example.com", "a*@example.com"),
+    ("a@example.com", "a@example.com"),
+    ("not-an-address", "not-an-address"),
+    ("", ""),
+])
+def test_the_recipient_address_is_masked(lm_module, address, expected):
+    assert lm_module.mask_email_address(address) == expected
+
+
+# Verifies the recipient row uses the mask rather than the configured address
+def test_the_email_recipient_row_is_masked(lm_module, monkeypatch):
+    monkeypatch.setattr(lm_module, "RECEIVER_EMAIL", "michal.k@example.com")
+
+    value = next(row.value for row in lm_module.build_startup_summary() if row.label == "Email recipient")
+
+    assert value == "m******k@example.com"
+    assert "michal.k" not in value
+
+
+# Verifies the row that explains a quiet run, since turning the confirmations off looks like a channel that stopped working
+def test_the_delivery_confirmation_row_reports_the_setting(lm_module, monkeypatch):
+    monkeypatch.setattr(lm_module, "DELIVERY_CONFIRMATIONS", False)
+
+    assert next(row.value for row in lm_module.build_startup_summary() if row.label == "Delivery confirmations") == "False"
+
+
+# Verifies the run reports the pid the documented signals have to be sent to, and the runtime a bug report needs
+def test_the_runtime_rows_report_the_process_and_the_interpreter(lm_module):
+    import os
+    import platform
+
+    values = {row.label: row.value for row in lm_module.build_startup_summary()}
+
+    assert values["Process id"] == str(os.getpid())
+    assert values["Python version"] == platform.python_version()
+    assert values["Operating system"] == f"{platform.platform(terse=True)} ({platform.machine()})"
+
+
+# Verifies the shard the run queries is reported, since the Riot ID alone does not say which region it was looked up in
+def test_the_region_row_names_the_shard_and_its_routing(lm_module):
+    with_region = {row.label: row.value for row in lm_module.build_startup_summary(RIOT_ID, region=REGION)}
+    without_region = {row.label: row.value for row in lm_module.build_startup_summary(RIOT_ID)}
+
+    assert with_region["Region"] == "eun1 (routing: europe)"
+    assert without_region["Region"] == "None"
+
+
+# Verifies every row added for the verbose views stays out of the short one, which is the screen a default run gets
+def test_the_new_detail_rows_stay_out_of_the_concise_view(rows):
+    detail_labels = {"Region", "Email transport", "Email recipient", "Email images", "Webhook provider", "ntfy images", "Delivery confirmations", "Process id", "Python version", "Operating system"}
+
+    assert not {row.label for row in rows if row.concise} & detail_labels

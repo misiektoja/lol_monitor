@@ -3011,7 +3011,7 @@ def send_notification_channels(notification_type, subject, body, body_html="", e
             email_delivered = send_email(subject, body, add_email_champion_icon_html(body_html), SMTP_SSL, image_bytes=email_icon[0], image_subtype=email_icon[1]) == 0
         debug_print("Email channel", event=notification_type, outcome="OK" if email_delivered else "failed")
     if webhook_attempted:
-        print("Sending webhook notification")
+        print(f"Sending webhook notification via {webhook_provider_display_name()}")
         webhook_delivered = send_webhook(subject, body, notification_type, force=True, image_url=image_url, ntfy_priority=ntfy_priority, ntfy_tags=ntfy_tags, discord_description=discord_body) == 0
         debug_print("Webhook channel", event=notification_type, outcome="OK" if webhook_delivered else "failed")
     # Delivery, not the attempt, so a channel that failed is retried while one that succeeded is not resent
@@ -6628,6 +6628,34 @@ def startup_notification_state(categories):
     return "On (" + ", ".join(categories) + ")" if categories else "Off"
 
 
+# Hides the middle of an address's local part, so a log can be shared while the reader can still spot a typo
+def mask_email_address(address):
+    text = str(address or "").strip()
+    local, at_sign, domain = text.partition("@")
+    if not at_sign or not local or not domain:
+        return text
+    masked = f"{local[0]}{'*' * (len(local) - 2)}{local[-1]}" if len(local) > 2 else f"{local[0]}{'*' * (len(local) - 1)}"
+    return f"{masked}@{domain}"
+
+
+# Names the mail server this run would use, leaving out the account that signs in to it
+def startup_email_transport():
+    if not SMTP_HOST or not SMTP_PORT:
+        return "Not configured"
+    return f"{SMTP_HOST}:{SMTP_PORT} ({'STARTTLS' if SMTP_SSL else 'TLS off'})"
+
+
+# Names the webhook service alerts would reach, with its host and, for ntfy, whether an access token is set
+def startup_webhook_provider():
+    if not WEBHOOK_ENABLED or not str(WEBHOOK_URL or "").strip():
+        return "Not configured"
+    host = webhook_destination_host()
+    details = [host] if host else []
+    if normalized_webhook_provider() == "ntfy":
+        details.append("access token set" if NTFY_ACCESS_TOKEN else "no access token")
+    return webhook_provider_display_name() + (f" ({', '.join(details)})" if details else "")
+
+
 # Formats one summary row with an aligned value column, wrapping only the rollup that grows long
 def format_startup_summary_row(row):
     prefix = f"* {(row.label + ':'):<{STARTUP_SUMMARY_LABEL_WIDTH}}"
@@ -6657,15 +6685,26 @@ def emit_startup_summary(rows, show_full=False, stream=None):
 
 
 # Builds every startup summary row, deciding per row whether it belongs in the concise view, the full view and the log
-def build_startup_summary(target=None, config_path=None, env_path=None, log_path=None):
+def build_startup_summary(target=None, config_path=None, env_path=None, log_path=None, region=None):
     from_dotenv, from_environment, from_config, from_command_line = group_secrets_by_source(env_path)
     logging_enabled = bool(log_path) and not DISABLE_LOGGING
     output_state = str(log_path) if logging_enabled else "Terminal only (logging disabled)"
-    return [
+    rows = [
         StartupSummaryRow("Target", str(target) if target else "None", concise=True),
+        StartupSummaryRow("Region", f"{region} (routing: {REGION_TO_CONTINENT.get(region, 'unknown')})" if region else "None"),
         StartupSummaryRow("Polling intervals", f"[NOT in game: {display_time(LOL_CHECK_INTERVAL)}] [in game: {display_time(LOL_ACTIVE_CHECK_INTERVAL)}]", concise=True),
         StartupSummaryRow("Notifications (email)", startup_notification_state(email_notification_categories()), concise=True),
+        StartupSummaryRow("Email transport", startup_email_transport()),
+        StartupSummaryRow("Email recipient", mask_email_address(RECEIVER_EMAIL) if RECEIVER_EMAIL else "Not configured"),
+        StartupSummaryRow("Email images", str(EMAIL_IMAGES)),
         StartupSummaryRow("Notifications (webhook)", startup_notification_state(_startup_webhook_notification_categories()), concise=True),
+        StartupSummaryRow("Webhook provider", startup_webhook_provider()),
+    ]
+    # The ntfy attachment setting says nothing about a run that posts to Discord, which ignores it
+    if normalized_webhook_provider() == "ntfy":
+        rows.append(StartupSummaryRow("ntfy images", str(NTFY_IMAGES)))
+    rows.extend([
+        StartupSummaryRow("Delivery confirmations", str(DELIVERY_CONFIRMATIONS)),
         StartupSummaryRow("Output", output_state, concise=True, full=False),
         StartupSummaryRow("Output logging", str(log_path) if logging_enabled else "Disabled"),
         StartupSummaryRow("Config", str(config_path) if config_path else ("Discovery disabled" if CONFIG_DISCOVERY_DISABLED else "None"), concise=True),
@@ -6675,6 +6714,9 @@ def build_startup_summary(target=None, config_path=None, env_path=None, log_path
         StartupSummaryRow("Liveness output", display_time(LIVENESS_CHECK_INTERVAL) if LIVENESS_CHECK_INTERVAL else "Disabled", concise=bool(LIVENESS_CHECK_INTERVAL)),
         StartupSummaryRow("CSV output", CSV_FILE or "Disabled", concise=bool(CSV_FILE)),
         StartupSummaryRow("Terminal truncation", f"{TRUNCATE_CHARS} chars" if TRUNCATE_CHARS else "Disabled", concise=bool(TRUNCATE_CHARS)),
+        StartupSummaryRow("Process id", str(os.getpid())),
+        StartupSummaryRow("Python version", platform.python_version()),
+        StartupSummaryRow("Operating system", f"{platform.platform(terse=True)} ({platform.machine()})"),
         StartupSummaryRow("Install method", install_method_display_name()),
         StartupSummaryRow("Secrets from dotenv", ", ".join(sorted(from_dotenv)) if from_dotenv else "None"),
         StartupSummaryRow("Secrets from environment", ", ".join(sorted(from_environment)) if from_environment else "None"),
@@ -6689,7 +6731,8 @@ def build_startup_summary(target=None, config_path=None, env_path=None, log_path
         StartupSummaryRow("Debug mode", str(DEBUG_MODE), concise=bool(DEBUG_MODE)),
         # Points at the two modes for a reader who does not know they exist, so the full view drops it
         StartupSummaryRow("More details", "use --verbose or --debug", concise=True, full=False),
-    ]
+    ])
+    return rows
 
 
 # Names one argument the way the user would have typed it, so a refused combination points at a real option
@@ -7392,7 +7435,7 @@ def main():
         verbose_print("Webhook notifications are off because WEBHOOK_URL is not a complete HTTPS link")
         WEBHOOK_ENABLED = False
 
-    emit_startup_summary(build_startup_summary(args.riot_id, cfg_path, env_path, FINAL_LOG_PATH), show_full=full_startup_summary_enabled())
+    emit_startup_summary(build_startup_summary(args.riot_id, cfg_path, env_path, FINAL_LOG_PATH, args.region), show_full=full_startup_summary_enabled())
 
     # We define signal handlers only for Linux & MacOS since Windows has limited number of signals supported
     if platform.system() != 'Windows':
