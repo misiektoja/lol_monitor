@@ -175,7 +175,7 @@ Alerts are sent as an embed built from `WEBHOOK_TEMPLATE`, which supports the `t
 
 `image_url` holds the champion icon on the alerts that name a champion, the in-game announcement and the finished match summary, taken from the Data Dragon release the run read its champion names from. The default template shows it as the embed thumbnail. Alerts with no champion leave it empty and the thumbnail is dropped rather than sent blank.
 
-In the roster the monitored player's own line is sent in bold, since Discord renders markdown in an embed. Only Discord gets that wording: email uses its HTML body for the same emphasis and ntfy receives the plain roster.
+Discord alerts carry the same emphasis as the HTML email, since Discord renders markdown in an embed. Bold values stay bold, links stay clickable and the monitored player's own roster line is marked. Only Discord gets that wording: ntfy receives the plain body, because it would show the markers literally.
 
 `WEBHOOK_TRANSFORMS` applies string methods to those values before the payload is built:
 

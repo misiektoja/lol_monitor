@@ -3198,6 +3198,18 @@ def truncate_utf8_bytes(text, max_bytes, suffix=""):
     return encoded[:max_bytes - len(encoded_suffix)].decode("utf-8", errors="ignore") + suffix
 
 
+# Converts one HTML email body to the Discord markdown subset, so a Discord alert reads like the email
+def html_body_to_discord_markdown(body_html):
+    text = re.sub(r"(?is)</?(?:html|head|body)\s*>", "", str(body_html or ""))
+    text = re.sub(r"(?is)<a\s[^>]*?href=[\"']([^\"']*)[\"'][^>]*>(.*?)</a>", lambda m: f"[{m.group(2)}]({m.group(1)})", text)
+    text = re.sub(r"(?is)<b\s*>(.*?)</b\s*>", lambda m: f"**{m.group(1)}**" if m.group(1).strip() else m.group(1), text)
+    text = re.sub(r"(?is)<i\s*>(.*?)</i\s*>", lambda m: f"*{m.group(1)}*" if m.group(1).strip() else m.group(1), text)
+    text = re.sub(r"(?is)<br\s*/?>", "\n", text)
+    # Anything still tag-shaped is layout the markdown body has no use for, such as a stray paragraph or list wrapper
+    text = re.sub(r"(?s)<[^>]+>", "", text)
+    return html.unescape(text).strip()
+
+
 # Builds one bounded ntfy title and message pair
 def build_ntfy_webhook_message(title, description):
     safe_title = re.sub(r"[\r\n]+", " ", sanitize_error_text(title)).strip()[:WEBHOOK_EMBED_TITLE_LIMIT] or "LoL Monitor"
@@ -3443,7 +3455,7 @@ def send_webhook(title, description, notification_type="status", force=False, sl
 
 
 # Sends one alert through the enabled email and webhook channels
-def send_notification_channels(notification_type, subject, body, body_html="", email_enabled=False, webhook_enabled=None, image_url="", ntfy_priority=0, ntfy_tags="", discord_body=""):
+def send_notification_channels(notification_type, subject, body, body_html="", email_enabled=False, webhook_enabled=None, image_url="", ntfy_priority=0, ntfy_tags=""):
     email_attempted = bool(email_enabled)
     webhook_attempted = webhook_event_enabled(notification_type) if webhook_enabled is None else bool(webhook_enabled)
     email_delivered = False
@@ -3458,7 +3470,7 @@ def send_notification_channels(notification_type, subject, body, body_html="", e
         debug_print("Email channel", event=notification_type, outcome="OK" if email_delivered else "failed")
     if webhook_attempted:
         print(f"Sending webhook notification via {webhook_provider_display_name()}")
-        webhook_delivered = send_webhook(subject, body, notification_type, force=True, image_url=image_url, ntfy_priority=ntfy_priority, ntfy_tags=ntfy_tags, discord_description=discord_body) == 0
+        webhook_delivered = send_webhook(subject, body, notification_type, force=True, image_url=image_url, ntfy_priority=ntfy_priority, ntfy_tags=ntfy_tags, discord_description=html_body_to_discord_markdown(body_html)) == 0
         debug_print("Webhook channel", event=notification_type, outcome="OK" if webhook_delivered else "failed")
     # Delivery, not the attempt, so a channel that failed is retried while one that succeeded is not resent
     return email_delivered, webhook_delivered
@@ -3892,22 +3904,6 @@ def format_team_member_html(member_str: str, monitored_username: str) -> str:
         username_html = html.escape(username)
 
     return username_html + html.escape(champion_part) if champion_part else username_html
-
-
-# Formats the team list for a Discord alert, bolding the monitored player's own entry in Discord markdown
-def format_teams_markdown(teams_lines: List[str], monitored_username: str) -> str:
-    if not teams_lines:
-        return ""
-
-    markdown_lines = []
-    for line in teams_lines:
-        username, champion_part = split_team_member(line[2:]) if line.startswith("- ") else ("", "")
-        if username and username == monitored_username:
-            markdown_lines.append(f"- **{username}**{champion_part}")
-        else:
-            markdown_lines.append(line)
-
-    return "\n".join(markdown_lines) + "\n"
 
 
 # Formats team list for HTML email
@@ -4432,11 +4428,7 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
                 f"</body></html>"
             )
 
-            # Only the roster block differs, so the Discord wording is the same body with the monitored player marked
-            current_teams_markdown = format_teams_markdown(current_teams_str_lines, riotid_name)
-            m_body_discord = m_body.replace(current_teams_str, current_teams_markdown, 1) if current_teams_str else m_body
-
-            send_notification_channels("status", m_subject, m_body, m_body_html, email_enabled=status_notification_flag, image_url=champion_image_url(u_champion_name), discord_body=m_body_discord)
+            send_notification_channels("status", m_subject, m_body, m_body_html, email_enabled=status_notification_flag, image_url=champion_image_url(u_champion_name))
 
             return match_start_ts
         else:
@@ -4772,11 +4764,8 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
                 f"{get_cur_ts('<br>Timestamp: ')}"
                 f"</body></html>"
             )
-            # Only the roster block differs, so the Discord wording is the same body with the monitored player marked
-            teams_markdown = format_teams_markdown(teams_lines, riotid_name)
-            m_body_discord = m_body.replace(teams_str, teams_markdown, 1) if teams_str else m_body
             print()
-            send_notification_channels("status", m_subject, m_body, m_body_html, email_enabled=status_notification_flag, image_url=champion_image_url(u_champion_name), discord_body=m_body_discord)
+            send_notification_channels("status", m_subject, m_body, m_body_html, email_enabled=status_notification_flag, image_url=champion_image_url(u_champion_name))
 
         return match_start_ts, match_stop_ts
 

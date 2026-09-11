@@ -106,28 +106,28 @@ def test_a_roster_entry_splits_into_player_and_champion(lm_module, entry, expect
     assert lm_module.split_team_member(entry) == expected
 
 
-# Verifies the Discord roster marks the monitored player and leaves every other line as it was
+# Verifies the Discord roster derived from the email body marks the monitored player and the team headers
 def test_the_discord_roster_marks_the_monitored_player(lm_module):
     lines = ["Team id 100: ⭐", "- misiektoja (Ahri)", "- teammate (Lux)", "", "Team id 200:", "- rival (Zed)"]
 
-    rendered = lm_module.format_teams_markdown(lines, "misiektoja")
+    rendered = lm_module.html_body_to_discord_markdown(lm_module.format_teams_html(lines, "misiektoja"))
 
-    assert rendered == "Team id 100: ⭐\n- **misiektoja** (Ahri)\n- teammate (Lux)\n\nTeam id 200:\n- rival (Zed)\n"
+    assert rendered == "**Team id 100: ⭐**\n- **misiektoja** (Ahri)\n- teammate (Lux)\n\n**Team id 200:**\n- rival (Zed)"
 
 
 # Verifies the monitored player is marked even when their champion is unknown
 def test_a_monitored_player_without_a_champion_is_marked(lm_module):
-    assert lm_module.format_teams_markdown(["- misiektoja"], "misiektoja") == "- **misiektoja**\n"
+    assert lm_module.html_body_to_discord_markdown(lm_module.format_teams_html(["- misiektoja"], "misiektoja")) == "- **misiektoja**"
 
 
 # Verifies only an exact name is marked, so a player whose name contains the monitored one is left alone
 def test_only_an_exact_name_is_marked(lm_module):
-    assert lm_module.format_teams_markdown(["- misiektoja2 (Zed)"], "misiektoja") == "- misiektoja2 (Zed)\n"
+    assert lm_module.html_body_to_discord_markdown(lm_module.format_teams_html(["- misiektoja2 (Zed)"], "misiektoja")) == "- misiektoja2 (Zed)"
 
 
 # Verifies an empty roster produces nothing rather than a blank line
 def test_an_empty_discord_roster_renders_as_nothing(lm_module):
-    assert lm_module.format_teams_markdown([], "misiektoja") == ""
+    assert lm_module.html_body_to_discord_markdown(lm_module.format_teams_html([], "misiektoja")) == ""
 
 
 # Verifies a draft with no bans produces nothing to print
