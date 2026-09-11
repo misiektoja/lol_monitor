@@ -113,6 +113,21 @@ lol_monitor <riot_id> <region> --env-file none
 
 As a fallback both values can also live in the configuration file or the source.
 
+### Which Source Wins
+
+When the same secret is available from more than one place, the tool takes the first match in this order:
+
+1. The command line, such as `-r your_riot_api_key`
+2. An environment variable exported before the tool started
+3. The dotenv file
+4. The configuration file or the source
+
+An exported variable applies on its own, with no dotenv file present. The startup summary reports which source each secret came from, by name and never by value:
+
+```
+* Secrets in effect:		RIOT_API_KEY (environment); SMTP_PASSWORD (dotenv file)
+```
+
 ## Check Intervals
 
 ```sh

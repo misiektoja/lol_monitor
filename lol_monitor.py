@@ -296,6 +296,12 @@ csvfieldnames = ['Match Start', 'Match Stop', 'Duration', 'Game Mode', 'Victory'
 
 CLI_CONFIG_PATH = None
 
+# Secrets already exported when the process started, which a dotenv file must not overwrite
+EXPORTED_SECRET_KEYS = frozenset()
+
+# Secrets supplied as command line arguments, which override every other source
+COMMAND_LINE_SECRET_KEYS = frozenset()
+
 # Set when --config-file is given the literal string "none", which switches off the search rather than naming a file
 CONFIG_DISCOVERY_DISABLED = False
 
@@ -436,6 +442,86 @@ def render_command(arguments=None, include_paths=True, config_path=None, env_pat
     if selected_env and not (str(selected_env).casefold() == "none" and command_writes_dotenv(arguments or ())):
         parts.extend(["--env-file", str(selected_env)])
     return " ".join(quote_command_argument(part) for part in parts)
+
+
+# Returns the keys a dotenv file itself defines, used to tell a file-supplied secret from an exported one
+def dotenv_file_keys(env_path=None):
+    if not env_path or not os.path.isfile(str(env_path)):
+        return frozenset()
+    try:
+        from dotenv import dotenv_values
+    except ImportError:
+        return frozenset()
+    try:
+        return frozenset(name for name, value in dotenv_values(str(env_path)).items() if value is not None)
+    except Exception:
+        return frozenset()
+
+
+# Returns where each effective environment secret came from, keeping an exported value ahead of the same name in a file
+def secret_sources(env_path=None, exported_keys=None):
+    file_keys = dotenv_file_keys(env_path)
+    protected_keys = EXPORTED_SECRET_KEYS if exported_keys is None else frozenset(exported_keys)
+    sources = {}
+    for secret in SECRET_KEYS:
+        if os.getenv(secret) is None:
+            continue
+        sources[secret] = "environment" if secret in protected_keys or secret not in file_keys else str(env_path)
+    return sources
+
+
+# Reloads dotenv secrets into the environment without replacing values that were exported when the process started
+def reload_dotenv_secrets(env_path, exported_keys=None):
+    from dotenv import dotenv_values
+    protected_keys = EXPORTED_SECRET_KEYS if exported_keys is None else frozenset(exported_keys)
+    values = dotenv_values(str(env_path))
+    for secret in SECRET_KEYS:
+        value = values.get(secret)
+        if secret not in protected_keys and value is not None:
+            os.environ[secret] = value
+
+
+# Copies exported secrets into module globals and returns the applied names paired with whether the value changed
+def load_secrets_from_environment(namespace=None):
+    selected_namespace = globals() if namespace is None else namespace
+    applied = []
+    for secret in SECRET_KEYS:
+        value = os.getenv(secret)
+        if value is None:
+            continue
+        applied.append((secret, selected_namespace.get(secret) != value))
+        selected_namespace[secret] = value
+    return applied
+
+
+# Groups the secrets that are set by the source each value actually came from, in the order precedence resolved them
+def group_secrets_by_source(env_path=None):
+    environment_sources = secret_sources(env_path)
+    from_file, from_environment, from_settings, from_command_line = [], [], [], []
+    for key in SECRET_KEYS:
+        if not secret_is_set(globals().get(key)):
+            continue
+        source = environment_sources.get(key)
+        # An argument overrides whatever the dotenv file or the environment held, so it is checked first
+        if key in COMMAND_LINE_SECRET_KEYS:
+            from_command_line.append(key)
+        elif source == "environment":
+            from_environment.append(key)
+        elif source:
+            from_file.append(key)
+        else:
+            from_settings.append(key)
+    return from_file, from_environment, from_settings, from_command_line
+
+
+# Describes where each secret in effect came from, by name and never by value
+def describe_secret_sources(env_path=None):
+    from_file, from_environment, from_settings, from_command_line = group_secrets_by_source(env_path)
+    described = []
+    for names, label in ((from_command_line, "command line"), (from_environment, "environment"), (from_file, "dotenv file"), (from_settings, "configuration")):
+        if names:
+            described.append(f"{', '.join(names)} ({label})")
+    return "; ".join(described) if described else "None"
 
 
 # Matches every ANSI escape sequence, so third-party text cannot move the cursor or repaint the terminal
@@ -1170,13 +1256,14 @@ def reload_secrets_signal_handler(sig, frame):
     else:
         # reload .env if python-dotenv is installed
         try:
-            from dotenv import load_dotenv, find_dotenv
+            from dotenv import find_dotenv
             if DOTENV_FILE:
                 env_path = DOTENV_FILE
             else:
                 env_path = find_dotenv()
             if env_path:
-                load_dotenv(env_path, override=True)
+                # An exported secret keeps winning after a reload, so precedence is the same before and after it
+                reload_dotenv_secrets(env_path)
             else:
                 print("* No .env file found, skipping env-var reload")
         except ImportError:
@@ -2702,7 +2789,7 @@ async def lol_monitor_user(riotid, region, csv_file_name):
 
 
 def main():
-    global CLI_CONFIG_PATH, CONFIG_DISCOVERY_DISABLED, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT, INCLUDE_FORBIDDEN_MATCHES
+    global CLI_CONFIG_PATH, CONFIG_DISCOVERY_DISABLED, COMMAND_LINE_SECRET_KEYS, EXPORTED_SECRET_KEYS, DOTENV_FILE, LIVENESS_CHECK_COUNTER, RIOT_API_KEY, CSV_FILE, DISABLE_LOGGING, LOL_LOGFILE, STATUS_NOTIFICATION, ERROR_NOTIFICATION, LOL_CHECK_INTERVAL, LOL_ACTIVE_CHECK_INTERVAL, SMTP_PASSWORD, stdout_bck, REGION_TO_CONTINENT, INCLUDE_FORBIDDEN_MATCHES
 
     if "--generate-config" in sys.argv:
         config_content = CONFIG_BLOCK.strip("\n") + "\n"
@@ -2925,6 +3012,9 @@ def main():
         if not load_config_file(cfg_path):
             sys.exit(1)
 
+    # Recorded before the dotenv file is read, so an exported value stays ahead of the same name in that file
+    EXPORTED_SECRET_KEYS = frozenset(secret for secret in SECRET_KEYS if os.getenv(secret) is not None)
+
     if args.env_file:
         DOTENV_FILE = os.path.expanduser(args.env_file)
     else:
@@ -2942,11 +3032,11 @@ def main():
                 if not os.path.isfile(env_path):
                     print(f"* Warning: dotenv file '{env_path}' does not exist\n")
                 else:
-                    load_dotenv(env_path, override=True)
+                    load_dotenv(env_path, override=False)
             else:
                 env_path = find_dotenv() or None
                 if env_path:
-                    load_dotenv(env_path, override=True)
+                    load_dotenv(env_path, override=False)
         except ImportError:
             env_path = DOTENV_FILE if DOTENV_FILE else None
             if env_path:
@@ -2954,11 +3044,8 @@ def main():
                 retry_line = f"Once installed, re-run this tool with:\n    {retry_command}\n" if retry_command else "Once installed, re-run this tool\n"
                 print(f"* Warning: Cannot load dotenv file '{env_path}' because 'python-dotenv' is not installed\n\nTo install it, run:\n    pip3 install python-dotenv\n\n{retry_line}")
 
-    if env_path:
-        for secret in SECRET_KEYS:
-            val = os.getenv(secret)
-            if val is not None:
-                globals()[secret] = val
+    # Exported secrets apply on their own, so a dotenv file is an alternative to the environment rather than a precondition
+    load_secrets_from_environment()
 
     apply_tls_verification_setting()
 
@@ -2984,6 +3071,9 @@ def main():
 
     if args.riot_api_key:
         RIOT_API_KEY = args.riot_api_key
+
+    # Assigned once from the arguments rather than accumulated, so a second run in one process starts clean
+    COMMAND_LINE_SECRET_KEYS = frozenset(name for name, supplied in (("RIOT_API_KEY", args.riot_api_key), ) if supplied)
 
     if not RIOT_API_KEY or RIOT_API_KEY == "your_riot_api_key":
         print_recovery_error(context="credentials")
@@ -3116,6 +3206,7 @@ def main():
     print(f"* TLS verification:\t\t{'On' if VERIFY_SSL else 'Off, server certificates are not checked'}")
     print(f"* Configuration file:\t\t{cfg_path or ('Discovery disabled' if CONFIG_DISCOVERY_DISABLED else 'None')}")
     print(f"* Dotenv file:\t\t\t{env_path or 'None'}")
+    print(f"* Secrets in effect:\t\t{describe_secret_sources(env_path)}")
     print(f"* Install method:\t\t{install_method_display_name()}\n")
 
     # We define signal handlers only for Linux & MacOS since Windows has limited number of signals supported

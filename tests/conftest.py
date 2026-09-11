@@ -193,6 +193,17 @@ def utc_timezone(monkeypatch):
         time.tzset()
 
 
+# Keeps a secret exported by the developer, or left in os.environ by an earlier test, out of the run under test
+@pytest.fixture(autouse=True)
+def isolated_secret_environment():
+    saved = {secret: os.environ.pop(secret, None) for secret in lm.SECRET_KEYS}
+    yield
+    for secret, value in saved.items():
+        os.environ.pop(secret, None)
+        if value is not None:
+            os.environ[secret] = value
+
+
 # Resets the module globals the offline helpers read so every test starts from the same baseline
 @pytest.fixture(autouse=True)
 def deterministic_globals(monkeypatch):
