@@ -26,18 +26,30 @@ For the manual single-file method, dependencies and upgrade commands, see [Insta
 
 ## Features
 
-- **Real-time tracking** of LoL players' gaming activity, including when a match starts and when it finishes
-- **Detailed match reports** covering game mode, queue and map name, game type and version, victory or defeat, kills, deaths and assists, champion, achieved level, role, lane, both team rosters with a marker on the monitored player's team, and banned champions with pick turn
-- **Player profile information** including ranked statistics for Solo/Duo and Flex, and top champion mastery
-- **HTML email notifications** when a player starts or finishes a match, plus a match summary and error alerts, optionally with the champion icon embedded at the end
-- **Discord and ntfy webhook alerts** carrying the same events, with each channel keeping its own alert settings, the champion icon as a Discord thumbnail or an ntfy attachment
-- **CSV export** of every reported match with timestamps, including custom games
-- **Guided setup** through `--setup`, which asks a few questions and writes a ready-to-run configuration, with a review summary and per-section editing before anything is saved
-- **A welcome screen on a bare run**, naming the commands worth starting from and offering the wizard, plus a `--help` screen that ends with worked examples for the common tasks
-- **Flexible configuration** through config files, dotenv files, environment variables and command-line arguments
-- Possibility to **control the running copy** of the script via signals
-- **Utility tools** for CSV format conversion and match history comparison
-- **Functional, procedural Python** (minimal OOP)
+### Match Tracking
+
+* **Match activity**: Detect when a player starts and finishes a game.
+* **Match reports**: Show results, kills, deaths, assists, champion, level, role and lane.
+* **Game context**: Include mode, queue, map, version, both team rosters and champion bans.
+
+### Player Insights and Tools
+
+* **Ranked statistics**: View Solo/Duo and Flex ranks plus top champion mastery.
+* **Match history**: List recent matches and export timestamped reports, including custom games.
+* **CSV tools**: Convert older history files and compare match histories.
+
+### Notifications
+
+* **Email alerts**: Receive match starts, finishes, summaries and errors.
+* **Discord and ntfy**: Choose webhook events independently from email.
+* **Champion artwork**: Include an optional icon in email, as a Discord thumbnail or as an ntfy attachment.
+
+### Setup and Configuration
+
+* **Guided setup**: Review and edit settings before saving with `--setup`.
+* **Getting started**: Use the welcome screen, worked help examples and `--doctor` checks.
+* **Flexible settings**: Use config files, dotenv files, environment variables and command-line options.
+* **Runtime controls**: Adjust the running monitor through supported signals.
 
 ## Screenshots
 
