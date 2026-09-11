@@ -247,3 +247,21 @@ def test_the_certificate_warning_is_silenced_only_when_off(lm_module, monkeypatc
     lm_module.apply_tls_verification_setting()
 
     assert bool(disabled) is expected
+
+
+# Verifies the discovered configuration reaches private API key entry, which checks the key over the network before
+# the normal configuration load and would otherwise probe the default region with certificate verification left on
+def test_private_key_entry_applies_the_configured_settings(lm_module, tmp_path, monkeypatch):
+    (tmp_path / "lol_monitor.conf").write_text('VERIFY_SSL = False\nREGION = "eun1"\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    for name in ("VERIFY_SSL", "REGION"):
+        monkeypatch.setattr(lm_module, name, getattr(lm_module, name))
+    monkeypatch.setattr(lm_module, "VERIFY_SSL", True)
+    observed = {}
+    monkeypatch.setattr(lm_module, "run_set_riot_api_key", lambda **kwargs: observed.update(verify=lm_module.VERIFY_SSL, region=lm_module.REGION))
+    monkeypatch.setattr(lm_module.sys, "argv", ["lol_monitor", "--set-riot-api-key"])
+
+    with pytest.raises(SystemExit):
+        lm_module.main()
+
+    assert observed == {"verify": False, "region": "eun1"}

@@ -173,6 +173,27 @@ def test_a_cleared_secret_is_removed(lm_module, tmp_path):
     assert destination.read_text(encoding="utf-8") == "OTHER=x\n"
 
 
+# Verifies a saved value written across several lines is replaced whole, since replacing only its first
+# line left the rest of the old secret behind and the next run could not parse what it wrote
+def test_a_multiline_secret_is_replaced_whole(lm_module, tmp_path):
+    destination = tmp_path / ".env"
+    destination.write_text('RIOT_API_KEY="first line\nsecond line"\nOTHER=keep\n', encoding="utf-8")
+
+    lm_module.update_dotenv_file(destination, {"RIOT_API_KEY": "replacement"})
+
+    assert destination.read_text(encoding="utf-8") == 'RIOT_API_KEY="replacement"\nOTHER=keep\n'
+
+
+# Verifies clearing such a value removes all of it, for the same reason
+def test_a_cleared_multiline_secret_leaves_nothing_behind(lm_module, tmp_path):
+    destination = tmp_path / ".env"
+    destination.write_text('RIOT_API_KEY="first line\nsecond line"\nOTHER=keep\n', encoding="utf-8")
+
+    lm_module.update_dotenv_file(destination, {"RIOT_API_KEY": ""})
+
+    assert destination.read_text(encoding="utf-8") == "OTHER=keep\n"
+
+
 # Verifies a private settings file is readable only by its owner
 @pytest.mark.skipif(os.name != "posix", reason="file modes are a POSIX concept")
 def test_the_private_settings_file_is_owner_only(lm_module, tmp_path):
