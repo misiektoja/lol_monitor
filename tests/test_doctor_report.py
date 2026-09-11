@@ -812,3 +812,27 @@ def _render_literal(node):
                 parts.append("{}")
         return "".join(parts)
     return None
+
+
+# One row shape and one advice shape across the family: the advice rides on the row and its fix carries the
+# guide, so a row or an advice copied from a sibling means the same thing here
+def test_the_doctor_row_and_its_advice_share_one_contract(lm_module):
+    row_parameters = list(inspect.signature(lm_module.make_doctor_check).parameters.values())
+    advice_parameters = list(inspect.signature(lm_module.make_recovery_advice).parameters.values())
+
+    assert [parameter.name for parameter in row_parameters] == ["section", "status", "label", "detail", "advice"]
+    assert [parameter.default for parameter in row_parameters[3:]] == ["", None]
+    assert [parameter.name for parameter in advice_parameters] == ["code", "summary", "fix", "retryable", "detail"]
+    assert lm_module.recovery_fix_with_guide("do the thing", "https://example.invalid/page") == "do the thing\nGuide: https://example.invalid/page"
+
+
+# A non-pass row is refused without advice and keeps the advice it was given, which is where its fix and guide live
+def test_a_row_carries_its_advice_and_refuses_to_go_without(lm_module):
+    advice = lm_module.make_recovery_advice("config.invalid", "a warning row", lm_module.recovery_fix_with_guide("do the thing", lm_module.DOCTOR_GUIDE_URL), False)
+
+    row = lm_module.make_doctor_check("Configuration", "WARN", "a warning row", "a detail worth keeping", advice)
+
+    assert row.advice is advice
+    assert not hasattr(advice, "guide_url")
+    with pytest.raises(ValueError):
+        lm_module.make_doctor_check("Configuration", "WARN", "a warning row", "a detail worth keeping")
