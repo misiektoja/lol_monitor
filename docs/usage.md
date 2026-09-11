@@ -224,7 +224,7 @@ A reload names each secret it replaced and how it looks, never its value:
 
 A Riot API key is always 42 characters, so a shorter one means the paste was cut. A password you chose reports presence only, since its length is a real disclosure.
 
-A secret you exported before starting the tool is left alone by a reload, the same way it wins at startup. Rotate that one by exporting the new value and restarting, which is the only way to change an exported value in a running process anyway.
+`SIGHUP` keeps command-line credentials and nonempty environment values exported before startup. Change those values and restart to replace them.
 
 Windows supports too few signals for this, so it is available on Linux, Unix and macOS only.
 

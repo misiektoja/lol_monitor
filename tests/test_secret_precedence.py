@@ -21,6 +21,7 @@ def isolated_startup(tmp_path, monkeypatch, lm_module):
     monkeypatch.setattr(lm_module, "CONFIG_DISCOVERY_DISABLED", False)
     monkeypatch.setattr(lm_module, "DOTENV_FILE", "")
     monkeypatch.setattr(lm_module, "EXPORTED_SECRET_KEYS", frozenset())
+    monkeypatch.setattr(lm_module, "DOTENV_RELOAD_STATE", {})
     monkeypatch.setattr(lm_module, "COMMAND_LINE_SECRET_KEYS", frozenset())
     monkeypatch.setattr(lm_module, "check_internet", lambda *args, **kwargs: True)
     return tmp_path

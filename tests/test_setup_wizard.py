@@ -1057,12 +1057,13 @@ def test_the_destination_section_moves_the_configuration_file(tmp_path, monkeypa
 def test_moving_the_dotenv_destination_re_asks_the_secret_sections(tmp_path, monkeypatch, wizard_globals, capsys):
     transcript = []
     answers = minimal_answers()
-    answers[9:10] = ["2", "7", str(tmp_path / "lol_monitor.conf"), str(tmp_path / "moved.env"), "n", "n", "1"]
-    run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY, API_KEY], transcript=transcript)
+    answers[9:10] = ["2", "7", str(tmp_path / "lol_monitor.conf"), str(tmp_path / "moved.env"), "n", "n", "n", "1"]
+    assert run_wizard(tmp_path, monkeypatch, answers, secrets=[API_KEY], transcript=transcript) == 0
     asked = [prompt for prompt in transcript if prompt.startswith(("Riot API key:", "Configure email notifications", "Set up webhook alerts"))]
 
-    assert "The dotenv destination changed. Existing private settings will be kept in the new file when you save. Review authentication and notification settings." in capsys.readouterr().out
-    assert len(asked) == 6
+    assert "The dotenv destination changed. Review authentication and notification settings. Values in the selected file are kept unless you replace them." in capsys.readouterr().out
+    assert len(asked) == 5
+    assert any(prompt.startswith("Replace the Riot API key") for prompt in transcript)
     assert f'RIOT_API_KEY="{API_KEY}"' in (tmp_path / "moved.env").read_text(encoding="utf-8")
 
 
@@ -1655,3 +1656,9 @@ def test_a_rebuilt_config_leaves_the_default_theme_commented():
     rendered = monitor.generate_config_with_current_values(dict(monitor._config_template_defaults()))
 
     assert "\nCOLOR_THEME = {" not in rendered
+
+
+@pytest.fixture(autouse=True)
+# Starts each setup scenario without file ownership left by another test
+def isolated_dotenv_ownership(monkeypatch):
+    monkeypatch.setattr(monitor, "DOTENV_RELOAD_STATE", {})
