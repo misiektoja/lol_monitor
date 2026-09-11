@@ -2,6 +2,35 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 1.9 (TBD)
+
+Version **1.9** adds **guided setup**, a read-only **Doctor preflight check**, **Discord and ntfy alerts** and **private credential entry**. **Coloured output**, startup summaries and verbose/debug modes make monitoring easier to follow. Alerts can include **champion artwork**, match checks recover from failures and CSV conversion preserves history. Configuration and credentials are protected and release downloads can be verified.
+
+**Features and improvements**:
+
+- **NEW:** **Guided setup** - `--setup` wizard collects the Riot ID, region, intervals, credentials, notifications and output files. Review or edit answers before saving and confirm replacements. Reruns preserve saved settings and move retained credentials to the private dotenv file. A first run without a saved target offers setup
+- **NEW:** **Saved player and region** - Set `RIOT_ID` and `REGION` to start monitoring without arguments. Command-line targets override saved values. Region codes accept either case and spaces around `#` are ignored
+- **NEW:** **Doctor preflight check** - `--doctor` checks configuration, Riot access, the monitored account, notifications and output destinations with suggested fixes. It writes no files and sends test notifications only after confirmation
+- **NEW:** **Discord and ntfy alerts** - Choose player status and error alerts independently of email. Save the destination with `--set-webhook-url` and check delivery with `--send-test-webhook`. Protected ntfy topics are supported
+- **NEW:** **Champion artwork and clearer rosters** - Enable `EMAIL_IMAGES` or `NTFY_IMAGES` for champion icons in in-game and match-summary alerts. Both are off by default and need no extra package. Discord shows champion thumbnails. Terminal and Discord rosters highlight the monitored player in bold
+- **NEW:** **Private credential entry** - `--set-riot-api-key` and `--set-smtp-password` validate credentials before saving to the dotenv file. Entry is hidden and the mail check sends no message. Webhook setup validates the URL without contacting the service
+- **NEW:** **Clearer output and diagnostics** - Coloured output and a short startup summary show the active settings. `--verbose` adds operational updates and `--debug` adds technical traces. Secrets are redacted and logs retain the full summary. `--truncate N` limits screen width while logs retain full lines. It works without `wcwidth`, which improves Unicode width measurements
+- **IMPROVE:** **Clearer errors and recovery** - Temporary failures get one short retry before appearing on screen. `--verbose` still reports the first failure. Persistent outages produce hourly reminders and recovery notices. Enabled error alerts cover network and Riot outages after five minutes, while rejected credentials alert immediately. Failed channels retry without repeating successful deliveries
+- **IMPROVE:** **Discord alerts match the email** - Discord now receives the same emphasis as the HTML email, with bold values and clickable links instead of plain text. ntfy keeps the plain body, since it would show the markers literally
+- **IMPROVE:** **Notification output** - Subjects omit program-name prefixes. Set `DELIVERY_CONFIRMATIONS = False` to hide delivery confirmations while keeping verbose diagnostics
+- **IMPROVE:** **Documentation and verifiable downloads** - A [searchable guide](https://misiektoja.github.io/lol_monitor/) covers setup, usage and troubleshooting. Releases include checksums and signed build attestations
+
+**Bug fixes**:
+
+- **BUGFIX:** **Reliable match checks** - Failed checks preserve the previous player state. Temporarily unavailable match details are retried instead of permanently skipped. Accounts without matches show an empty history instead of a failure warning
+- **BUGFIX:** **Protected CSV conversion** - The converter preserves current fields in mixed old/new files, backs up existing output and replaces it atomically
+- **BUGFIX:** **Safer configuration loading** - Configuration files are read as settings instead of executed as Python. Plain values and references to other settings still work. Replace imports, function calls and calculations with plain settings
+- **BUGFIX:** **Safer configuration and secret updates** - `--generate-config FILE` confirms replacement and creates a backup. Non-interactive replacement requires `--force`. Shell redirection with `>` bypasses these protections. Exported secrets work without a dotenv file. Command-line credentials and nonempty startup exports retain priority after `SIGHUP`. Change those values and restart to replace them. Reloads apply changed or removed file-owned secrets
+- **BUGFIX:** **Safer email delivery** - Mail-server rejection messages redact credentials. Emails accepted by the mail server no longer become false failures if closing the connection fails, avoiding duplicate retries
+- **BUGFIX:** **Reliable startup settings** - Invalid timing and unreadable dotenv files include repair guidance. Configured connectivity settings apply and redirected output avoids terminal-clearing errors
+
+Smaller fixes and development changes are listed in the [full change history](https://github.com/misiektoja/lol_monitor/compare/v1.8.2...v1.9).
+
 # Changes in 1.8.2 (04 Aug 2026)
 
 **Bug fixes**:
