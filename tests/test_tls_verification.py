@@ -96,11 +96,14 @@ def test_the_context_stops_verifying_while_the_setting_is_off(lm_module, monkeyp
     assert context.check_hostname is False
 
 
-# Verifies every plain HTTP request carries the setting rather than the library default
+# Verifies every plain HTTP request carries the setting rather than the library default. The shared session is
+# swept too, since it is created without a verify default and would quietly keep verifying while the setting is off
 def test_every_request_passes_the_setting():
-    requests = calls_to("req.get") + calls_to("req.post")
+    methods = ("get", "post", "put", "head", "request")
+    requests = [call for prefix in ("req", "WEBHOOK_SESSION") for method in methods for call in calls_to(f"{prefix}.{method}")]
 
-    assert requests, "the sweep found no outbound requests, so it is checking nothing"
+    # A rename would otherwise leave the sweep matching nothing and passing without checking a single call
+    assert len(requests) >= 5, f"the sweep found only {len(requests)} outbound requests, so it is checking almost nothing"
     for call in requests:
         keywords = {keyword.arg: keyword.value for keyword in call.keywords}
         assert "verify" in keywords, f"line {call.lineno}: an outbound request does not pass verify"
