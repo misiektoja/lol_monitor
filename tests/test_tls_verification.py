@@ -27,6 +27,29 @@ def calls_to(name):
     return found
 
 
+HTTP_METHODS = frozenset(("get", "post", "put", "patch", "delete", "head", "options", "request"))
+# The expressions that carry the TLS decision, so a call passing anything else is a second opinion
+VERIFY_ARGUMENTS = frozenset(("VERIFY_SSL",))
+# A guard against the sweep silently matching nothing after a rename: the tool has 5 call sites today
+MINIMUM_HTTP_CALL_SITES = 5
+
+
+# Returns every name the module binds to a requests session, so a session added later is swept without editing this
+def session_receivers():
+    return {node.targets[0].id for node in ast.walk(ast.parse(MODULE_SOURCE)) if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and isinstance(node.value, ast.Call) and ast.unparse(node.value.func).endswith("Session")}
+
+
+# Returns every outbound HTTP call in the module as a line number paired with its keyword arguments
+def http_call_sites():
+    receivers = {"req", "requests"} | session_receivers()
+    for node in ast.walk(ast.parse(MODULE_SOURCE)):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        receiver = node.func.value
+        if node.func.attr in HTTP_METHODS and isinstance(receiver, ast.Name) and receiver.id in receivers:
+            yield node.lineno, {keyword.arg: keyword.value for keyword in node.keywords}
+
+
 # Records the arguments aiohttp is asked for instead of opening a real connection
 class RecordingAiohttp(SimpleNamespace):
     def __init__(self):
@@ -98,16 +121,20 @@ def test_the_context_stops_verifying_while_the_setting_is_off(lm_module, monkeyp
 
 # Verifies every plain HTTP request carries the setting rather than the library default. The shared session is
 # swept too, since it is created without a verify default and would quietly keep verifying while the setting is off
-def test_every_request_passes_the_setting():
-    methods = ("get", "post", "put", "head", "request")
-    requests = [call for prefix in ("req", "WEBHOOK_SESSION") for method in methods for call in calls_to(f"{prefix}.{method}")]
+def test_every_outbound_request_passes_the_setting():
+    calls = list(http_call_sites())
 
-    # A rename would otherwise leave the sweep matching nothing and passing without checking a single call
-    assert len(requests) >= 5, f"the sweep found only {len(requests)} outbound requests, so it is checking almost nothing"
-    for call in requests:
-        keywords = {keyword.arg: keyword.value for keyword in call.keywords}
-        assert "verify" in keywords, f"line {call.lineno}: an outbound request does not pass verify"
-        assert isinstance(keywords["verify"], ast.Name) and keywords["verify"].id == "VERIFY_SSL", f"line {call.lineno}: verify is not VERIFY_SSL"
+    assert len(calls) >= MINIMUM_HTTP_CALL_SITES, f"the sweep found {len(calls)} HTTP calls, so it no longer matches how requests are made"
+    missing = [line for line, keywords in calls if "verify" not in keywords or ast.unparse(keywords["verify"]) not in VERIFY_ARGUMENTS]
+    assert not missing, f"lol_monitor.py lines {missing} make an HTTP call that does not pass the TLS setting"
+
+
+# Verifies every outbound request carries a deadline, since a call without one hangs the monitoring loop indefinitely
+def test_every_outbound_request_carries_a_deadline():
+    # A call forwarding **kwargs takes its deadline from the helper that fills them in, which is not readable here
+    missing = [line for line, keywords in http_call_sites() if "timeout" not in keywords and None not in keywords]
+
+    assert not missing, f"lol_monitor.py lines {missing} make an HTTP call without a timeout"
 
 
 # Verifies the connectivity check follows the setting, which is the first connection a run makes
