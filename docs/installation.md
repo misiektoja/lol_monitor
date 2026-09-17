@@ -2,28 +2,30 @@
 
 LoL Monitor runs as a local Python program. Choose the PyPI package for the shortest command or the manual script to run a downloaded file.
 
-New to Python? Start with [New to Python: check and install](#new-to-python-install-everything).
+New to Python? Start with [New to Python: check and install](#new-to-python-check-and-install).
 
+<a id="requirements"></a>
 ## Requirements
 
 * Python 3.12 or higher
 * Libraries: [pulsefire](https://github.com/iann838/pulsefire), `requests`, `python-dateutil`, `python-dotenv`
-* Optional: [pandas](https://pypi.org/project/pandas/), needed only by the [match history comparison tool](tools.md#match-history-comparison-tool)
-* Optional: [wcwidth](https://pypi.org/project/wcwidth/), needed only to measure display width for [terminal truncation](configuration.md#terminal-truncation)
+* Optional for the [match history comparison tool](tools.md#match-history-comparison-tool): [pandas](https://pypi.org/project/pandas/)
+* Optional for display-width-aware terminal truncation: [wcwidth](https://pypi.org/project/wcwidth/)
 
 Tested on:
 
-* **macOS**: Ventura, Sonoma, Sequoia, Tahoe
-* **Linux**: Raspberry Pi OS (Bullseye, Bookworm, Trixie), Ubuntu 24/25, Rocky Linux 8.x/9.x, Kali Linux 2024/2025
-* **Windows**: 10, 11
+* **macOS**: Tahoe, Sequoia, Sonoma, Ventura
+* **Linux**: Raspberry Pi OS (Trixie, Bookworm, Bullseye), Ubuntu 24/25, Rocky Linux 8.x/9.x, Kali Linux 2026/2025/2024
+* **Windows**: 11, 10
 
 It should work on other versions of macOS, Linux, Unix and Windows as well.
 
-<a id="new-to-python-install-everything"></a>
+<a id="new-to-python-check-and-install"></a>
 ## New to Python: check and install
 
 Use this section if you are new to Python or do not know what is already installed. The platform sections only prepare Python and `pip`. Everyone then uses the same LoL Monitor installation and setup commands. LoL Monitor requires Python 3.12 or newer.
 
+<a id="check-whether-lol-monitor-is-already-installed"></a>
 ### Check whether LoL Monitor is already installed
 
 Open Windows PowerShell on Windows or Terminal on macOS and Linux then run:
@@ -32,6 +34,7 @@ Open Windows PowerShell on Windows or Terminal on macOS and Linux then run:
 
 If this prints a LoL Monitor version, skip to [Run the setup wizard](#run-the-setup-wizard). If the command is not recognized or not found, continue with the section for your operating system.
 
+<a id="windows-10-or-11"></a>
 ### Windows 10 or 11
 
 Open Windows PowerShell. Select **Start**, type `PowerShell` then open **Windows PowerShell**.
@@ -41,7 +44,7 @@ Check Python and `pip`:
     python --version
     pip --version
 
-If both commands work and Python reports version 3.12 or newer, skip to [Install LoL Monitor](#install-lol-monitor-after-python-check).
+If both commands work and Python reports version 3.12 or newer, skip to [Install LoL Monitor](#install-lol-monitor).
 
 If either command fails or Python is older than the required version:
 
@@ -60,6 +63,7 @@ If `pip` is still not recognized, run `py install --refresh`, close PowerShell t
 
 See the official [Python Install Manager troubleshooting table](https://docs.python.org/3/using/windows.html#troubleshooting) if either check is still unavailable.
 
+<a id="macos"></a>
 ### macOS
 
 Open Terminal. Press **Command+Space**, type `Terminal` then press **Return**.
@@ -69,7 +73,7 @@ Check Python and `pip`:
     python3 --version
     pip --version
 
-If both commands work and Python reports version 3.12 or newer, skip to [Install LoL Monitor](#install-lol-monitor-after-python-check).
+If both commands work and Python reports version 3.12 or newer, skip to [Install LoL Monitor](#install-lol-monitor).
 
 If either command fails or Python is older than the required version:
 
@@ -88,6 +92,7 @@ If either command fails or Python is older than the required version:
 
 The official [Using Python on macOS](https://docs.python.org/3/using/mac.html) guide shows every installer screen and explains the installed applications.
 
+<a id="ubuntu-debian-raspberry-pi-os-or-kali"></a>
 ### Ubuntu, Debian, Raspberry Pi OS or Kali
 
 Open Terminal then check Python and `pip`:
@@ -95,7 +100,7 @@ Open Terminal then check Python and `pip`:
     python3 --version
     pip --version
 
-If both commands work and Python reports version 3.12 or newer, skip to [Install LoL Monitor](#install-lol-monitor-after-python-check).
+If both commands work and Python reports version 3.12 or newer, skip to [Install LoL Monitor](#install-lol-monitor).
 
 If either command fails or Python is too old, install or update the packages:
 
@@ -111,7 +116,7 @@ Check both commands again:
 
 If Python reports a version older than 3.12, follow your distribution's instructions to install a supported Python version before continuing. For another Linux distribution, install Python 3.12 or newer plus `pip` through its package manager.
 
-<a id="install-lol-monitor-after-python-check"></a>
+<a id="install-lol-monitor"></a>
 ### Install LoL Monitor
 
 Every operating system uses the same command:
@@ -130,6 +135,7 @@ On Linux, `pip` may report that the system Python is externally managed. If that
 
 Close Terminal, open it again then run `lol_monitor --version`.
 
+<a id="run-the-setup-wizard"></a>
 ### Run the setup wizard
 
 Every operating system uses the same command:
@@ -138,6 +144,7 @@ Every operating system uses the same command:
 
 The setup wizard collects the target, service credentials and optional notifications. Continue to [Setup & First Run](setup-and-first-run.md) for a walkthrough of its questions.
 
+<a id="choose-an-installation-method"></a>
 ## Choose an Installation Method
 
 | Method | Best for | Command used in later examples |
@@ -147,47 +154,62 @@ The setup wizard collects the target, service credentials and optional notificat
 
 Later pages use the short PyPI command. If you chose the manual script, keep the options after `lol_monitor` and replace the command itself with the one in the table. The setup wizard and `--help` also print commands for the detected installation.
 
-## Install from PyPI
+<a id="install-from-pypi"></a>
+### Install from PyPI
 
 ```sh
 pip install lol_monitor
+lol_monitor --version
 ```
 
-## Manual Installation
+<a id="install-the-manual-script"></a>
+### Install the Manual Script
 
-Download the *[lol_monitor.py](https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/lol_monitor.py)* file to the desired location.
-
-Install dependencies via pip:
+Download the script and dependency list into the same directory:
 
 ```sh
-pip install pulsefire requests python-dateutil python-dotenv
+curl -fsSLO https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/lol_monitor.py
+curl -fsSLO https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/requirements.txt
 ```
 
-Alternatively, from the downloaded *[requirements.txt](https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/requirements.txt)*:
+You can also download [lol_monitor.py](https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/lol_monitor.py) and [requirements.txt](https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/requirements.txt) in a browser or use the files from a cloned repository.
+
+Install the core dependencies:
 
 ```sh
 pip install -r requirements.txt
 ```
 
+You can install the core dependencies directly if you downloaded only the script:
+
+```sh
+pip install pulsefire requests python-dateutil python-dotenv
+```
+
+Verify the script:
+
+```sh
+python3 lol_monitor.py --version
+```
+
+Use `python lol_monitor.py --version` on Windows.
+
+<a id="next-step"></a>
 ## Next Step
 
 Continue to [Setup & First Run](setup-and-first-run.md) to prepare credentials, choose a target and run the wizard.
 
+<a id="upgrading"></a>
 ## Upgrading
 
-Use the same installation method and Python environment you used originally.
+Use the same installation method and Python environment you used originally. Upgrading does not remove your configuration, `.env` secrets, logs, CSV files or saved history. Keep those files in the same working directory or another persistent location.
 
-To upgrade to the latest version when installed from PyPI:
+### Upgrade a PyPI Installation
 
 ```sh
-pip install lol_monitor -U
+pip install --upgrade lol_monitor
+lol_monitor --version
 ```
-
-If you installed manually, download the newest *[lol_monitor.py](https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/lol_monitor.py)* file to replace your existing installation.
-
-If you are upgrading from v1.7.2 or earlier and you keep a CSV match history, its columns changed. The [CSV format converter](tools.md#csv-format-converter) rewrites an old file into the current format.
-
-For a manual upgrade, also download the matching `requirements.txt` and rerun the dependency installation command above. Keep your configuration, dotenv files and saved history when replacing the script.
 
 If you used `pipx`, upgrade with:
 
@@ -195,4 +217,27 @@ If you used `pipx`, upgrade with:
 pipx upgrade lol_monitor
 ```
 
-Check the upgraded version with `lol_monitor --version` or the [manual equivalent](usage.md#command-format), then run `lol_monitor --doctor "<riot_id>" <region>` before monitoring.
+### Upgrade a Manual Installation
+
+Replace [lol_monitor.py](https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/lol_monitor.py) and [requirements.txt](https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/requirements.txt) with the newest copies. You can download them in a browser, use the files from an updated clone or run:
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/lol_monitor.py
+curl -fsSLO https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/requirements.txt
+pip install --upgrade -r requirements.txt
+python3 lol_monitor.py --version
+```
+
+Refresh the dependencies even when `requirements.txt` appears unchanged because a new release may add or change a required library.
+
+Use `python lol_monitor.py --version` on Windows. If you modified the script itself, save your changes before replacing it and reapply them to the new version.
+
+### Check Upgrade
+
+After any upgrade run the doctor command:
+
+```sh
+lol_monitor --doctor "<riot_id>" <region>
+```
+
+Use the [manual equivalent](usage.md#command-format-by-installation-method) if you installed the script directly.

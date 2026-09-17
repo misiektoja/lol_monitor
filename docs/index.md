@@ -15,10 +15,10 @@ Real-time tracker for League of Legends players' activity, with detailed match r
    <img src="https://raw.githubusercontent.com/misiektoja/lol_monitor/refs/heads/main/assets/lol_monitor.png" alt="lol_monitor_screenshot" width="90%"/>
 </p>
 
-<a id="-quick-install-run"></a>
+<a id="quick-install-run"></a>
 ### 🚀 Quick Install & Run
 
-New to Python or unsure what is installed? Follow the [Python install walkthrough](installation.md#new-to-python-install-everything) first.
+New to Python or unsure what is installed? Follow the [Python install walkthrough](installation.md#new-to-python-check-and-install) first.
 
 Install from PyPI:
 
@@ -32,10 +32,11 @@ Run the setup wizard:
 lol_monitor --setup
 ```
 
-The wizard asks for the target, authentication, polling intervals and optional notifications. Review the settings before saving them. See [Setup & First Run](setup-and-first-run.md) for the service-specific steps.
+The wizard asks for the Riot ID and region, the Riot API key and optional notifications. Review the settings before saving them. See [Setup & First Run](setup-and-first-run.md) for how to get the Riot API key and the region codes.
 
-For the manual single-file method, dependencies and upgrade commands, see [Installation](installation.md).
+For the manual single-file method, optional dependencies and upgrade commands, see [Installation](installation.md).
 
+<a id="features"></a>
 ## Features
 
 ### 🔍 Match Tracking
@@ -62,32 +63,3 @@ For the manual single-file method, dependencies and upgrade commands, see [Insta
 * **Getting started**: Use the welcome screen, worked help examples and `--doctor` checks.
 * **Flexible settings**: Use config files, dotenv files, environment variables and command-line options.
 * **Runtime controls**: Adjust the running monitor through supported signals.
-
-## Common Commands
-
-Use [Quick Install & Run](#-quick-install-run) for first-time setup. These examples use the PyPI command. See [Command Format by Installation Method](usage.md#command-format) for manual-script equivalents.
-
-Replace the target placeholders with a Riot ID such as "Player#TAG" plus a region code such as euw1. Monitoring requires the [Riot API key](setup-and-first-run.md#riot-api-key) described in the setup guide.
-
-| I want to... | Run this |
-| --- | --- |
-| Configure the target, credentials and alerts | `lol_monitor --setup` |
-| Start monitoring with saved credentials | `lol_monitor "<riot_id>" <region>` |
-| Check setup before monitoring | `lol_monitor --doctor "<riot_id>" <region>` |
-| Enter or replace credentials through hidden prompts | `lol_monitor --set-riot-api-key` |
-| Use a specific configuration and secrets file | `lol_monitor --config-file lol_monitor.conf --env-file .env "<riot_id>" <region>` |
-| List recent matches | `lol_monitor "<riot_id>" <region> -l -n 10` |
-| List every supported command-line option | `lol_monitor --help` |
-
-Monitoring runs until you press `Ctrl+C`. For email, Discord and ntfy alerts, CSV output and service-specific commands, see [Usage](usage.md). If a run fails, start with [Doctor Preflight](troubleshooting.md#doctor-preflight).
-
-## Documentation
-
-* [Installation](installation.md) - Python setup, package or manual install and upgrades
-* [Setup & First Run](setup-and-first-run.md) - credentials, target selection and the setup wizard
-* [Configuration](configuration.md) - settings, notifications and secret storage
-* [Usage](usage.md) - monitoring, output and command options
-* [Troubleshooting](troubleshooting.md) - Doctor checks and recovery steps
-* [Testing](testing.md) - automated checks and documentation builds
-* [About](about.md) - contributing, security, licensing and support
-* [Utility Tools](tools.md) - CSV conversion and match history comparison

@@ -1,6 +1,6 @@
 # Usage
 
-<a id="command-format"></a>
+<a id="command-format-by-installation-method"></a>
 ## Command Format by Installation Method
 
 Examples use the PyPI command. For a downloaded script, run commands from the directory containing `lol_monitor.py` and keep the same arguments:
@@ -17,22 +17,7 @@ Activate the tool's virtual environment before running these commands. For a dow
 
 For first-time configuration, follow [Setup & First Run](setup-and-first-run.md). Use [Doctor Preflight](troubleshooting.md#doctor-preflight) to check a setup before monitoring.
 
-## Starting Point
-
-Run the tool with no arguments to see the commands worth starting from and to be offered the [guided setup](setup-and-first-run.md#guided-setup):
-
-```sh
-lol_monitor
-```
-
-If the configuration file already names a player in `RIOT_ID` and `REGION`, the same bare command starts monitoring them instead.
-
-`--help` lists every flag, grouped by what it configures, and ends with worked examples for the common tasks:
-
-```sh
-lol_monitor --help
-```
-
+<a id="monitoring-mode"></a>
 ## Monitoring Mode
 
 Pass the player's Riot ID and region and the tool watches them until you stop it:
@@ -55,30 +40,41 @@ To watch several players, run several copies.
 
 Output is saved to `lol_monitor_<riot_id_name>.log`. Change the name with `LOL_LOGFILE` or switch the file off with `DISABLE_LOGGING` or `-d`.
 
-## Startup Summary
+<a id="terminal-output"></a>
+## Terminal Output
 
-Every run opens with the settings that are actually in effect, one per line:
+Use `--help` for examples grouped by task and matched to your installation.
 
+Monitoring mode prints the settings that are actually in effect before the first check.
+
+Optional features appear once you switch them on.
+
+Use `--verbose` or `--debug` for the full startup summary, including output paths, notification settings, secret sources and runtime information.
+
+Use `--truncate N` or `TRUNCATE_CHARS` to limit screen line width. Set it to `999` to detect the terminal width automatically. Truncation does not change log files and is ignored when logging is disabled with `-d`.
+
+The tool clears the terminal when monitoring starts. Set `CLEAR_SCREEN` to `False` to keep whatever is already on the screen.
+
+The screen is never cleared when output is redirected to a file or a pipe, in debug mode, or for a command that prints a result and exits, such as `--doctor`, `--help` and the test senders.
+
+Two settings add detail to what a run prints. `VERBOSE_MODE` adds the decisions the run made and `DEBUG_MODE` adds timestamped technical traces. Both are off by default, both are independent of each other and both have a flag that wins over the file, `--verbose` and `--debug`. `DELIVERY_CONFIRMATIONS` is on by default and controls whether verbose mode confirms each delivered email and webhook alert. See [Verbose and Debug Output](troubleshooting.md#verbose-and-debug-output).
+
+<a id="coloured-terminal-output"></a>
+### Coloured Terminal Output
+
+LoL Monitor colours live terminal output and help by default. Saved log files stay plain text.
+
+Turn colour off for one run with `--no-color` or permanently with `COLORED_OUTPUT = False`. Colour is also disabled for redirected output, `NO_COLOR` or an unsupported terminal. See [Terminal Colours](configuration.md#terminal-colours) for details.
+
+Override individual colours with `COLOR_THEME`. It is merged over the built-in theme, so you only name the parts you want to change:
+
+```ini
+COLOR_THEME = { "champion": "bright_magenta bold", "username": "green" }
 ```
-* Target:                       Faker#KR1 (kr)
-* Polling intervals:            [NOT in game: 2 minutes, 30 seconds] [in game: 45 seconds]
-* Notifications (email):        On (status changes, errors)
-* Output:                       lol_monitor_Faker.log
-* Config:                       lol_monitor.conf
-* Dotenv:                       .env
-* Liveness output:              12 hours
-* CSV output:                   matches.csv
-* More details:                 use --verbose or --debug
-```
 
-The short view names the target, where alerts go, where output goes and each optional feature that is switched on. A feature that is off is left out, apart from TLS verification, which appears while it is **off**.
+See [Terminal Colours](configuration.md#terminal-colours) for the accepted colour and style names.
 
-Use `--verbose` or `--debug` for the full startup summary, including region routing, notification settings, secret sources and runtime information. The log file always keeps the full summary.
-
-Each channel's own settings are indented under it, so the mail rows and the webhook rows read as one block rather than as separate entries.
-
-No secret value appears in either view. The secret rows list names only, the webhook row names the service but no part of the URL that carries an ntfy topic or a Discord token, and the recipient address is masked down to the first and last character of its local part.
-
+<a id="listing-mode"></a>
 ## Listing Mode
 
 `-l` prints the player's recent matches and exits instead of monitoring. `-n` sets how many, defaulting to the last 2:
@@ -101,6 +97,7 @@ Adding `-b` with a filename saves the listed matches to CSV as well as printing 
 lol_monitor <riot_id> <region> -l -m 5 -n 10 -b lol_games_riot_id_name.csv
 ```
 
+<a id="email-notifications"></a>
 ## Email Notifications
 
 To get mail when the player's status changes, set `STATUS_NOTIFICATION` to `True` or pass `-s`:
@@ -123,6 +120,7 @@ Example email:
 
 ![lol_monitor email notification](https://raw.githubusercontent.com/misiektoja/lol_monitor/main/assets/lol_monitor_email_notifications.png)
 
+<a id="webhook-notifications"></a>
 ## Webhook Notifications
 
 The same alerts can go to a Discord channel or an ntfy topic. Point the tool at a destination and switch the channel on:
@@ -149,6 +147,7 @@ lol_monitor --send-test-webhook
 
 The settings behind all of this are covered under [Webhook Settings](configuration.md#webhook-settings).
 
+<a id="csv-export"></a>
 ## CSV Export
 
 Set `CSV_FILE` or pass `-b` to append every reported match to a CSV file:
@@ -171,36 +170,42 @@ The file is created if it does not exist. Columns:
 
 Files written by v1.7.2 or earlier use the older column set. The [CSV format converter](tools.md#csv-format-converter) rewrites them.
 
-## A Run That Finds Nothing
+<a id="check-intervals"></a>
+## Check Intervals
 
-Monitoring is quiet by design: a check that finds no new match and no change in whether the player is in a game prints nothing. So that silence can be told apart from a dead process, the run prints a liveness banner once per `LIVENESS_CHECK_INTERVAL` of quiet:
+If you want to customize the polling intervals, use the `-k` and `-c` flags (or the corresponding configuration options):
 
-```
-* Monitoring healthy for Faker#KR1. The user is not in a match with no match change since the last check
-Liveness check, timestamp:	Thu 01 Jan 2026, 00:50:00
-```
-
-A failure that lasts is reported once the short retry has failed too, then reminded once an hour with a count of the failed checks, and it says when it started:
-
-```
-* Error: The Riot API is temporarily unavailable (retrying in 2 minutes, 30 seconds)
-To fix: This is usually a Riot outage. The tool will keep retrying
-Timestamp:			Thu 01 Jan 2026, 00:20:05
-
-* Monitoring degraded for Faker#KR1. The Riot API is temporarily unavailable since Thu 01 Jan 2026, 00:20:00, 26 failed checks
-Liveness check, timestamp:	Thu 01 Jan 2026, 01:20:05
-
-* Monitoring recovered for Faker#KR1 after 1 hour, 10 minutes
-Timestamp:			Thu 01 Jan 2026, 01:30:05
+```sh
+lol_monitor <riot_id> <region> -k 60 -c 120
 ```
 
-Each block closes with its timestamp and a horizontal rule, so no line is left looking like a run that stopped there.
+* `LOL_ACTIVE_CHECK_INTERVAL`, `-k`: check interval when the player is in a game (seconds)
+* `LOL_CHECK_INTERVAL`, `-c`: check interval when the player is not in a game (seconds)
 
-[What a Long Run Prints](troubleshooting.md#what-a-long-run-prints) covers the retry and alert behaviour behind these lines.
+`CHECK_INTERNET_TIMEOUT` sets the seconds allowed for the startup connectivity check (default: 5).
 
+Riot's development key allows 100 requests every two minutes, and each check while the player is in a game spends several of them. `--doctor` warns when `LOL_ACTIVE_CHECK_INTERVAL` drops below 10 seconds, which is where the extra calls a live match report makes stop fitting.
+
+<a id="liveness-reminder"></a>
+### Liveness Reminder
+
+While nothing changes, the tool prints one reminder that it is still running:
+
+```
+* Monitoring healthy for <riot_id>. The user is not in a match with no match change since the last check
+Liveness check, timestamp:	Mon 08 Sep 2026, 09:15:05
+```
+
+The reminder is timed in seconds, so it arrives at the same rate whichever check interval is in use. Set `LIVENESS_CHECK_INTERVAL` to change it (default: 86400, i.e. 24 hours), or to 0 to switch it off.
+
+Anything the tool prints about the target restarts the countdown, so a busy run stays quiet.
+
+<a id="signal-controls-macoslinuxunix"></a>
 ## Signal Controls (macOS/Linux/Unix)
 
-Signals change the behaviour of a running copy without restarting it:
+The tool has several signal handlers implemented which allow to change behavior of the tool without a need to restart it with new configuration options / flags.
+
+List of supported signals:
 
 | Signal | Description |
 | ----------- | ----------- |
@@ -209,7 +214,9 @@ Signals change the behaviour of a running copy without restarting it:
 | ABRT | Decrease the in-game check interval by `LOL_ACTIVE_CHECK_SIGNAL_VALUE` seconds |
 | HUP | Reload secrets from the dotenv file, reporting each one that changed |
 
-Send them with `kill` or `pkill`:
+`SIGHUP` keeps command-line credentials and nonempty environment values exported before startup. Change those values and restart to replace them.
+
+Send signals with `kill` or `pkill`, e.g.:
 
 ```sh
 pkill -USR1 -f "lol_monitor <riot_id> <region>"
@@ -224,10 +231,9 @@ A reload names each secret it replaced and how it looks, never its value:
 
 A Riot API key is always 42 characters, so a shorter one means the paste was cut. A password you chose reports presence only, since its length is a real disclosure.
 
-`SIGHUP` keeps command-line credentials and nonempty environment values exported before startup. Change those values and restart to replace them.
+As Windows supports limited number of signals, this functionality is available only on Linux/Unix/macOS.
 
-Windows supports too few signals for this, so it is available on Linux, Unix and macOS only.
-
+<a id="coloring-log-output-with-grc"></a>
 ## Coloring Log Output with GRC
 
 [GRC](https://github.com/garabik/grc) can colour the log file.
