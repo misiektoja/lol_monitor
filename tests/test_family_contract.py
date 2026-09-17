@@ -131,7 +131,7 @@ class TestTheStartupBanner:
 # The screen clear: which commands are allowed to wipe the terminal, and which have to leave what they printed on it
 class TestTheScreenClear:
     # Verifies a command whose output is read rather than watched keeps the screen it was run from
-    @pytest.mark.parametrize("flag", ["--doctor", "--send-test-email", "--list-recent-matches", "-l", "--help", "-h"])
+    @pytest.mark.parametrize("flag", ["--set-riot-api-key", "--set-smtp-password", "--set-webhook-url", "--doctor", "--send-test-email", "--send-test-webhook", "--list-recent-matches", "-l", "--help", "-h"])
     def test_a_one_shot_command_keeps_the_terminal_history(self, lm_module, monkeypatch, flag):
         monkeypatch.setattr(lm_module.sys, "argv", ["lol_monitor", flag])
 
