@@ -459,7 +459,7 @@ PROJECT_URL = "https://github.com/misiektoja/lol_monitor"
 DOCS_BASE_URL = "https://misiektoja.github.io/lol_monitor"
 QUICK_START_GUIDE_URL = f"{DOCS_BASE_URL}/setup-and-first-run/"
 CONFIG_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#configuration-file"
-INTERVALS_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#check-intervals"
+INTERVALS_GUIDE_URL = f"{DOCS_BASE_URL}/usage/#check-intervals"
 RIOT_API_KEY_GUIDE_URL = f"{DOCS_BASE_URL}/setup-and-first-run/#riot-api-key"
 REGION_GUIDE_URL = f"{DOCS_BASE_URL}/setup-and-first-run/#region-codes"
 SMTP_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#smtp-settings"
@@ -2408,7 +2408,7 @@ def print_startup_banner():
 
 
 # Flags whose output the user reads rather than watches, so the screen they were run from has to stay scrollable
-KEEP_HISTORY_FLAGS = ("--doctor", "--send-test-email", "--list-recent-matches", "-l", "--help", "-h")
+KEEP_HISTORY_FLAGS = (*SECRET_ACTION_FLAGS, "--doctor", "--send-test-email", "--send-test-webhook", "--list-recent-matches", "-l", "--help", "-h")
 
 
 # Returns True when the running command is a one-shot whose output has to stay scrollable
