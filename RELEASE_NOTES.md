@@ -2,7 +2,7 @@
 
 This is a high-level summary of the most important changes.
 
-# Changes in 1.9 (TBD)
+# Changes in 1.9 (18 Sep 2026)
 
 Version **1.9** adds **guided setup**, a read-only **Doctor preflight check**, **Discord and ntfy alerts** and **private credential entry**. **Coloured output**, startup summaries and verbose/debug modes make monitoring easier to follow. Alerts can include **champion artwork**, match checks recover from failures and CSV conversion preserves history. Configuration and credentials are protected and release downloads can be verified.
 
@@ -17,7 +17,6 @@ Version **1.9** adds **guided setup**, a read-only **Doctor preflight check**, *
 - **NEW:** **Clearer output and diagnostics** - Coloured output and a short startup summary show the active settings. `--verbose` adds operational updates and `--debug` adds technical traces. Secrets are redacted and logs retain the full summary. `--truncate N` limits screen width while logs retain full lines. It works without `wcwidth`, which improves Unicode width measurements
 - **IMPROVE:** **Clearer errors and recovery** - Temporary failures get one short retry before appearing on screen. `--verbose` still reports the first failure. Persistent outages produce hourly reminders and recovery notices. Enabled error alerts cover network and Riot outages after five minutes, while rejected credentials alert immediately. Failed channels retry without repeating successful deliveries
 - **IMPROVE:** **Discord alerts match the email** - Discord now receives the same emphasis as the HTML email, with bold values and clickable links instead of plain text. ntfy keeps the plain body, since it would show the markers literally
-- **IMPROVE:** **Notification output** - Subjects omit program-name prefixes. Set `DELIVERY_CONFIRMATIONS = False` to hide delivery confirmations while keeping verbose diagnostics
 - **IMPROVE:** **Documentation and verifiable downloads** - A [searchable guide](https://misiektoja.github.io/lol_monitor/) covers setup, usage and troubleshooting. Releases include checksums and signed build attestations
 
 **Bug fixes**:
