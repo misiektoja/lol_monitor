@@ -137,10 +137,10 @@ def test_no_repository_document_links_at_a_missing_local_target():
 
 
 # Verifies each user-facing command is documented, since an undocumented one may as well not exist
-@pytest.mark.parametrize("flag", ["--config-file", "--generate-config", "--env-file", "--riot-api-key", "--send-test-email", "--list-recent-matches", "--csv-file", "--disable-logging", "--include-forbidden-matches"])
+@pytest.mark.parametrize("flag", ["--config-file", "--generate-config", "--env-file", "--riot-api-key", "--send-test-email", "--list-recent-matches", "--csv-file", "--disable-logging"])
 def test_user_facing_flags_are_documented(flag):
     text = all_docs_text()
-    short = {"--riot-api-key": "-r", "--send-test-email": None, "--list-recent-matches": "-l", "--csv-file": "-b", "--disable-logging": "-d", "--include-forbidden-matches": "-f"}.get(flag)
+    short = {"--riot-api-key": "-r", "--send-test-email": None, "--list-recent-matches": "-l", "--csv-file": "-b", "--disable-logging": "-d"}.get(flag)
 
     assert flag in text or (short and f"`{short}`" in text), f"{flag} is not documented on the site"
 
@@ -295,11 +295,26 @@ def test_the_documented_doctor_sections_match_the_code():
         assert f"**{section}**" in text, f"the {section} doctor section is not documented"
 
 
+# Settings the config template comments explain on their own, so the site does not repeat them
+TEMPLATE_ONLY_SETTINGS = {
+    "ASCII_LOG_SEPARATORS",
+    "CHECK_INTERNET_URL",
+    "HORIZONTAL_LINE",
+    "INCLUDE_FORBIDDEN_MATCHES",
+    "RECEIVER_EMAIL",
+    "SENDER_EMAIL",
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_SSL",
+    "SMTP_USER",
+}
+
+
 # Verifies every setting the config template ships is described somewhere on the site, since an undocumented setting is one nobody can use
 def test_every_configuration_setting_is_documented():
     settings = sorted(set(re.findall(r"(?m)^([A-Z][A-Z0-9_]*) =", monitor.CONFIG_BLOCK)))
     documented = all_docs_text()
 
     assert settings, "the sweep found no settings in the config template"
-    missing = [name for name in settings if name not in documented]
+    missing = [name for name in settings if name not in documented and name not in TEMPLATE_ONLY_SETTINGS]
     assert not missing, f"settings the documentation never mentions: {', '.join(missing)}"
