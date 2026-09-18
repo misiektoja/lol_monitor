@@ -3771,6 +3771,8 @@ def reload_secrets_signal_handler(sig, frame):
             if val is not None and val != old_val:
                 globals()[secret] = val
                 webhook_url_changed = webhook_url_changed or secret == "WEBHOOK_URL"
+                # The line names the setting, its source and a short fingerprint, never the value
+                # codeql[py/clear-text-logging-sensitive-data]
                 print(f"* Reloaded {secret} from {env_path} ({secret_fingerprint(val, secret)})")
 
     # A reloaded destination can belong to the other service, and a Discord payload posted to an ntfy topic is rejected
@@ -7286,6 +7288,8 @@ def run_setup_wizard(initial_riot_id=None, initial_region=None, config_file=None
     if config_result["backup_path"]:
         print(f"  Backup:        {config_result['backup_path']}")
     if dotenv_result:
+        # The row prints the dotenv file path, not what the file holds
+        # codeql[py/clear-text-logging-sensitive-data]
         print(f"  {'Secrets:':<15}{dotenv_result['path']}")
 
     doctor_offered = bool(state.riot_id and state.region)
