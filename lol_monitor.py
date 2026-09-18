@@ -1389,10 +1389,12 @@ def print_liveness_banner(message):
 
 
 # Reminds about a lasting failure once an hour, so a broken run still says it is alive without repeating itself
-def print_outage_liveness(target, advice, since, failures=0):
+def print_outage_liveness(target, advice, since, failures=0, close=True):
     count = f", {failures} failed {'check' if failures == 1 else 'checks'}" if failures else ""
     print(f"* Monitoring degraded for {target}. {advice.summary} since {get_date_from_ts(since)}{count}")
-    print_cur_ts("Liveness check, timestamp:\t")
+    # A caller with an alert still to deliver closes the report itself, so the delivery lines stay inside it
+    if close:
+        print_cur_ts("Liveness check, timestamp:\t")
 
 
 # Notes that a reported outage now fails differently, in one line rather than a second full report
@@ -5546,10 +5548,12 @@ async def lol_monitor_user(riotid, region, csv_file_name):
             elif outage_outcome == "changed":
                 print_outage_change(riotid, advice)
             elif outage_outcome == "reminder":
-                print_outage_liveness(riotid, advice, outage.since, outage.failures)
+                print_outage_liveness(riotid, advice, outage.since, outage.failures, close=False)
             if transient_retry:
                 transient_retry_used = True
-                if outage_outcome in ("full", "changed"):
+                if outage_outcome == "reminder":
+                    print_cur_ts("Liveness check, timestamp:\t")
+                elif outage_outcome in ("full", "changed"):
                     print_cur_ts("Timestamp:\t\t\t")
                 debug_print("Retry wait", check=f"#{check_count}", due_in=display_time(TRANSIENT_RETRY_SECONDS), reason="one short retry before the full interval")
                 time.sleep(TRANSIENT_RETRY_SECONDS)
@@ -5577,10 +5581,15 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                 error_alert.record("email", error_email_pending, email_delivered, now)
                 error_alert.record("webhook", error_webhook_pending, webhook_delivered, now)
                 # A delivery line can land on a check the outage reporter keeps quiet, and a line with nothing
-                # under it reads as a run that stopped there
-                delivery_reported = email_delivered or webhook_delivered
+                # under it reads as a run that stopped there. The attempt printed that line, so a send that
+                # failed still owes the report its trailer
+                delivery_reported = True
 
-            if outage_outcome in ("full", "changed") or delivery_reported:
+            # The reminder closes last so the delivery lines it carries stay inside the report rather than
+            # landing under the separator that ended it
+            if outage_outcome == "reminder":
+                print_cur_ts("Liveness check, timestamp:\t")
+            elif outage_outcome in ("full", "changed") or delivery_reported:
                 print_cur_ts("Timestamp:\t\t\t")
 
             debug_print("Retry wait", check=f"#{check_count}", due_in=display_time(sleep_interval), reason="riot rate limited the request" if rate_limited else "waiting out the failure")
