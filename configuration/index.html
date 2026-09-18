@@ -1,0 +1,1135 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Real-time tracker for League of Legends players' activity with detailed match reports and instant alerts">
+      
+      
+      
+        <link rel="canonical" href="https://misiektoja.github.io/lol_monitor/configuration/">
+      
+      
+        <link rel="prev" href="../setup-and-first-run/">
+      
+      
+        <link rel="next" href="../usage/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Configuration - lol_monitor</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="blue">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#configuration" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="lol_monitor" class="md-header__button md-logo" aria-label="lol_monitor" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            lol_monitor
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Configuration
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="blue"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="blue" data-md-color-accent="blue"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/misiektoja/lol_monitor" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    misiektoja/lol_monitor
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="lol_monitor" class="md-nav__button md-logo" aria-label="lol_monitor" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    lol_monitor
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/misiektoja/lol_monitor" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    misiektoja/lol_monitor
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup-and-first-run/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup & First Run
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration File
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitored-target" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitored Target
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#smtp-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SMTP Settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SMTP Settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#champion-icon-in-email" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Champion Icon in Email
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#webhook-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Webhook Settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Webhook Settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ntfy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ntfy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#discord" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discord
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#advanced-discord-format-customization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advanced Discord-format customization
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storing-secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storing Secrets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#terminal-colours" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Terminal Colours
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tls-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TLS Verification
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Utility Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../about/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration File
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitored-target" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitored Target
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#smtp-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SMTP Settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SMTP Settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#champion-icon-in-email" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Champion Icon in Email
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#webhook-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Webhook Settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Webhook Settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ntfy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ntfy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#discord" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discord
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#advanced-discord-format-customization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advanced Discord-format customization
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storing-secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storing Secrets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#terminal-colours" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Terminal Colours
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tls-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TLS Verification
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/misiektoja/lol_monitor/edit/main/docs/configuration.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h1>
+<p>Examples on this page use the PyPI command <code>lol_monitor</code>. Manual script users should keep the shown options and use the matching prefix under <a href="../usage/#command-format-by-installation-method">Command Format by Installation Method</a>.</p>
+<p><a id="configuration-file"></a></p>
+<h2 id="configuration-file">Configuration File<a class="headerlink" href="#configuration-file" title="Permanent link">&para;</a></h2>
+<p>You can pass most settings as command-line options or save them in a configuration file for later runs.</p>
+<p>The easiest way to create this file is <code>lol_monitor --setup</code>.</p>
+<p>To edit every available setting yourself, generate a default configuration file:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># On macOS, Linux or Windows Command Prompt (cmd.exe)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>lol_monitor<span class="w"> </span>--generate-config<span class="w"> </span>&gt;<span class="w"> </span>lol_monitor.conf
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># On Windows PowerShell (recommended to avoid encoding issues)</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>lol_monitor<span class="w"> </span>--generate-config<span class="w"> </span>lol_monitor.conf
+</code></pre></div>
+<blockquote>
+<p><strong>Windows PowerShell:</strong> Pass the filename directly to <code>--generate-config</code>. PowerShell redirection can write UTF-16, which the tool rejects with a "null bytes" error.</p>
+</blockquote>
+<p>When the named file already exists, <code>--generate-config</code> asks before replacing it and keeps a timestamped <code>.bak</code> backup next to it. Add <code>--force</code> to replace it without the question.</p>
+<p>The file contains a short explanation above each setting.</p>
+<p>A configuration file is read as data, not executed. The tool accepts only <code>SETTING = value</code> lines where the name is one of the documented settings and the value is a plain literal such as a string, number, <code>True</code>, <code>False</code>, <code>None</code>, a list or a dictionary. Comments and blank lines are fine.</p>
+<p>Imports, function calls, expressions and unknown settings are rejected with the setting and line number to correct.</p>
+<p>If the same setting appears in more than one place, the item later in this list wins:</p>
+<ol>
+<li>Built-in defaults</li>
+<li>The discovered or explicitly selected configuration file</li>
+<li>Values from the selected <code>.env</code> file</li>
+<li>Secret environment variables</li>
+<li>Command-line options</li>
+</ol>
+<p>By default the tool looks for a configuration file named <code>lol_monitor.conf</code> in the current directory, the home directory (<code>~</code>) and the script directory. Use <code>--config-file</code> to name another location or <code>--config-file none</code> to disable automatic config discovery for one run.</p>
+<p><a id="monitored-target"></a></p>
+<h2 id="monitored-target">Monitored Target<a class="headerlink" href="#monitored-target" title="Permanent link">&para;</a></h2>
+<p>The Riot ID and the region are positional arguments. Both are required to start monitoring:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>lol_monitor<span class="w"> </span>&lt;riot_id&gt;<span class="w"> </span>&lt;region&gt;
+</code></pre></div>
+<p>A Riot ID is the game name plus the tag line, written as <code>riot_id_name#tag</code>. The accepted region codes are listed under <a href="../setup-and-first-run/#region-codes">Region Codes</a>. Region codes are not case sensitive, and spaces around the <code>#</code> are ignored, so <code>" Name # TAG "</code> and <code>EUN1</code> are read the same as <code>Name#TAG</code> and <code>eun1</code>.</p>
+<p>To stop repeating them, save the pair in the configuration file:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="na">RIOT_ID</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"riot_id_name#tag"</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="na">REGION</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"eun1"</span>
+</code></pre></div>
+<p>Then <code>lol_monitor</code> alone starts monitoring that player. A positional argument still wins, so you can watch someone else for one run without editing the file:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>lol_monitor<span class="w"> </span><span class="s2">"other_name#tag"</span><span class="w"> </span>euw1
+</code></pre></div>
+<p><a id="smtp-settings"></a></p>
+<h2 id="smtp-settings">SMTP Settings<a class="headerlink" href="#smtp-settings" title="Permanent link">&para;</a></h2>
+<p>Email notifications need SMTP server details for the sending account. Add them to <code>lol_monitor.conf</code> or use the setup wizard. Setup checks the login without sending an email. To replace only the password, run <code>lol_monitor --set-smtp-password</code>. Password entry is hidden and preserves spaces.</p>
+<p>Send one test message to verify the settings:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>lol_monitor<span class="w"> </span>--send-test-email
+</code></pre></div>
+<p><a id="champion-icon-in-email"></a></p>
+<h3 id="champion-icon-in-email">Champion Icon in Email<a class="headerlink" href="#champion-icon-in-email" title="Permanent link">&para;</a></h3>
+<p><code>EMAIL_IMAGES = True</code> embeds the champion icon at the end of the in-game and match summary emails, under the timestamp. The icon is the one the Data Dragon release serves for the champion the player used, downloaded at send time and attached to the message, so it shows without the mail client fetching anything remote.</p>
+<p>Alerts that name no champion, such as an error alert, are unaffected. If the download fails or returns something that is not a small image, the email is sent as text only.</p>
+<p><a href="../setup-and-first-run/#run-the-setup-wizard"><code>--setup</code></a> offers the setting once match emails are enabled.</p>
+<p><a id="webhook-settings"></a></p>
+<h2 id="webhook-settings">Webhook Settings<a class="headerlink" href="#webhook-settings" title="Permanent link">&para;</a></h2>
+<p>Webhooks send the same alerts as email to a Discord channel or an ntfy topic. They are switched off until you set a destination. <a href="../setup-and-first-run/#run-the-setup-wizard"><code>--setup</code></a> collects the service, the destination and the alert switches together:</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WEBHOOK_ENABLED</code></td>
+<td>Master switch for the channel</td>
+</tr>
+<tr>
+<td><code>WEBHOOK_PROVIDER</code></td>
+<td><code>discord</code> or <code>ntfy</code></td>
+</tr>
+<tr>
+<td><code>WEBHOOK_URL</code></td>
+<td>The private destination, best kept in a dotenv file</td>
+</tr>
+<tr>
+<td><code>WEBHOOK_USERNAME</code></td>
+<td>Discord display name, empty to use the webhook default</td>
+</tr>
+<tr>
+<td><code>WEBHOOK_AVATAR_URL</code></td>
+<td>Discord avatar URL, empty to use the webhook default</td>
+</tr>
+<tr>
+<td><code>WEBHOOK_STATUS_NOTIFICATION</code></td>
+<td>Send an alert when the player's status changes</td>
+</tr>
+<tr>
+<td><code>WEBHOOK_ERROR_NOTIFICATION</code></td>
+<td>Send an alert on monitoring errors, on by default</td>
+</tr>
+<tr>
+<td><code>WEBHOOK_HEADERS</code></td>
+<td>Extra request headers, for example ntfy options</td>
+</tr>
+<tr>
+<td><code>NTFY_ACCESS_TOKEN</code></td>
+<td>Bearer token for a private ntfy topic</td>
+</tr>
+<tr>
+<td><code>NTFY_IMAGES</code></td>
+<td>Attach the champion icon to ntfy alerts</td>
+</tr>
+</tbody>
+</table>
+<p>Save the destination without putting it in a file you might share:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>lol_monitor<span class="w"> </span>--set-webhook-url
+</code></pre></div>
+<p>The URL is typed hidden, checked for shape, and written to the dotenv file with owner-only permissions. The command names the service it recognised so you can tell a mistyped destination from the right one.</p>
+<p>The destination decides the service. A <code>https://ntfy.sh/...</code> link is treated as ntfy and a Discord webhook link as Discord, even when <code>WEBHOOK_PROVIDER</code> says otherwise. While <code>WEBHOOK_PROVIDER</code> is left at its default, that detection is silent and <code>--verbose</code> reports it. A warning appears only when your configuration file sets a provider the URL disagrees with. Pass <code>--webhook-provider</code> to override that for a self-hosted host the tool cannot recognise.</p>
+<p>Send one real notification to check the setup:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>lol_monitor<span class="w"> </span>--send-test-webhook
+</code></pre></div>
+<p>Email and webhooks are independent. Both can be on, and each keeps its own alert settings, so you can take errors on ntfy and status changes by mail.</p>
+<p><a id="ntfy"></a></p>
+<h3 id="ntfy">ntfy<a class="headerlink" href="#ntfy" title="Permanent link">&para;</a></h3>
+<p><code>WEBHOOK_URL</code> is the complete topic URL, such as <code>https://ntfy.sh/your-private-topic</code>. Anyone who knows a public topic name can read it, so pick an unguessable one or use a private server with <code>NTFY_ACCESS_TOKEN</code>.</p>
+<p>The alert body is sent as a native ntfy message with the subject as its title. ntfy rejects a message over 4 KB, so a long alert is cut with a note saying that it was.</p>
+<p>Add ntfy options through <code>WEBHOOK_HEADERS</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">WEBHOOK_HEADERS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"X-Priority"</span><span class="p">:</span> <span class="s2">"4"</span><span class="p">,</span> <span class="s2">"X-Tags"</span><span class="p">:</span> <span class="s2">"video_game"</span><span class="p">}</span>
+</code></pre></div>
+<p><code>NTFY_IMAGES = True</code> attaches the champion icon to the alerts that name a champion, taken from the same Data Dragon release the champion names come from. ntfy shows it as the notification image and the alert text travels beside it, so the message reads the same as without the icon. An alert with no champion is sent as text, and an attachment the server rejects is retried once as a text-only alert so the alert itself still arrives.</p>
+<p><a href="../setup-and-first-run/#run-the-setup-wizard"><code>--setup</code></a> offers the setting when the destination is an ntfy topic and match alerts are enabled.</p>
+<p><a id="discord"></a></p>
+<h3 id="discord">Discord<a class="headerlink" href="#discord" title="Permanent link">&para;</a></h3>
+<p><code>WEBHOOK_URL</code> is the link from <strong>Edit Channel -&gt; Integrations -&gt; Webhooks -&gt; New Webhook -&gt; Copy Webhook URL</strong>. Anyone holding it can post to that channel.</p>
+<p>Alerts are sent as an embed built from <code>WEBHOOK_TEMPLATE</code>, which supports the <code>title</code>, <code>description</code>, <code>version</code>, <code>image_url</code>, <code>fields</code>, <code>fields_str</code>, <code>color</code>, <code>timestamp</code>, <code>username</code> and <code>avatar_url</code> placeholders. Mentions are disabled on every message the tool sends, whatever the template says.</p>
+<p><code>image_url</code> holds the champion icon on the alerts that name a champion, the in-game announcement and the finished match summary, taken from the Data Dragon release the run read its champion names from. The default template shows it as the embed thumbnail. Alerts with no champion leave it empty and the thumbnail is dropped rather than sent blank.</p>
+<p>Discord alerts carry the same emphasis as the HTML email, since Discord renders markdown in an embed. Bold values stay bold, links stay clickable and the monitored player's own roster line is marked. Only Discord gets that wording: ntfy receives the plain body, because it would show the markers literally.</p>
+<p><a id="advanced-discord-format-customization"></a></p>
+<h3 id="advanced-discord-format-customization">Advanced Discord-format customization<a class="headerlink" href="#advanced-discord-format-customization" title="Permanent link">&para;</a></h3>
+<p><code>WEBHOOK_USERNAME</code> and <code>WEBHOOK_AVATAR_URL</code> change the sender name and HTTPS avatar for Discord-format payloads. Leave either empty to keep the webhook's own value:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="na">WEBHOOK_USERNAME</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"LoL Monitor"</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="na">WEBHOOK_AVATAR_URL</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"https://example.com/path/avatar.png"</span>
+</code></pre></div>
+<p><code>WEBHOOK_TEMPLATE</code> controls the Discord-format request body. It supports these placeholders:</p>
+<ul>
+<li><code>{title}</code></li>
+<li><code>{description}</code></li>
+<li><code>{version}</code></li>
+<li><code>{image_url}</code></li>
+<li><code>{fields}</code> and <code>{fields_str}</code></li>
+<li><code>{color}</code></li>
+<li><code>{timestamp}</code></li>
+<li><code>{username}</code></li>
+<li><code>{avatar_url}</code></li>
+</ul>
+<p>Discord templates must produce a JSON object. Use a dictionary or a JSON string encoding an object, including legacy strings with doubled object braces. Lists, non-JSON strings and unsupported placeholders are rejected before delivery. Alert text is kept literal and all payloads replace <code>allowed_mentions</code> with <code>{"parse": []}</code> so alert text cannot trigger Discord mentions. Reloaded settings apply to the next delivery.</p>
+<p><code>WEBHOOK_TRANSFORMS</code> applies string methods to shared placeholder values before the template and headers are rendered:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="na">WEBHOOK_TRANSFORMS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span><span class="na">("title", "upper"),</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="na">("description", "replace", "**", ""),</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">    </span><span class="na">("description", "strip"),</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="na">]</span>
+</code></pre></div>
+<p>The tuple format is <code>(field_to_target, method_name, *optional_arguments)</code>. Invalid templates, avatar URLs, transforms or formatted headers fail before a request is attempted. <code>WEBHOOK_TEMPLATE</code>, <code>WEBHOOK_USERNAME</code> and <code>WEBHOOK_AVATAR_URL</code> apply only to the Discord request format and are ignored when <code>WEBHOOK_PROVIDER</code> is <code>"ntfy"</code>. ntfy continues to use its native publish API while transformations and header placeholders use the same shared title and description values.</p>
+<p><a id="storing-secrets"></a></p>
+<h2 id="storing-secrets">Storing Secrets<a class="headerlink" href="#storing-secrets" title="Permanent link">&para;</a></h2>
+<p>Keep <code>RIOT_API_KEY</code>, <code>SMTP_PASSWORD</code>, <code>WEBHOOK_URL</code> and <code>NTFY_ACCESS_TOKEN</code> in an environment variable or a dotenv file rather than in the configuration file.</p>
+<p><a href="../setup-and-first-run/#run-the-setup-wizard"><code>--setup</code></a> writes every secret it collects to the dotenv file, and never to the configuration file. To store one on its own afterwards, the tool can write the dotenv file for you. Each command reads the value hidden, checks it against the real service and only then saves it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>lol_monitor<span class="w"> </span>--set-riot-api-key
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>lol_monitor<span class="w"> </span>--set-smtp-password
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>lol_monitor<span class="w"> </span>--set-webhook-url
+</code></pre></div>
+<p><code>--set-riot-api-key</code> checks the key with Riot. <code>--set-smtp-password</code> checks mail sign-in without sending a message. <code>--set-webhook-url</code> checks the HTTPS URL. Failed checks leave the saved value unchanged. Replacements require confirmation and the dotenv file has owner-only permissions. Use <code>--env-file PATH</code> to choose another file. An exported <code>SMTP_PASSWORD</code> overrides the saved value at startup.</p>
+<p>Set environment variables with <code>export</code> on <strong>Linux, Unix, macOS and WSL</strong>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RIOT_API_KEY</span><span class="o">=</span><span class="s2">"your_riot_api_key"</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SMTP_PASSWORD</span><span class="o">=</span><span class="s2">"your_smtp_password"</span>
+</code></pre></div>
+<p>On <strong>Windows Command Prompt</strong> use <code>set</code> instead of <code>export</code>, and on <strong>Windows PowerShell</strong> use <code>$env</code>.</p>
+<p>Storing them in a dotenv file is usually easier:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="na">RIOT_API_KEY</span><span class="o">=</span><span class="s">"your_riot_api_key"</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="na">SMTP_PASSWORD</span><span class="o">=</span><span class="s">"your_smtp_password"</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="na">WEBHOOK_URL</span><span class="o">=</span><span class="s">"https://ntfy.sh/your-private-topic"</span>
+</code></pre></div>
+<p>By default the tool searches for a file named <code>.env</code> in the current directory and then upward from it.</p>
+<p>Select a specific file with the <code>DOTENV_FILE</code> setting or the <code>--env-file</code> flag:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>lol_monitor<span class="w"> </span>&lt;riot_id&gt;<span class="w"> </span>&lt;region&gt;<span class="w"> </span>--env-file<span class="w"> </span>/path/.env-lol_monitor
+</code></pre></div>
+<p>Disable the search entirely with <code>DOTENV_FILE = "none"</code> or <code>--env-file none</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>lol_monitor<span class="w"> </span>&lt;riot_id&gt;<span class="w"> </span>&lt;region&gt;<span class="w"> </span>--env-file<span class="w"> </span>none
+</code></pre></div>
+<p>As a fallback both values can also live in the configuration file or the source.</p>
+<p><a id="terminal-colours"></a></p>
+<h2 id="terminal-colours">Terminal Colours<a class="headerlink" href="#terminal-colours" title="Permanent link">&para;</a></h2>
+<p>Colour is on by default and marks what a value is rather than decorating the line: player names, identifiers, champions, ranks, dates, links and the <code>[PASS]</code>/<code>[WARN]</code>/<code>[FAIL]</code>/<code>[SKIP]</code> markers each get their own colour. In a match roster the monitored player's own entry is bold, through the <code>monitored_username</code> part, so their line stands out among the nine others. The log file is never coloured, so a log attached to a bug report stays plain text. <code>COLORED_OUTPUT</code> and <code>COLOR_THEME</code> apply to monitoring output and to the <a href="../setup-and-first-run/#run-the-setup-wizard"><code>--setup</code></a>, <code>--doctor</code> and <code>--help</code> screens alike.</p>
+<p>The <code>--help</code> screen is coloured too. Group headings, option names, the values those options take, the example commands and the comments above them each get their own colour, so the screen can be scanned instead of read.</p>
+<p>Colour switches itself off when the output is not a terminal you are watching. That covers redirected or piped output, a <code>NO_COLOR</code> environment variable of any value, a <code>TERM</code> of <code>dumb</code> or empty and a <code>--no-color</code> run. The startup summary reports the resolved state next to the setting, so <code>False (setting: True)</code> means colour was configured but the terminal did not qualify.</p>
+<p>To change a colour, uncomment the <code>COLOR_THEME</code> block in your configuration file and edit the parts you want. Every part you leave out keeps its built-in colour:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">COLOR_THEME</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>    <span class="s2">"username"</span><span class="p">:</span> <span class="s2">"bright_cyan underline"</span><span class="p">,</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>    <span class="s2">"error"</span><span class="p">:</span> <span class="s2">"red"</span><span class="p">,</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="p">}</span>
+</code></pre></div>
+<p>A style is a space-separated list of one colour and any attributes. Colours are <code>black</code>, <code>red</code>, <code>green</code>, <code>yellow</code>, <code>blue</code>, <code>magenta</code>, <code>cyan</code>, <code>white</code> and their <code>bright_</code> forms. Attributes are <code>bold</code>, <code>dim</code>, <code>underline</code> and <code>blink</code>. An empty string leaves that part uncoloured, and an unknown name is ignored.</p>
+<p>The block ships commented out so the tool's own colours apply and later improvements reach existing configuration files. Overrides you added are written back as a real block when setup rebuilds the file, so they are not lost. Once you uncomment it, the parts inside it are pinned to whatever you saved, so delete the block again to go back to the current defaults.</p>
+<p><a id="tls-verification"></a></p>
+<h2 id="tls-verification">TLS Verification<a class="headerlink" href="#tls-verification" title="Permanent link">&para;</a></h2>
+<p>Every outbound connection verifies the server's TLS certificate: the Riot API, the Data Dragon champion data, the startup connectivity check and email delivery. Leave it that way unless you have a reason not to.</p>
+<p><code>VERIFY_SSL = False</code> turns verification off for all of them at once. Do this only on a network that inspects TLS with its own certificate authority, such as a corporate proxy, and only when you cannot install that authority's certificate instead. With verification off, an intercepted connection looks the same as the real service, so your Riot API key can be read in transit.</p>
+<p>The startup summary reports the state as <code>TLS verification: On</code> or <code>Off, server certificates are not checked</code>. The row is only shown without <code>--verbose</code> while verification is off, since a run that stopped checking certificates should say so unasked.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Licensed under GPLv3
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "navigation.sections", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
