@@ -38,7 +38,6 @@ import os
 import re
 import sys
 from collections import Counter
-from datetime import datetime
 from typing import Any, Dict, List, Tuple, Optional
 
 import numpy as np
@@ -58,7 +57,6 @@ def load_matches(path: str) -> pd.DataFrame:
         s = s.lower()
         return s
 
-    original_cols = list(df.columns)
     ncols = [norm(c) for c in df.columns]
     df.columns = ncols
 
@@ -380,7 +378,7 @@ def duration_similarity_by_mode(df1: pd.DataFrame, df2: pd.DataFrame) -> float:
     if total_weight == 0:
         return 0.0
 
-    weighted_sim = sum(sim * weight for sim, weight in zip(mode_similarities, mode_weights)) / total_weight
+    weighted_sim = sum(sim * weight for sim, weight in zip(mode_similarities, mode_weights, strict=False)) / total_weight
     return weighted_sim
 
 
@@ -389,7 +387,7 @@ def guess_player_name(df: pd.DataFrame) -> Tuple[str, float]:
     freq = Counter()
     blues = df["blue_list"] if "blue_list" in df.columns else []
     reds = df["red_list"] if "red_list" in df.columns else []
-    for blue, red in zip(blues, reds):
+    for blue, red in zip(blues, reds, strict=False):
         for n in set(blue + red):
             freq[n] += 1
     if not freq:
@@ -462,18 +460,7 @@ def compare_profiles(df1: pd.DataFrame, df2: pd.DataFrame) -> Dict[str, Any]:
         "level": 0.04,
         "game_mode": 0.05,
     }
-    overall = (
-        weights["champ"] * champ_sim
-        + weights["kda"] * kda_sim
-        + weights["winrate"] * winrate_sim
-        + weights["duration"] * dur_sim
-        + weights["time_of_day"] * tod_sim
-        + weights["teammates"] * team_sim
-        + weights["role"] * role_sim
-        + weights["lane"] * lane_sim
-        + weights["level"] * level_sim
-        + weights["game_mode"] * mode_sim
-    )
+    overall = (weights["champ"] * champ_sim + weights["kda"] * kda_sim + weights["winrate"] * winrate_sim + weights["duration"] * dur_sim + weights["time_of_day"] * tod_sim + weights["teammates"] * team_sim + weights["role"] * role_sim + weights["lane"] * lane_sim + weights["level"] * level_sim + weights["game_mode"] * mode_sim)
     overall = min(1.0, max(0.0, overall))
 
     return {
@@ -514,6 +501,7 @@ def format_similarity(score: float, width: int = 20) -> str:
     filled = int(score * width)
     bar = "█" * filled + "░" * (width - filled)
     return f"{pct:5.1f}% [{bar}]"
+
 
 # Safely extracts and sanitizes values from a pandas row
 def safe_get(row, col, default="N/A"):
@@ -596,7 +584,7 @@ def find_temporal_overlaps(df1: pd.DataFrame, df2: pd.DataFrame, verbose: bool =
     i2_abs = idx2[i2_rel]
 
     # Build result list
-    for a, b in zip(i1_abs, i2_abs):
+    for a, b in zip(i1_abs, i2_abs, strict=False):
         start1 = df1_start.iloc[a]
         stop1 = df1_stop.iloc[a]
         start2 = df2_start.iloc[b]
@@ -689,7 +677,6 @@ def print_readable_report(result: Dict[str, Any], file1: str, file2: str, df1: O
     print("\nSocial & Timing Patterns:")
     print(f"  Teammate Overlap:       {format_similarity(result['teammate_overlap_similarity'])}")
     print(f"  Time of Day Patterns:   {format_similarity(result['time_of_day_similarity'])}")
-
 
     # Temporal overlap check (only if overlaps were actually computed or skipped for a reason)
     if df1 is not None and df2 is not None:
@@ -843,11 +830,7 @@ def main() -> int:
         overall_score = result.get("overall_score_0_100", 0)
 
         # Check if same player identified with high confidence and very high similarity
-        same_player_high_confidence = (
-            p1 and p2 and p1 == p2 and
-            min(conf1, conf2) >= 0.3 and
-            overall_score >= 80
-        )
+        same_player_high_confidence = (p1 and p2 and p1 == p2 and min(conf1, conf2) >= 0.3 and overall_score >= 80)
 
         if same_player_high_confidence:
             print("Skipping temporal overlap analysis:")

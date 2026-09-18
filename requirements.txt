@@ -2,3 +2,6 @@ pulsefire
 requests
 python-dateutil
 python-dotenv
+
+# Optional for display-width-aware terminal truncation (TRUNCATE_CHARS, --truncate)
+# wcwidth
