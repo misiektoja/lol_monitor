@@ -55,6 +55,8 @@ def test_a_rejected_api_key_is_reported(lm_module, riot_api, capsys):
 
     output = capsys.readouterr().out
     assert "Riot rejected the configured API key" in output
+    # A substring check on printed output, not a URL allowlist
+    # codeql[py/incomplete-url-substring-sanitization]
     assert "developer.riotgames.com" in output
 
 
