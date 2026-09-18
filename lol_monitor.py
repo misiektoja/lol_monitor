@@ -1969,6 +1969,8 @@ def _colorize_quoted_name(match, style_name):
 # Applies colour rules to a single output line
 def _colorize_line(line):
     lowered = line.lower()
+    # Read before any highlight is inserted, since the label column has to be measured on the plain text
+    is_settings_row = is_startup_summary_row(line)
 
     # The notification summary row carries its own On/Off state word
     notification_match = _NOTIFICATION_SUMMARY_STATE_RE.match(line)
@@ -2059,6 +2061,10 @@ def _colorize_line(line):
     # Highlight the two events this tool exists to report
     line = _sub_outside_color(_IN_GAME_RE, lambda mo: colorize("status_active", mo.group(0)), line)
     line = _sub_outside_color(_STOPPED_PLAYING_RE, lambda mo: colorize("status_inactive", mo.group(0)), line)
+
+    # A summary row reports a setting, so a value that happens to read like a log keyword must not paint the whole row
+    if is_settings_row:
+        return line
 
     # Block highlighting, applied last so the colours above survive the nesting logic
     is_debug_line = bool(_DEBUG_LINE_RE.match(lowered))
@@ -7479,6 +7485,18 @@ def startup_webhook_provider():
 
 # Rows that detail the channel named right above them, indented so the block reads as one setting with its details
 STARTUP_SUMMARY_NESTED_LABELS = ("Email transport", "Email recipient", "Email images", "Webhook provider", "ntfy images")
+
+# The column every summary value starts in, which also lets the colouriser recognize a summary row
+STARTUP_SUMMARY_VALUE_COLUMN = STARTUP_SUMMARY_LABEL_WIDTH + 2
+
+# Matches a summary row by that padded label column, since no log line puts a value there
+_STARTUP_SUMMARY_ROW_RE = re.compile(r"^\*(?: {1,3})[^:\s][^:]*: {2,}(?=\S)")
+
+
+# Returns whether a line is a startup summary row rather than ordinary output
+def is_startup_summary_row(line):
+    match = _STARTUP_SUMMARY_ROW_RE.match(line)
+    return bool(match) and match.end() == STARTUP_SUMMARY_VALUE_COLUMN
 
 
 # Formats one summary row with an aligned value column, wrapping only the rollup that grows long
