@@ -90,6 +90,25 @@ def test_every_internal_documentation_link_resolves():
     assert not broken, f"broken documentation links: {broken}"
 
 
+# Verifies every guide link the tool prints resolves to a documentation page, and to an anchor that page defines
+def test_every_guide_link_resolves_to_a_documentation_anchor():
+    guides = {name: value for name, value in vars(monitor).items() if name.endswith("_GUIDE_URL")}
+
+    assert guides, "the module declares no guide links"
+    broken = []
+    for name, url in sorted(guides.items()):
+        assert url.startswith(f"{SITE_URL}/"), f"{name} does not point at the documentation site: {url}"
+        slug, _, anchor = url[len(SITE_URL):].strip("/").partition("#")
+        page = DOCS_DIR / f"{slug.strip('/')}.md" if slug.strip("/") else DOCS_DIR / "index.md"
+        if not page.exists():
+            broken.append(f"{name} -> {url} (no page {page.name})")
+            continue
+        if anchor and anchor not in page_anchors(page):
+            broken.append(f"{name} -> {url} (no anchor in {page.name})")
+
+    assert not broken, f"guide links pointing at missing documentation: {broken}"
+
+
 # Verifies the README landing page links only at pages the site really publishes
 def test_the_readme_links_resolve():
     text = README.read_text(encoding="utf-8")
