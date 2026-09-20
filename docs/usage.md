@@ -112,6 +112,8 @@ Mail on errors is on by default. Switch it off with `ERROR_NOTIFICATION = False`
 lol_monitor <riot_id> <region> -e
 ```
 
+A failure that clears on the next check sends nothing. Once one has lasted past the alert delay, a single mail goes out with the subject `LoL Monitor error: <what went wrong> (user: <riot_id>)`. It lists the fix, the guide link, how many checks failed in a row, since when and when the next retry is due. A matching `LoL Monitor recovered:` mail follows when the failure clears, naming how long it lasted. `-e` switches both off.
+
 Fill in the [SMTP settings](configuration.md#smtp-settings) first, otherwise nothing is sent. `--doctor` signs in to the mail server without sending anything and reports which alerts would be delivered, described in [Doctor Preflight](troubleshooting.md#doctor-preflight).
 
 Messages go out in both plain text and HTML, so match details stay readable in any mail client. In the HTML body the monitored player's own roster line is bold, and `EMAIL_IMAGES = True` adds the champion icon at the end of the message, described under [Champion Icon in Email](configuration.md#champion-icon-in-email).
@@ -130,6 +132,8 @@ lol_monitor <riot_id> <region> --webhook --webhook-status
 ```
 
 `--webhook-status` sends an alert when the player's status changes and `--webhook-errors` sends one on monitoring errors. Either flag switches the channel on by itself, so the shortest form is one flag. `--no-webhook` switches the whole channel off for one run and `--no-webhook-error-notify` silences only the error alert.
+
+Error alerts carry the same wording as the mail, without the timestamp line. A lasting failure sends one alert and the matching recovery alert follows when it clears, so `--no-webhook-error-notify` switches off both.
 
 Save the destination once with `--set-webhook-url` rather than passing it on every run, since a URL on the command line stays in your shell history. `--webhook-url` is there for a one-off run.
 

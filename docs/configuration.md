@@ -96,7 +96,7 @@ Webhooks send the same alerts as email to a Discord channel or an ntfy topic. Th
 | `WEBHOOK_USERNAME` | Discord display name, empty to use the webhook default |
 | `WEBHOOK_AVATAR_URL` | Discord avatar URL, empty to use the webhook default |
 | `WEBHOOK_STATUS_NOTIFICATION` | Send an alert when the player's status changes |
-| `WEBHOOK_ERROR_NOTIFICATION` | Send an alert on monitoring errors, on by default |
+| `WEBHOOK_ERROR_NOTIFICATION` | Send an alert on a lasting monitoring failure and when it clears, on by default |
 | `WEBHOOK_HEADERS` | Extra request headers, for example ntfy options |
 | `NTFY_ACCESS_TOKEN` | Bearer token for a private ntfy topic |
 | `NTFY_IMAGES` | Attach the champion icon to ntfy alerts |

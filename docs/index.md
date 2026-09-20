@@ -53,7 +53,7 @@ For the manual single-file method, optional dependencies and upgrade commands, s
 
 ### 🔔 Notifications
 
-* **Email alerts**: Receive match starts, finishes, summaries and errors.
+* **Email alerts**: Receive match starts, finishes, summaries, monitoring failures and their recovery.
 * **Discord and ntfy**: Choose webhook events independently from email.
 * **Champion artwork**: Include an optional icon in email, as a Discord thumbnail or as an ntfy attachment.
 
