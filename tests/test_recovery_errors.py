@@ -137,6 +137,47 @@ def test_a_connectivity_failure_names_what_to_check(lm_module, error, code):
     assert advice.retryable is True
 
 
+# Verifies the three failures one network problem produces read the same way, since the reader cannot act on
+# the difference between them and each has to name what to check before it names the page
+@pytest.mark.parametrize("error,code,summary,tail", [
+    (RuntimeError("the read operation timed out"), "network.timeout", "The Riot API did not answer in time", "check network access, DNS, firewall and proxy settings"),
+    (RuntimeError("connection refused"), "network.unavailable", "The Riot API could not be reached", "check network access, DNS, firewall and proxy settings"),
+    (RuntimeError("500 Internal Server Error"), "riot.unavailable", "The Riot API is temporarily unavailable", "wait for the Riot API to recover"),
+])
+def test_a_transient_failure_names_the_wait_before_the_page(lm_module, error, code, summary, tail):
+    advice = lm_module.classify_recovery_error(error)
+
+    assert (advice.code, advice.summary) == (code, summary)
+    assert advice.fix == f"Usually nothing to do, the tool retries on its own. If it continues, {tail}\nGuide: {lm_module.CONNECTION_GUIDE_URL}"
+
+
+# Verifies a failure the tool retries on its own sends nobody to Doctor or to debug output, since a blip the
+# next check absorbs gives them nothing to look at
+@pytest.mark.parametrize("error", [RuntimeError("the read operation timed out"), RuntimeError("connection refused"), RuntimeError("503 Service Unavailable")])
+def test_a_transient_failure_does_not_prescribe_diagnostics(lm_module, error):
+    advice = lm_module.classify_recovery_error(error)
+
+    assert advice.retryable is True
+    assert "--doctor" not in advice.fix
+    assert "--debug" not in advice.fix
+    assert "#verbose-and-debug-output" not in advice.fix
+
+
+# Verifies the local descriptor limit links to the section that covers it, since no remote service is involved
+def test_the_descriptor_limit_links_to_its_own_section(lm_module):
+    advice = lm_module.classify_recovery_error(OSError(24, "Too many open files"))
+
+    assert advice.code == "resource.exhausted"
+    assert advice.fix.endswith(f"\nGuide: {lm_module.DESCRIPTOR_LIMIT_GUIDE_URL}")
+
+
+# Verifies no guide link opens the debugging page, which covers token utilities rather than any reported failure
+def test_no_guide_link_points_at_the_debugging_page(lm_module):
+    for name, url in vars(lm_module).items():
+        if name.endswith("_GUIDE_URL"):
+            assert not url.startswith(f"{lm_module.DOCS_BASE_URL}/debugging/"), name
+
+
 # Verifies an HTTP status on the error is read directly, so a client that carries one is classified by it
 def test_the_http_status_is_read_from_the_error(lm_module):
     class Rejected(Exception):
