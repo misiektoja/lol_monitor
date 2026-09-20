@@ -61,7 +61,7 @@ RECEIVER_EMAIL = "your_receiver_email"
 # Can also be enabled via the -s flag
 STATUS_NOTIFICATION = False
 
-# Whether to send an email on errors
+# Whether to send an email on a lasting monitoring failure and when it clears
 # Can also be disabled via the -e flag
 ERROR_NOTIFICATION = True
 
@@ -103,7 +103,7 @@ WEBHOOK_AVATAR_URL = ""
 # Can also be enabled via the --webhook-status flag
 WEBHOOK_STATUS_NOTIFICATION = False
 
-# Whether to send a webhook notification on monitoring errors
+# Whether to send a webhook notification on a lasting monitoring failure and when it clears
 # Can also be enabled via --webhook-errors or disabled via --no-webhook-error-notify
 WEBHOOK_ERROR_NOTIFICATION = True
 
@@ -467,6 +467,8 @@ TLS_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#tls-verification"
 INSTALLATION_GUIDE_URL = f"{DOCS_BASE_URL}/installation/"
 DOCTOR_GUIDE_URL = f"{DOCS_BASE_URL}/troubleshooting/#doctor-preflight"
 DIAGNOSTICS_GUIDE_URL = f"{DOCS_BASE_URL}/troubleshooting/#verbose-and-debug-output"
+CONNECTION_GUIDE_URL = f"{DOCS_BASE_URL}/troubleshooting/#connection-problems"
+DESCRIPTOR_LIMIT_GUIDE_URL = f"{DOCS_BASE_URL}/troubleshooting/#too-many-open-files"
 SECRETS_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#storing-secrets"
 OUTPUT_GUIDE_URL = f"{DOCS_BASE_URL}/configuration/#output-and-files"
 USAGE_GUIDE_URL = f"{DOCS_BASE_URL}/usage/"
@@ -625,9 +627,10 @@ from urllib.parse import urlsplit
 from typing import Optional, Any, Dict, List, Mapping, Tuple, TypedDict
 
 
-# Tracks the error alert per channel: what was delivered, and how long a channel that failed waits before the next attempt
+# Tracks the error alert per channel: what was delivered, how long a channel that failed waits before the next
+# attempt and which failure the alert described, so the recovery alert that closes it can name that failure
 class ErrorAlertState:
-    # Starts with nothing delivered and no channel on hold
+    # Starts with nothing delivered, no channel on hold and no failure remembered
     def __init__(self) -> None:
         self.email_sent = False
         self.webhook_sent = False
@@ -635,10 +638,17 @@ class ErrorAlertState:
         self.webhook_failures = 0
         self.email_retry_at = 0
         self.webhook_retry_at = 0
+        self.summary = ""
+        self.since = 0
 
-    # Forgets the delivered alert and any hold, so the next failure earns each channel a new one
+    # Forgets the delivered alert, any hold and the remembered failure, so the next failure earns each channel a new one
     def reset(self) -> None:
         self.__init__()
+
+    # Remembers the failure being alerted and when the outage began, so the recovery alert can name what cleared
+    def remember(self, advice, since: int) -> None:
+        self.summary = advice.summary
+        self.since = since
 
     # Tells whether a channel still owes the alert and its wait after a failed attempt, if any, has passed
     def pending(self, channel: str, enabled, now: int) -> bool:
@@ -1195,7 +1205,7 @@ def classify_recovery_error(error=None, context="runtime", detail=""):
 
     # Checked ahead of every context, since a local descriptor limit is not a failure of whatever call hit it
     if error is not None and is_too_many_open_files(error):
-        return advice("resource.exhausted", "This process ran out of file descriptors, which is a local limit and not a Riot problem", "Raise the file descriptor limit, for example with 'ulimit -n 4096', or set LimitNOFILE= if you run under systemd, then restart the tool", False, DIAGNOSTICS_GUIDE_URL)
+        return advice("resource.exhausted", "This process ran out of file descriptors, which is a local limit and not a Riot problem", "Raise the file descriptor limit, for example with 'ulimit -n 4096', or set LimitNOFILE= if you run under systemd, then restart the tool", False, DESCRIPTOR_LIMIT_GUIDE_URL)
 
     if context == "config":
         if "does not exist" in message:
@@ -1241,7 +1251,7 @@ def classify_recovery_error(error=None, context="runtime", detail=""):
         if status == 429 or "rate limit" in message:
             return advice("riot.rate_limited", "Riot rate limited the player lookup", "Wait for the reported period then try again", True, INTERVALS_GUIDE_URL)
         if "timed out" in message or "timeout" in message:
-            return advice("network.timeout", "The Riot API request timed out", "Check connectivity then try again", True, DIAGNOSTICS_GUIDE_URL)
+            return advice("network.timeout", "The Riot API request timed out", "Check connectivity then try again", True, CONNECTION_GUIDE_URL)
         if status in (401, 403) or "unauthorized" in message or "forbidden" in message:
             return advice("auth.api_key_invalid", "Riot rejected the configured API key", f"A development key expires 24 hours after it is issued, so copy a fresh one from {RIOT_API_KEY_REGISTRATION_URL}", False, RIOT_API_KEY_GUIDE_URL)
         if "region_to_continent" in message:
@@ -1290,11 +1300,11 @@ def classify_recovery_error(error=None, context="runtime", detail=""):
     if status == 404 or "not found" in message:
         return advice("target.not_found", "Riot has no account for the monitored Riot ID", "Check the game name and the tag line, since a renamed account cannot be monitored", False, USAGE_GUIDE_URL)
     if (status is not None and status >= 500) or any(term in message for term in ("internal server error", "service unavailable", "bad gateway")):
-        return advice("riot.unavailable", "The Riot API is temporarily unavailable", "This is usually a Riot outage. The tool will keep retrying", True, DIAGNOSTICS_GUIDE_URL)
+        return advice("riot.unavailable", "The Riot API is temporarily unavailable", "Usually nothing to do, the tool retries on its own. If it continues, wait for the Riot API to recover", True, CONNECTION_GUIDE_URL)
     if "timed out" in message or "timeout" in message:
-        return advice("network.timeout", "The Riot API request timed out", "Check connectivity. The tool will keep retrying", True, DIAGNOSTICS_GUIDE_URL)
+        return advice("network.timeout", "The Riot API did not answer in time", "Usually nothing to do, the tool retries on its own. If it continues, check network access, DNS, firewall and proxy settings", True, CONNECTION_GUIDE_URL)
     if any(term in message for term in ("connection", "name resolution", "network is unreachable", "no connectivity")):
-        return advice("network.unavailable", "Riot could not be reached", "Check connectivity, DNS and any proxy. The tool will keep retrying", True, DIAGNOSTICS_GUIDE_URL)
+        return advice("network.unavailable", "The Riot API could not be reached", "Usually nothing to do, the tool retries on its own. If it continues, check network access, DNS, firewall and proxy settings", True, CONNECTION_GUIDE_URL)
     return advice("unknown", safe_detail or "The request could not be completed", unknown_failure_fix(), True, DIAGNOSTICS_GUIDE_URL)
 
 
@@ -1323,6 +1333,67 @@ def print_recovery_advice(advice, debug=None, retry_note="", with_fix=True, labe
 # Classifies one failure, prints it through the shared recovery block and returns its stable advice
 def print_recovery_error(error=None, context="runtime", debug=None, detail="", retry_note="", with_fix=True, label="Error"):
     return print_recovery_advice(classify_recovery_error(error, context, detail), debug, retry_note, with_fix, label)
+
+
+# The product name every failure and recovery subject opens with
+ALERT_TOOL_NAME = "LoL Monitor"
+
+
+# Builds the subject every failure alert shares, so an inbox fed by several monitors sorts them by tool
+def recovery_alert_subject(advice, target):
+    return f"{ALERT_TOOL_NAME} error: {advice.summary} (user: {target})"
+
+
+# Lists the failure alert in groups of lines, so the plain text and the HTML body carry the same fields in the same order
+def recovery_alert_groups(advice, retry_seconds, failed_checks=0, failing_since=0):
+    retry_group = []
+    # One failed check has no run to count and its start is the check itself
+    if failed_checks > 1:
+        retry_group.append(f"Failed checks in a row: {failed_checks}")
+        retry_group.append(f"Failing since: {get_date_from_ts(failing_since)}")
+    retry_group.append(f"Next retry in: {display_time(retry_seconds)}")
+    groups = [[advice.summary], [f"To fix: {advice.fix}"], retry_group]
+    # A detail that only repeats the summary spends a line saying nothing, the same rule the screen applies
+    if DEBUG_MODE and advice.detail and advice.detail != advice.summary:
+        groups.append([f"Technical detail: {sanitize_error_text(advice.detail)}"])
+    return groups
+
+
+# Builds the plain text failure alert body, without the timestamp only the email closes with
+def recovery_alert_body(advice, retry_seconds, failed_checks=0, failing_since=0):
+    return "\n\n".join("\n".join(group) for group in recovery_alert_groups(advice, retry_seconds, failed_checks, failing_since))
+
+
+# Builds the HTML failure alert body with the summary in bold, without the timestamp only the email closes with
+def recovery_alert_body_html(advice, retry_seconds, failed_checks=0, failing_since=0):
+    groups = recovery_alert_groups(advice, retry_seconds, failed_checks, failing_since)
+    rendered = [f"<b>{html_text(groups[0][0])}</b>"] + ["<br>".join(html_text(line) for line in group) for group in groups[1:]]
+    return "<br><br>".join(rendered)
+
+
+# Builds the subject of the alert that closes an outage, worded so it sorts next to the failure alert it answers
+def outage_recovery_alert_subject(target, lasted):
+    return f"{ALERT_TOOL_NAME} recovered: monitoring {target} resumed after {display_time(lasted)}"
+
+
+# Builds the plain text recovery alert body, naming the failure it closes, without the timestamp only the email closes with
+def outage_recovery_alert_body(target, lasted, summary):
+    return f"Monitoring recovered for {target} after {display_time(lasted)}.\n\nThe failure was: {summary}"
+
+
+# Builds the HTML recovery alert body, without the timestamp only the email closes with
+def outage_recovery_alert_body_html(target, lasted, summary):
+    return f"Monitoring recovered for {html_text(target)} after {html_text(display_time(lasted))}.<br><br>The failure was: {html_text(summary)}"
+
+
+# Closes a plain text alert body with the timestamp the email carries and the webhook leaves out
+def email_body_with_timestamp(body):
+    return f"{body}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+
+
+# Wraps an HTML alert body in the email document and closes it with the timestamp the webhook leaves out
+def email_html_with_timestamp(body_html):
+    return f"<html><head></head><body>{body_html}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
 
 
 # Decides how a lasting failure is reported: in full when it is new, then on the liveness cadence while it lasts
@@ -1403,9 +1474,11 @@ def print_outage_change(target, advice):
 
 
 # Reports that a failure cleared, since a throttled failure no longer stops printing when it is over
-def print_outage_recovery(target, lasted):
+def print_outage_recovery(target, lasted, close=True):
     print(f"* Monitoring recovered for {target} after {display_time(max(1, lasted))}")
-    print_cur_ts("Timestamp:\t\t\t")
+    # A caller with a recovery alert to deliver closes the report itself, so the delivery lines stay inside it
+    if close:
+        print_cur_ts("Timestamp:\t\t\t")
 
 
 # Returns the wait Riot asked for on a rate limit, falling back to the polling interval when it named none
@@ -3481,7 +3554,7 @@ def send_webhook(title, description, notification_type="status", force=False, sl
 
 
 # Sends one alert through the enabled email and webhook channels
-def send_notification_channels(notification_type, subject, body, body_html="", email_enabled=False, webhook_enabled=None, image_url="", ntfy_priority=0, ntfy_tags=""):
+def send_notification_channels(notification_type, subject, body, body_html="", email_enabled=False, webhook_enabled=None, image_url="", ntfy_priority=0, ntfy_tags="", webhook_body="", webhook_body_html=""):
     email_attempted = bool(email_enabled)
     webhook_attempted = webhook_event_enabled(notification_type) if webhook_enabled is None else bool(webhook_enabled)
     email_delivered = False
@@ -3496,7 +3569,8 @@ def send_notification_channels(notification_type, subject, body, body_html="", e
         debug_print("Email channel", event=notification_type, outcome="OK" if email_delivered else "failed")
     if webhook_attempted:
         print(f"Sending webhook notification via {webhook_provider_display_name()}")
-        webhook_delivered = send_webhook(subject, body, notification_type, force=True, image_url=image_url, ntfy_priority=ntfy_priority, ntfy_tags=ntfy_tags, discord_description=html_body_to_discord_markdown(body_html)) == 0
+        # An alert may carry a webhook body of its own, which is how the failure alerts leave the email timestamp out
+        webhook_delivered = send_webhook(subject, webhook_body or body, notification_type, force=True, image_url=image_url, ntfy_priority=ntfy_priority, ntfy_tags=ntfy_tags, discord_description=html_body_to_discord_markdown(webhook_body_html or body_html)) == 0
         debug_print("Webhook channel", event=notification_type, outcome="OK" if webhook_delivered else "failed")
     # Delivery, not the attempt, so a channel that failed is retried while one that succeeded is not resent
     return email_delivered, webhook_delivered
@@ -5257,6 +5331,20 @@ async def save_custom_match_to_csv(snapshot: dict, riotid_name: str, start_ts: i
     write_csv_entry(csv_file_name=csv_file_name, start_date_ts=start_dt_str, stop_date_ts=stop_dt_str, duration_ts=duration_str, game_mode=game_mode, victory=victory, kills=kills, deaths=deaths, assists=assists, champion=user_champion, level=level, role=role, lane=lane, team1=team1_str, team2=team2_str)
 
 
+# Sends the recovery alert on each channel whose failure alert was delivered, so nobody hears of a recovery from a failure they were never told about
+def send_outage_recovery_alert(target, lasted, error_alert):
+    email_due = error_alert.email_sent and bool(ERROR_NOTIFICATION)
+    webhook_due = error_alert.webhook_sent and webhook_event_enabled("error")
+    if not (email_due or webhook_due):
+        return False
+    lasted = max(1, lasted)
+    subject = outage_recovery_alert_subject(target, lasted)
+    body = outage_recovery_alert_body(target, lasted, error_alert.summary)
+    body_html = outage_recovery_alert_body_html(target, lasted, error_alert.summary)
+    send_notification_channels("error", subject, email_body_with_timestamp(body), email_html_with_timestamp(body_html), email_enabled=email_due, webhook_enabled=webhook_due, webhook_body=body, webhook_body_html=body_html)
+    return True
+
+
 # Main function that monitors gaming activity of the specified LoL user
 async def lol_monitor_user(riotid, region, csv_file_name):
 
@@ -5517,12 +5605,15 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                     current_match_start_ts = 0
 
             ingame_old = ingame
-            error_alert.reset()
             transient_retry_used = False
 
             outage_lasted = outage.recovered()
             if outage_lasted is not None:
-                print_outage_recovery(riotid, outage_lasted)
+                # The recovery line opens the report and the delivery lines land inside it, so the trailer closes last
+                print_outage_recovery(riotid, outage_lasted, close=False)
+                send_outage_recovery_alert(riotid_name, outage_lasted, error_alert)
+                print_cur_ts("Timestamp:\t\t\t")
+            error_alert.reset()
 
             debug_print("Completed check", check=f"#{check_count}", user=riotid, outcome="OK", in_game=ingame)
 
@@ -5569,25 +5660,17 @@ async def lol_monitor_user(riotid, region, csv_file_name):
                 time.sleep(TRANSIENT_RETRY_SECONDS)
                 continue
 
-            if advice.code == "auth.api_key_invalid":
-                m_subject = f"LoL API key error! (user: {riotid_name})"
-            else:
-                m_subject = f"LoL monitoring error (user: {riotid_name})"
-            m_body = f"{advice.summary}{nl_ch}{nl_ch}To fix: {advice.fix}{nl_ch}{nl_ch}LoL Monitor will retry in {display_time(sleep_interval)}.{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-            m_body_html = (
-                f"<html><head></head><body>"
-                f"{html_text(advice.summary)}<br><br>To fix: {html_text(advice.fix)}<br><br>"
-                f"LoL Monitor will retry in {html.escape(display_time(sleep_interval))}."
-                f"{get_cur_ts('<br><br>Timestamp: ')}"
-                f"</body></html>"
-            )
+            error_alert.remember(advice, outage.since)
             # A failure the tool can retry away is alerted once the outage has lasted ERROR_ALERT_AFTER_SECONDS, one it cannot at once
             alert_due = not advice.retryable or int(time.time()) - outage.since >= ERROR_ALERT_AFTER_SECONDS
             now = int(time.time())
             error_email_pending = alert_due and error_alert.pending("email", ERROR_NOTIFICATION, now)
             error_webhook_pending = alert_due and error_alert.pending("webhook", webhook_event_enabled("error"), now)
             if error_email_pending or error_webhook_pending:
-                email_delivered, webhook_delivered = send_notification_channels("error", m_subject, m_body, m_body_html, email_enabled=error_email_pending, webhook_enabled=error_webhook_pending, ntfy_priority=5, ntfy_tags="warning")
+                m_subject = recovery_alert_subject(advice, riotid_name)
+                m_body = recovery_alert_body(advice, sleep_interval, outage.failures, outage.since)
+                m_body_html = recovery_alert_body_html(advice, sleep_interval, outage.failures, outage.since)
+                email_delivered, webhook_delivered = send_notification_channels("error", m_subject, email_body_with_timestamp(m_body), email_html_with_timestamp(m_body_html), email_enabled=error_email_pending, webhook_enabled=error_webhook_pending, ntfy_priority=5, ntfy_tags="warning", webhook_body=m_body, webhook_body_html=m_body_html)
                 error_alert.record("email", error_email_pending, email_delivered, now)
                 error_alert.record("webhook", error_webhook_pending, webhook_delivered, now)
                 # A delivery line can land on a check the outage reporter keeps quiet, and a line with nothing
@@ -7779,7 +7862,7 @@ def main():
         dest="notify_errors",
         action="store_false",
         default=None,
-        help="Disable email on errors (e.g. invalid API key)"
+        help="Disable email on errors and the recovery alert that follows"
     )
     notify.add_argument(
         "--send-test-email",
@@ -7838,7 +7921,7 @@ def main():
         dest="webhook_errors",
         action="store_false",
         default=None,
-        help="Disable webhook alerts when monitoring has a problem"
+        help="Disable webhook alerts when monitoring has a problem and the recovery alert that follows"
     )
     webhook_notify.add_argument(
         "--send-test-webhook",
