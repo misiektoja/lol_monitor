@@ -60,7 +60,7 @@ and again before anything is published to PyPI.
 | `test_diagnostics.py` | The `--verbose` and `--debug` printers, the trace grammar and what each mode is allowed to print |
 | `test_family_contract.py` | The surfaces shared with the sibling monitors: the startup banner, the screen clear and the wording every tool prints |
 | `test_documentation.py` | The documentation site: navigation, links into and out of it, page structure and claims about flags and tooling |
-| `test_email_html.py` | The HTML notification body and escaping of names taken from Riot |
+| `test_email_html.py` | HTML notification bodies: escaping, the Discord markdown form and the plain-text match |
 | `test_email_notifications.py` | SMTP validation, the delivered message and failure handling |
 | `test_help_screen.py` | The `--help` screen: option group names and order, the shared help sentences and the worked examples |
 | `test_install_method_commands.py` | Install-method detection and the printed commands built from it, including the files a run carries into them |

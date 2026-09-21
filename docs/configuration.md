@@ -68,6 +68,8 @@ lol_monitor "other_name#tag" euw1
 
 Email notifications need SMTP server details for the sending account. Add them to `lol_monitor.conf` or use the setup wizard. Setup checks the login without sending an email. To replace only the password, run `lol_monitor --set-smtp-password`. Password entry is hidden and preserves spaces.
 
+Every alert is sent as both HTML and plain text in one message. Mail clients that render HTML show the monitored player, the champion, the result and the values that changed in bold, with the player's own roster line marked. Clients that do not fall back to the plain text, which is unchanged.
+
 Send one test message to verify the settings:
 
 ```sh
