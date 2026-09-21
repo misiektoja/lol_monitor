@@ -1386,11 +1386,16 @@ def recovery_alert_body(advice, retry_seconds, failed_checks=0, failing_since=0)
     return "\n\n".join("\n".join(group) for group in recovery_alert_groups(advice, retry_seconds, failed_checks, failing_since))
 
 
+# Bolds the moment an outage started, the field a reader looks for first in a failure alert
+def html_bold_failing_since(content):
+    return re.sub(r"(Failing since: )([^<]+)", r"\1<b>\2</b>", content, count=1)
+
+
 # Builds the HTML failure alert body with the summary in bold, without the timestamp only the email closes with
 def recovery_alert_body_html(advice, retry_seconds, failed_checks=0, failing_since=0):
     groups = recovery_alert_groups(advice, retry_seconds, failed_checks, failing_since)
     rendered = [f"<b>{html_text(groups[0][0])}</b>"] + ["<br>".join(html_text(line) for line in group) for group in groups[1:]]
-    return "<br><br>".join(rendered)
+    return html_bold_failing_since("<br><br>".join(rendered))
 
 
 # Builds the subject of the alert that closes an outage, worded so it sorts next to the failure alert it answers
