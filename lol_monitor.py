@@ -61,7 +61,7 @@ RECEIVER_EMAIL = "your_receiver_email"
 # Can also be enabled via the -s flag
 STATUS_NOTIFICATION = False
 
-# Whether to send an email on a lasting monitoring failure and when it clears
+# Whether to send an email on errors and the recovery alert that follows once the failure clears
 # Can also be disabled via the -e flag
 ERROR_NOTIFICATION = True
 
@@ -103,7 +103,7 @@ WEBHOOK_AVATAR_URL = ""
 # Can also be enabled via the --webhook-status flag
 WEBHOOK_STATUS_NOTIFICATION = False
 
-# Whether to send a webhook notification on a lasting monitoring failure and when it clears
+# Whether to send a webhook notification on monitoring errors and the recovery alert that follows once the failure clears
 # Can also be enabled via --webhook-errors or disabled via --no-webhook-error-notify
 WEBHOOK_ERROR_NOTIFICATION = True
 
@@ -7914,7 +7914,7 @@ def main():
         dest="webhook_errors",
         action="store_true",
         default=None,
-        help="Send webhook alerts when monitoring has a problem"
+        help="Send webhook alerts when monitoring has a problem and the recovery alert that follows"
     )
     webhook_error_toggle.add_argument(
         "--no-webhook-error-notify",
