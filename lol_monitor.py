@@ -1143,6 +1143,11 @@ def html_text(text):
     return html.escape(text).replace("\n", "<br>")
 
 
+# Turns a bare URL inside already escaped HTML text into a link, so an alert that prints a guide link is clickable
+def html_autolink_urls(content):
+    return re.sub(r"(?<![\"'=])(https?://[^\s<>\"']+[^\s<>\"'.,;:!?)\]])", r'<a href="\1">\1</a>', str(content))
+
+
 # Returns the advice a cancelled secret entry reports, worded the same way by every one-shot secret command
 def secret_entry_cancelled_advice(subject, flag, guide_url):
     return make_recovery_advice("secret.entry", f"{subject[:1].upper()}{subject[1:]} setup was cancelled and the dotenv file was not changed", recovery_fix_with_guide(f"Run {flag} again when you have the value ready", guide_url), False)
@@ -1386,16 +1391,18 @@ def recovery_alert_body(advice, retry_seconds, failed_checks=0, failing_since=0)
     return "\n\n".join("\n".join(group) for group in recovery_alert_groups(advice, retry_seconds, failed_checks, failing_since))
 
 
-# Bolds the moment an outage started, the field a reader looks for first in a failure alert
-def html_bold_failing_since(content):
-    return re.sub(r"(Failing since: )([^<]+)", r"\1<b>\2</b>", content, count=1)
+# Bolds the values a reader scans a failure alert for: how often it has failed and since when
+def html_bold_outage_fields(content):
+    for label in ("Failed checks in a row: ", "Failing since: "):
+        content = re.sub(f"({re.escape(label)})([^<]+)", r"\1<b>\2</b>", content, count=1)
+    return content
 
 
 # Builds the HTML failure alert body with the summary in bold, without the timestamp only the email closes with
 def recovery_alert_body_html(advice, retry_seconds, failed_checks=0, failing_since=0):
     groups = recovery_alert_groups(advice, retry_seconds, failed_checks, failing_since)
-    rendered = [f"<b>{html_text(groups[0][0])}</b>"] + ["<br>".join(html_text(line) for line in group) for group in groups[1:]]
-    return html_bold_failing_since("<br><br>".join(rendered))
+    rendered = [f"<b>{html_text(groups[0][0])}</b>"] + ["<br>".join(html_autolink_urls(html_text(line)) for line in group) for group in groups[1:]]
+    return html_bold_outage_fields("<br><br>".join(rendered))
 
 
 # Builds the subject of the alert that closes an outage, worded so it sorts next to the failure alert it answers
@@ -4883,7 +4890,7 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
                 f"Game version: {html.escape(game_version)}<br><br>"
                 f"Match start-end date: <b>{html.escape(get_range_of_dates_from_tss(match_start_ts, match_stop_ts))}</b><br>"
                 f"Match creation: {html.escape(get_date_from_ts(match_creation_ts))}<br>"
-                f"Match duration: <b>{html.escape(display_time(int(match_duration)))}</b><br><br>"
+                f"Match duration: {html.escape(display_time(int(match_duration)))}<br><br>"
                 f"Victory: <b>{html.escape(u_victory)}</b><br>"
                 f"Kills/deaths/assists: <b>{u_kills}/{u_deaths}/{u_assists}</b><br><br>"
                 f"Champion: <b>{html.escape(u_champion_display)}</b><br>"
@@ -4911,7 +4918,7 @@ async def process_and_print_single_match(match_id: str, puuid: str, riotid_name:
                     m_body_html = (
                         f"<html><head></head><body>"
                         f"LoL user <b>{html.escape(riotid_name)}</b> finished a forbidden match whose details are protected (requires RSO token)<br><br>"
-                        f"Match ID: <b>{html.escape(str(match_id))}</b><br>"
+                        f"Match ID: {html.escape(str(match_id))}<br>"
                         f"{get_cur_ts('<br>Timestamp: ')}"
                         f"</body></html>"
                     )
