@@ -71,6 +71,7 @@ and again before anything is published to PyPI.
 | `test_monitoring_loop.py` | End-to-end monitoring runs: profile startup, new match detection, in-game and stopped alerts, custom game saves and error recovery |
 | `test_properties.py` | Property-based checks on the Riot ID, region and duration normalizers and on the values that reach the dotenv file |
 | `test_recovery_errors.py` | The closed recovery taxonomy, the advice each failure carries, secret redaction and the shared error block |
+| `test_missed_alert_recovery.py` | The recovery alert sent to a channel that never received the failure alert |
 | `test_repository_contracts.py` | Governance documents, issue templates, action pinning, release gating, the supported Python floor and the CI contract |
 | `test_repository_metadata.py` | Governance files, citation, funding, line endings, the declared editor style, the pinned linter and release integrity |
 | `test_setup_wizard.py` | The guided setup wizard: what each answer collects, what reaches which file and what an interrupt leaves behind |
