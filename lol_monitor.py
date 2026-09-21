@@ -1417,7 +1417,7 @@ def outage_recovery_alert_body(target, lasted, summary):
 
 # Builds the HTML recovery alert body, without the timestamp only the email closes with
 def outage_recovery_alert_body_html(target, lasted, summary):
-    return f"Monitoring recovered for {html_text(target)} after {html_text(display_time(lasted))}.<br><br>The failure was: {html_text(summary)}"
+    return f"Monitoring recovered for <b>{html_text(target)}</b> after <b>{html_text(display_time(lasted))}</b>.<br><br>The failure was: {html_text(summary)}"
 
 
 # Closes a plain text alert body with the timestamp the email carries and the webhook leaves out
