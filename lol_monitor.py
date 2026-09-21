@@ -654,6 +654,10 @@ class ErrorAlertState:
     def pending(self, channel: str, enabled, now: int) -> bool:
         return bool(enabled) and not getattr(self, f"{channel}_sent") and now >= getattr(self, f"{channel}_retry_at")
 
+    # Tells whether a channel was owed the failure alert but never received it, so the recovery can tell it the whole story
+    def missed(self, channel: str, enabled) -> bool:
+        return bool(enabled) and not getattr(self, f"{channel}_sent") and getattr(self, f"{channel}_failures") > 0
+
     # Records one attempt, holding a channel that failed for a growing wait so a broken server is not dialled on every check
     def record(self, channel: str, attempted: bool, delivered: bool, now: int) -> None:
         if not attempted:
@@ -1418,6 +1422,17 @@ def outage_recovery_alert_body(target, lasted, summary):
 # Builds the HTML recovery alert body, without the timestamp only the email closes with
 def outage_recovery_alert_body_html(target, lasted, summary):
     return f"Monitoring recovered for <b>{html_text(target)}</b> after <b>{html_text(display_time(lasted))}</b>.<br><br>The failure was: {html_text(summary)}"
+
+
+# Tells a channel that never received the failure alert about the whole outage, since a bare recovery would close
+# a failure it was never told about
+def outage_missed_alert_body(target, lasted, summary):
+    return f"Monitoring failed for {target} at {get_date_from_ts(int(time.time()) - lasted)} and recovered after {display_time(lasted)}.\n\nThe failure was: {summary}\n\nThe failure alert could not be delivered here while the failure lasted."
+
+
+# Builds the HTML body of the combined failure and recovery alert, matching the plain text
+def outage_missed_alert_body_html(target, lasted, summary):
+    return f"Monitoring failed for <b>{html_text(target)}</b> at <b>{html_text(get_date_from_ts(int(time.time()) - lasted))}</b> and recovered after <b>{html_text(display_time(lasted))}</b>.<br><br>The failure was: {html_text(summary)}<br><br>The failure alert could not be delivered here while the failure lasted."
 
 
 # Closes a plain text alert body with the timestamp the email carries and the webhook leaves out
@@ -5365,17 +5380,22 @@ async def save_custom_match_to_csv(snapshot: dict, riotid_name: str, start_ts: i
     write_csv_entry(csv_file_name=csv_file_name, start_date_ts=start_dt_str, stop_date_ts=stop_dt_str, duration_ts=duration_str, game_mode=game_mode, victory=victory, kills=kills, deaths=deaths, assists=assists, champion=user_champion, level=level, role=role, lane=lane, team1=team1_str, team2=team2_str)
 
 
-# Sends the recovery alert on each channel whose failure alert was delivered, so nobody hears of a recovery from a failure they were never told about
+# Sends the recovery alert on each channel whose failure alert was delivered and tells a channel that never got one
+# about the whole outage at once
 def send_outage_recovery_alert(target, lasted, error_alert):
     email_due = error_alert.email_sent and bool(ERROR_NOTIFICATION)
     webhook_due = error_alert.webhook_sent and webhook_event_enabled("error")
-    if not (email_due or webhook_due):
+    # A channel whose failure alert never got through hears about the outage and its end together, rather than
+    # nothing at all, which is what a channel blocked for the length of the outage would otherwise receive
+    email_missed = error_alert.missed("email", ERROR_NOTIFICATION)
+    webhook_missed = error_alert.missed("webhook", webhook_event_enabled("error"))
+    if not (email_due or webhook_due or email_missed or webhook_missed):
         return False
     lasted = max(1, lasted)
     subject = outage_recovery_alert_subject(target, lasted)
-    body = outage_recovery_alert_body(target, lasted, error_alert.summary)
-    body_html = outage_recovery_alert_body_html(target, lasted, error_alert.summary)
-    send_notification_channels("error", subject, email_body_with_timestamp(body), email_html_with_timestamp(body_html), email_enabled=email_due, webhook_enabled=webhook_due, webhook_body=body, webhook_body_html=body_html)
+    email_text, email_html = (outage_missed_alert_body, outage_missed_alert_body_html) if email_missed else (outage_recovery_alert_body, outage_recovery_alert_body_html)
+    webhook_text, webhook_html = (outage_missed_alert_body, outage_missed_alert_body_html) if webhook_missed else (outage_recovery_alert_body, outage_recovery_alert_body_html)
+    send_notification_channels("error", subject, email_body_with_timestamp(email_text(target, lasted, error_alert.summary)), email_html_with_timestamp(email_html(target, lasted, error_alert.summary)), email_enabled=email_due or email_missed, webhook_enabled=webhook_due or webhook_missed, webhook_body=webhook_text(target, lasted, error_alert.summary), webhook_body_html=webhook_html(target, lasted, error_alert.summary))
     return True
 
 
