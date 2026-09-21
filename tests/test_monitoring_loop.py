@@ -734,7 +734,7 @@ def test_the_guide_link_keeps_its_own_line_in_the_html_body(lm_module, riot_api,
 
     parts = sent_emails[0]["body_html"].split("<br>")
     fix_index = next(index for index, part in enumerate(parts) if part.startswith("To fix: "))
-    assert parts[fix_index + 1].startswith("Guide: https://")
+    assert parts[fix_index + 1].startswith('Guide: <a href="https://')
     assert "\n" not in parts[fix_index]
 
 
