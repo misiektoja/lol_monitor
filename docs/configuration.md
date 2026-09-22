@@ -68,6 +68,8 @@ lol_monitor "other_name#tag" euw1
 
 Email notifications need SMTP server details for the sending account. Add them to `lol_monitor.conf` or use the setup wizard. Setup checks the login without sending an email. To replace only the password, run `lol_monitor --set-smtp-password`. Password entry is hidden and preserves spaces.
 
+Every alert is sent as both HTML and plain text in one message. Mail clients that render HTML show the monitored player, the champion, the result and the values that changed in bold, with the player's own roster line marked. Clients that do not fall back to the plain text, which is unchanged.
+
 Send one test message to verify the settings:
 
 ```sh
@@ -96,7 +98,7 @@ Webhooks send the same alerts as email to a Discord channel or an ntfy topic. Th
 | `WEBHOOK_USERNAME` | Discord display name, empty to use the webhook default |
 | `WEBHOOK_AVATAR_URL` | Discord avatar URL, empty to use the webhook default |
 | `WEBHOOK_STATUS_NOTIFICATION` | Send an alert when the player's status changes |
-| `WEBHOOK_ERROR_NOTIFICATION` | Send an alert on monitoring errors, on by default |
+| `WEBHOOK_ERROR_NOTIFICATION` | Send an alert on a lasting monitoring failure and when it clears, on by default |
 | `WEBHOOK_HEADERS` | Extra request headers, for example ntfy options |
 | `NTFY_ACCESS_TOKEN` | Bearer token for a private ntfy topic |
 | `NTFY_IMAGES` | Attach the champion icon to ntfy alerts |
@@ -236,6 +238,36 @@ lol_monitor <riot_id> <region> --env-file none
 ```
 
 As a fallback both values can also live in the configuration file or the source.
+
+<a id="output-and-files"></a>
+## Output and Files
+
+The tool writes two files: a log of everything it prints and, when you ask for one, a CSV of the matches it reports.
+
+| Setting | Flag | Meaning |
+| --- | --- | --- |
+| `LOL_LOGFILE` | | Base name for the log file |
+| `DISABLE_LOGGING` | `-d` | Stop writing the log file |
+| `CSV_FILE` | `-b` | Append every reported match to this CSV file |
+| `ASCII_LOG_SEPARATORS` | | How separator lines are written to the log |
+
+`LOL_LOGFILE` is a base name, not the final filename. The Riot ID's game name is appended, so the default `lol_monitor` writes `lol_monitor_<riot_id_name>.log` in the current directory. Include a directory to put it elsewhere:
+
+```ini
+LOL_LOGFILE = "~/logs/lol_monitor"
+```
+
+Missing directories in that path are created. Give the base name an extension, such as `"~/logs/run.log"`, to use it as the complete filename instead.
+
+`CSV_FILE` is the complete path of the file to append to, and its directory must already exist. The file itself is created with a header row on first use. The [CSV Export](usage.md#csv-export) section lists the columns:
+
+```ini
+CSV_FILE = "~/lol/games_riot_id_name.csv"
+```
+
+`ASCII_LOG_SEPARATORS` decides whether the horizontal separator lines are rewritten as ASCII in the log file. `"Auto"` does it on Windows only, `"On"` does it everywhere and `"Off"` keeps the Unicode characters. Use `"On"` when something downstream of the log cannot read them.
+
+A CSV file that cannot be opened stops the run at startup and names the path it tried. `--doctor` checks both destinations without starting monitoring, so a wrong path is found before the first match is reported.
 
 <a id="terminal-colours"></a>
 ## Terminal Colours

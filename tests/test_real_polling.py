@@ -139,7 +139,7 @@ def test_real_primary_failures_preserve_status(lm_module, riot_transport, capsys
     assert "stopped playing" not in transcript
     assert "Monitoring healthy" not in transcript
     delivered = " ".join(body for _headers, body in riot_transport["deliveries"])
-    assert "API key error" in delivered
+    assert "Riot rejected the configured API key" in delivered
 
 
 # Confirms retryable detail failures are retried and live summaries reach either independent webhook provider
@@ -184,4 +184,4 @@ def test_persistent_rate_limit_delivers_one_error_alert(lm_module, riot_transpor
     with pytest.raises(PollingFinished):
         asyncio.run(lm_module.lol_monitor_user(USER + "#TAG", "eun1", None))
     assert len(riot_transport["deliveries"]) == 1
-    assert "monitoring error" in riot_transport["deliveries"][0][1]
+    assert "LoL Monitor error: Riot is rate limiting requests" in riot_transport["deliveries"][0][1]

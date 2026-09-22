@@ -411,3 +411,32 @@ def test_the_new_detail_rows_stay_out_of_the_concise_view(rows):
     detail_labels = {"Region", "Email transport", "Email recipient", "Email images", "Webhook provider", "ntfy images", "Delivery confirmations", "Process id", "Python version", "Operating system"}
 
     assert not {row.label for row in rows if row.concise} & detail_labels
+
+
+# Gives both channels a destination, so a placeholder override is the only reason a row can report none
+def configure_channel_destinations(lm_module, monkeypatch):
+    monkeypatch.setattr(lm_module, "SMTP_HOST", "smtp.example.com")
+    monkeypatch.setattr(lm_module, "SMTP_PORT", 587)
+    monkeypatch.setattr(lm_module, "RECEIVER_EMAIL", "michal.k@example.com")
+    monkeypatch.setattr(lm_module, "WEBHOOK_PROVIDER", "discord")
+    monkeypatch.setattr(lm_module, "WEBHOOK_URL", "https://discord.com/api/webhooks/1/private-token")
+
+
+# Verifies a configuration still holding the shipped sample values reports no channel, rather than naming a server and a recipient no alert can reach
+@pytest.mark.parametrize("label,setting,placeholder", [
+    ("Email transport", "SMTP_HOST", "your_smtp_server_ssl"),
+    ("Email recipient", "RECEIVER_EMAIL", "your_receiver_email"),
+    ("Webhook provider", "WEBHOOK_URL", "your_webhook_url"),
+])
+def test_a_placeholder_destination_is_reported_as_unconfigured(lm_module, monkeypatch, label, setting, placeholder):
+    configure_channel_destinations(lm_module, monkeypatch)
+    monkeypatch.setattr(lm_module, setting, placeholder)
+
+    assert {row.label: row.value for row in lm_module.build_startup_summary(RIOT_ID)}[label] == "Not configured"
+
+
+# Verifies a channel with its alert types on but no destination is not reported as live, since the rollup is the only line the short view prints
+def test_a_channel_without_a_destination_is_reported_as_off(lm_module):
+    assert lm_module.startup_notification_state(["errors"], True) == "On (errors)"
+    assert lm_module.startup_notification_state(["errors"], False) == "Off (not configured)"
+    assert lm_module.startup_notification_state([], False) == "Off"

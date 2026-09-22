@@ -60,7 +60,7 @@ and again before anything is published to PyPI.
 | `test_diagnostics.py` | The `--verbose` and `--debug` printers, the trace grammar and what each mode is allowed to print |
 | `test_family_contract.py` | The surfaces shared with the sibling monitors: the startup banner, the screen clear and the wording every tool prints |
 | `test_documentation.py` | The documentation site: navigation, links into and out of it, page structure and claims about flags and tooling |
-| `test_email_html.py` | The HTML notification body and escaping of names taken from Riot |
+| `test_email_html.py` | HTML notification bodies: escaping, the Discord markdown form and the plain-text match |
 | `test_email_notifications.py` | SMTP validation, the delivered message and failure handling |
 | `test_help_screen.py` | The `--help` screen: option group names and order, the shared help sentences and the worked examples |
 | `test_install_method_commands.py` | Install-method detection and the printed commands built from it, including the files a run carries into them |
@@ -71,6 +71,7 @@ and again before anything is published to PyPI.
 | `test_monitoring_loop.py` | End-to-end monitoring runs: profile startup, new match detection, in-game and stopped alerts, custom game saves and error recovery |
 | `test_properties.py` | Property-based checks on the Riot ID, region and duration normalizers and on the values that reach the dotenv file |
 | `test_recovery_errors.py` | The closed recovery taxonomy, the advice each failure carries, secret redaction and the shared error block |
+| `test_missed_alert_recovery.py` | The recovery alert sent to a channel that never received the failure alert |
 | `test_repository_contracts.py` | Governance documents, issue templates, action pinning, release gating, the supported Python floor and the CI contract |
 | `test_repository_metadata.py` | Governance files, citation, funding, line endings, the declared editor style, the pinned linter and release integrity |
 | `test_setup_wizard.py` | The guided setup wizard: what each answer collects, what reaches which file and what an interrupt leaves behind |
