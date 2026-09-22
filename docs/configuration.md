@@ -187,6 +187,8 @@ WEBHOOK_TRANSFORMS = [
 
 The tuple format is `(field_to_target, method_name, *optional_arguments)`. Invalid templates, avatar URLs, transforms or formatted headers fail before a request is attempted. `WEBHOOK_TEMPLATE`, `WEBHOOK_USERNAME` and `WEBHOOK_AVATAR_URL` apply only to the Discord request format and are ignored when `WEBHOOK_PROVIDER` is `"ntfy"`. ntfy continues to use its native publish API while transformations and header placeholders use the same shared title and description values.
 
+A header value that contains emoji or other non-ASCII text after placeholder expansion is sent in RFC 2047 encoded form (`=?UTF-8?B?...?=`), since a plain HTTP header cannot carry it. ntfy decodes it back to the original text. Other receivers see the encoded form unless they decode RFC 2047. ASCII values are sent exactly as written, including values you already encoded yourself, such as an emoji tag from the ntfy documentation.
+
 <a id="storing-secrets"></a>
 ## Storing Secrets
 
