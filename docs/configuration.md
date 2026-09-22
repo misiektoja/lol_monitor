@@ -68,6 +68,8 @@ lol_monitor "other_name#tag" euw1
 
 Email notifications need SMTP server details for the sending account. Add them to `lol_monitor.conf` or use the setup wizard. Setup checks the login without sending an email. To replace only the password, run `lol_monitor --set-smtp-password`. Password entry is hidden and preserves spaces.
 
+If email alerts are selected but local SMTP settings are missing or invalid, the startup summary shows `Unavailable` with the reason. Automatic email sends are skipped silently until the settings are fixed. `Off` means no email alert types are selected.
+
 Every alert is sent as both HTML and plain text in one message. Mail clients that render HTML show the monitored player, the champion, the result and the values that changed in bold, with the player's own roster line marked. Clients that do not fall back to the plain text, which is unchanged.
 
 Send one test message to verify the settings:
@@ -88,7 +90,7 @@ Alerts that name no champion, such as an error alert, are unaffected. If the dow
 <a id="webhook-settings"></a>
 ## Webhook Settings
 
-Webhooks send the same alerts as email to a Discord channel or an ntfy topic. They are switched off until you set a destination. [`--setup`](setup-and-first-run.md#run-the-setup-wizard) collects the service, the destination and the alert switches together:
+Webhooks send the same alerts as email to a Discord channel or an ntfy topic. [`--setup`](setup-and-first-run.md#run-the-setup-wizard) collects the service, the destination and the alert switches together. If selected webhook alerts lack a valid URL or other local settings, the startup summary shows `Unavailable` with the reason and automatic sends are skipped silently. `Off` means the master switch or all webhook alert types are off.
 
 | Setting | Meaning |
 | --- | --- |
