@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v2.0
+v2.0.1
 
 Tool implementing real-time tracking of LoL (League of Legends) players activities:
 https://github.com/misiektoja/lol_monitor/
@@ -14,7 +14,7 @@ python-dateutil
 python-dotenv (optional)
 """
 
-VERSION = "2.0"
+VERSION = "2.0.1"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -3604,8 +3604,9 @@ def send_webhook(title, description, notification_type="status", force=False, sl
 
 # Sends one alert through the enabled email and webhook channels
 def send_notification_channels(notification_type, subject, body, body_html="", email_enabled=False, webhook_enabled=None, image_url="", ntfy_priority=0, ntfy_tags="", webhook_body="", webhook_body_html=""):
-    email_attempted = bool(email_enabled)
-    webhook_attempted = webhook_event_enabled(notification_type) if webhook_enabled is None else bool(webhook_enabled)
+    email_attempted = bool(email_enabled and email_settings_problem() is None)
+    webhook_selected = webhook_event_enabled(notification_type) if webhook_enabled is None else bool(webhook_enabled)
+    webhook_attempted = bool(webhook_selected and WEBHOOK_ENABLED and webhook_settings_problem() is None)
     email_delivered = False
     webhook_delivered = False
     if email_attempted:
@@ -5383,12 +5384,14 @@ async def save_custom_match_to_csv(snapshot: dict, riotid_name: str, start_ts: i
 # Sends the recovery alert on each channel whose failure alert was delivered and tells a channel that never got one
 # about the whole outage at once
 def send_outage_recovery_alert(target, lasted, error_alert):
-    email_due = error_alert.email_sent and bool(ERROR_NOTIFICATION)
-    webhook_due = error_alert.webhook_sent and webhook_event_enabled("error")
+    email_ready = bool(ERROR_NOTIFICATION and email_settings_problem() is None)
+    webhook_ready = bool(webhook_event_enabled("error") and webhook_settings_problem() is None)
+    email_due = error_alert.email_sent and email_ready
+    webhook_due = error_alert.webhook_sent and webhook_ready
     # A channel whose failure alert never got through hears about the outage and its end together, rather than
     # nothing at all, which is what a channel blocked for the length of the outage would otherwise receive
-    email_missed = error_alert.missed("email", ERROR_NOTIFICATION)
-    webhook_missed = error_alert.missed("webhook", webhook_event_enabled("error"))
+    email_missed = error_alert.missed("email", email_ready)
+    webhook_missed = error_alert.missed("webhook", webhook_ready)
     if not (email_due or webhook_due or email_missed or webhook_missed):
         return False
     lasted = max(1, lasted)
@@ -5718,8 +5721,8 @@ async def lol_monitor_user(riotid, region, csv_file_name):
             # A failure the tool can retry away is alerted once the outage has lasted ERROR_ALERT_AFTER_SECONDS, one it cannot at once
             alert_due = not advice.retryable or int(time.time()) - outage.since >= ERROR_ALERT_AFTER_SECONDS
             now = int(time.time())
-            error_email_pending = alert_due and error_alert.pending("email", ERROR_NOTIFICATION, now)
-            error_webhook_pending = alert_due and error_alert.pending("webhook", webhook_event_enabled("error"), now)
+            error_email_pending = alert_due and error_alert.pending("email", ERROR_NOTIFICATION and email_settings_problem() is None, now)
+            error_webhook_pending = alert_due and error_alert.pending("webhook", webhook_event_enabled("error") and webhook_settings_problem() is None, now)
             if error_email_pending or error_webhook_pending:
                 m_subject = recovery_alert_subject(advice, riotid_name)
                 m_body = recovery_alert_body(advice, sleep_interval, outage.failures, outage.since)
@@ -7578,11 +7581,11 @@ def full_startup_summary_enabled():
     return bool(VERBOSE_MODE or DEBUG_MODE)
 
 
-# Renders the alert categories one channel would deliver, or reports that the channel is off or has no destination
-def startup_notification_state(categories, configured):
+# Renders selected alert categories or names an unusable local setting
+def startup_notification_state(categories, problem):
     if not categories:
         return "Off"
-    return "On (" + ", ".join(categories) + ")" if configured else "Off (not configured)"
+    return f"Unavailable ({problem})" if problem else "On (" + ", ".join(categories) + ")"
 
 
 # Hides the middle of an address's local part, so a log can be shared while the reader can still spot a typo
@@ -7605,9 +7608,46 @@ def email_channel_configured():
     return smtp_server_configured() and doctor_value_is_set(RECEIVER_EMAIL)
 
 
+# Names the first local SMTP setting that prevents automatic email delivery
+def email_settings_problem():
+    unset = [name for name in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD") if not doctor_value_is_set(globals()[name])]
+    if unset:
+        return f"{join_setting_names(unset, 'or')} is empty or still set to its placeholder"
+    fqdn_re = re.compile(r'(?=^.{4,253}$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}\.?$)')
+    email_re = re.compile(r'[^@]+@[^@]+\.[^@]+')
+    try:
+        ipaddress.ip_address(str(SMTP_HOST))
+    except ValueError:
+        if not fqdn_re.search(str(SMTP_HOST)):
+            return "SMTP_HOST is not a valid IP address or hostname"
+    try:
+        port = int(SMTP_PORT)
+        if isinstance(SMTP_PORT, bool) or not 1 <= port <= 65535:
+            raise ValueError
+    except (TypeError, ValueError, OverflowError):
+        return "SMTP_PORT is not a port number between 1 and 65535"
+    if not email_re.search(str(SENDER_EMAIL)) or not email_re.search(str(RECEIVER_EMAIL)):
+        return "SENDER_EMAIL or RECEIVER_EMAIL is not an email address"
+    return None
+
+
 # Returns whether a webhook alert has a destination to post to
 def webhook_channel_configured():
     return bool(normalized_webhook_provider()) and doctor_value_is_set(WEBHOOK_URL)
+
+
+# Names the first local webhook setting that prevents automatic alert delivery
+def webhook_settings_problem():
+    if not doctor_value_is_set(WEBHOOK_URL):
+        return "WEBHOOK_URL is empty or still set to its placeholder"
+    if not validate_webhook_url():
+        return "WEBHOOK_URL must contain a complete HTTPS link"
+    provider = normalized_webhook_provider()
+    if not provider:
+        return "WEBHOOK_PROVIDER must be discord or ntfy"
+    if validate_webhook_customization(provider) is not None:
+        return "Webhook customization is invalid"
+    return validate_webhook_headers(provider)
 
 
 # Names the mail server this run would use, leaving out the account that signs in to it
@@ -7678,11 +7718,11 @@ def build_startup_summary(target=None, config_path=None, env_path=None, log_path
         StartupSummaryRow("Target", str(target) if target else "None", concise=True),
         StartupSummaryRow("Region", f"{region} (routing: {REGION_TO_CONTINENT.get(region, 'unknown')})" if region else "None"),
         StartupSummaryRow("Polling intervals", f"[NOT in game: {display_time(LOL_CHECK_INTERVAL)}] [in game: {display_time(LOL_ACTIVE_CHECK_INTERVAL)}]", concise=True),
-        StartupSummaryRow("Notifications (email)", startup_notification_state(email_notification_categories(), email_channel_configured()), concise=True),
+        StartupSummaryRow("Notifications (email)", startup_notification_state(email_notification_categories(), email_settings_problem() if email_notification_categories() else None), concise=True),
         StartupSummaryRow("Email transport", startup_email_transport()),
         StartupSummaryRow("Email recipient", mask_email_address(RECEIVER_EMAIL) if doctor_value_is_set(RECEIVER_EMAIL) else "Not configured"),
         StartupSummaryRow("Email images", str(EMAIL_IMAGES)),
-        StartupSummaryRow("Notifications (webhook)", startup_notification_state(_startup_webhook_notification_categories(), webhook_channel_configured()), concise=True),
+        StartupSummaryRow("Notifications (webhook)", startup_notification_state(_startup_webhook_notification_categories(), webhook_settings_problem() if _startup_webhook_notification_categories() else None), concise=True),
         StartupSummaryRow("Webhook provider", startup_webhook_provider()),
     ]
     # The ntfy attachment setting says nothing about a run that posts to Discord, which ignores it
@@ -8433,14 +8473,10 @@ def main():
         FINAL_LOG_PATH = None
 
     unset_email = unset_email_settings()
-    if unset_email:
+    if SMTP_HOST.startswith("your_smtp_server_") and not STATUS_NOTIFICATION:
         verbose_print(f"Email notifications are off because {', '.join(unset_email)} {'is' if len(unset_email) == 1 else 'are'} not set")
         STATUS_NOTIFICATION = False
         ERROR_NOTIFICATION = False
-
-    if WEBHOOK_ENABLED and not validate_webhook_url():
-        verbose_print("Webhook notifications are off because WEBHOOK_URL is not a complete HTTPS link")
-        WEBHOOK_ENABLED = False
 
     emit_startup_summary(build_startup_summary(args.riot_id, cfg_path, env_path, FINAL_LOG_PATH, args.region), show_full=full_startup_summary_enabled())
 
