@@ -802,6 +802,18 @@ def test_the_destination_is_checked_again_at_the_request(discord, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+# Verifies unavailable automatic channels make no attempt or status line
+def test_unavailable_channels_are_silent(discord, monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(discord, "SMTP_PASSWORD", "")
+    monkeypatch.setattr(discord, "WEBHOOK_URL", "")
+    monkeypatch.setattr(discord, "send_email", lambda *args, **kwargs: calls.append("email"))
+    monkeypatch.setattr(discord, "send_webhook", lambda *args, **kwargs: calls.append("webhook"))
+    assert discord.send_notification_channels("error", "Subject", "Body", email_enabled=True, webhook_enabled=True) == (False, False)
+    assert calls == []
+    assert capsys.readouterr().out == ""
+
+
 # Verifies each enabled channel receives the same alert, and the return value reports delivery rather than the attempt
 def test_each_enabled_channel_receives_the_alert(discord, webhook_session, smtp_double, monkeypatch):
     from conftest import FakeWebhookResponse

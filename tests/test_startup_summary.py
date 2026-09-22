@@ -413,7 +413,7 @@ def test_the_new_detail_rows_stay_out_of_the_concise_view(rows):
     assert not {row.label for row in rows if row.concise} & detail_labels
 
 
-# Gives both channels a destination, so a placeholder override is the only reason a row can report none
+# Gives both channels destinations for detail-row tests
 def configure_channel_destinations(lm_module, monkeypatch):
     monkeypatch.setattr(lm_module, "SMTP_HOST", "smtp.example.com")
     monkeypatch.setattr(lm_module, "SMTP_PORT", 587)
@@ -435,8 +435,22 @@ def test_a_placeholder_destination_is_reported_as_unconfigured(lm_module, monkey
     assert {row.label: row.value for row in lm_module.build_startup_summary(RIOT_ID)}[label] == "Not configured"
 
 
-# Verifies a channel with its alert types on but no destination is not reported as live, since the rollup is the only line the short view prints
-def test_a_channel_without_a_destination_is_reported_as_off(lm_module):
-    assert lm_module.startup_notification_state(["errors"], True) == "On (errors)"
-    assert lm_module.startup_notification_state(["errors"], False) == "Off (not configured)"
-    assert lm_module.startup_notification_state([], False) == "Off"
+# Verifies a selected channel names an unusable setting while an unselected channel stays off
+def test_a_channel_without_a_destination_is_reported_as_unavailable(lm_module):
+    assert lm_module.startup_notification_state(["errors"], None) == "On (errors)"
+    assert lm_module.startup_notification_state(["errors"], "SMTP_PASSWORD is missing") == "Unavailable (SMTP_PASSWORD is missing)"
+    assert lm_module.startup_notification_state([], "SMTP_PASSWORD is missing") == "Off"
+
+
+# Verifies the printed channel rows name local settings that prevent delivery
+def test_selected_channels_with_missing_secrets_are_unavailable(lm_module, monkeypatch):
+    monkeypatch.setattr(lm_module, "STATUS_NOTIFICATION", True)
+    monkeypatch.setattr(lm_module, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(lm_module, "WEBHOOK_STATUS_NOTIFICATION", True)
+    monkeypatch.setattr(lm_module, "SMTP_PASSWORD", "")
+    monkeypatch.setattr(lm_module, "WEBHOOK_URL", "")
+    rows = {row.label: row.value for row in lm_module.build_startup_summary()}
+    assert "SMTP_PASSWORD" in rows["Notifications (email)"]
+    assert rows["Notifications (email)"].startswith("Unavailable (")
+    assert "WEBHOOK_URL" in rows["Notifications (webhook)"]
+    assert rows["Notifications (webhook)"].startswith("Unavailable (")

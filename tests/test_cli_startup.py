@@ -270,55 +270,72 @@ def test_error_alerts_can_be_disabled(lm_module, monkeypatch, monitor_calls):
     assert lm_module.ERROR_NOTIFICATION is False
 
 
-# Verifies notifications are switched off when SMTP was never configured, so nothing fails on every change
-def test_unconfigured_smtp_disables_every_notification(lm_module, monkeypatch, monitor_calls):
+# Verifies selected email alerts remain visible when SMTP settings are unavailable
+def test_unconfigured_smtp_keeps_selected_alerts_unavailable(lm_module, monkeypatch, monitor_calls, capsys):
     monkeypatch.setattr(lm_module, "SMTP_HOST", "your_smtp_server_ssl")
     monkeypatch.setattr(lm_module, "ERROR_NOTIFICATION", True)
 
     assert run_main(lm_module, monkeypatch, ["-s", RIOT_ID, REGION]) == 0
 
-    assert lm_module.STATUS_NOTIFICATION is False
-    assert lm_module.ERROR_NOTIFICATION is False
+    assert lm_module.STATUS_NOTIFICATION is True
+    assert lm_module.ERROR_NOTIFICATION is True
+    assert "Notifications (email):        Unavailable (SMTP_HOST" in capsys.readouterr().out
 
 
-# Verifies a run that asked for email is told which setting switched it off, rather than being left to guess
-def test_a_requested_notification_names_the_setting_that_disabled_it(lm_module, monkeypatch, monitor_calls, capsys):
+# Verifies a missing SMTP password does not turn off an explicitly selected error alert
+def test_missing_smtp_password_keeps_error_alert_selected(lm_module, monkeypatch, monitor_calls, capsys):
+    monkeypatch.setattr(lm_module, "STATUS_NOTIFICATION", False)
+    monkeypatch.setattr(lm_module, "ERROR_NOTIFICATION", True)
+    monkeypatch.setattr(lm_module, "SMTP_HOST", "smtp.example.com")
+    monkeypatch.setattr(lm_module, "SMTP_PASSWORD", "")
+
+    assert run_main(lm_module, monkeypatch, [RIOT_ID, REGION]) == 0
+
+    assert lm_module.ERROR_NOTIFICATION is True
+    assert "Notifications (email):        Unavailable (SMTP_PASSWORD is empty or still set to its placeholder)" in capsys.readouterr().out
+
+
+# Verifies a selected email channel names the unusable setting in the summary
+def test_a_requested_notification_names_the_setting_that_blocks_delivery(lm_module, monkeypatch, monitor_calls, capsys):
     monkeypatch.setattr(lm_module, "SENDER_EMAIL", "your_sender_email")
 
     assert run_main(lm_module, monkeypatch, ["--verbose", "-s", RIOT_ID, REGION]) == 0
 
-    assert "* Email notifications are off because SENDER_EMAIL is not set" in capsys.readouterr().out
+    assert "Notifications (email):        Unavailable (SENDER_EMAIL or RECEIVER_EMAIL is not an email address)" in capsys.readouterr().out
 
 
-# Verifies a half-configured SMTP block names every setting that is missing rather than only the first
-def test_partly_configured_email_always_names_what_is_missing(lm_module, monkeypatch, monitor_calls, capsys):
+# Verifies an incomplete address block leaves selected alerts visible as unavailable
+def test_partly_configured_email_names_the_invalid_addresses(lm_module, monkeypatch, monitor_calls, capsys):
+    monkeypatch.setattr(lm_module, "ERROR_NOTIFICATION", True)
     monkeypatch.setattr(lm_module, "SENDER_EMAIL", "your_sender_email")
     monkeypatch.setattr(lm_module, "RECEIVER_EMAIL", "")
 
     assert run_main(lm_module, monkeypatch, ["--verbose", RIOT_ID, REGION]) == 0
 
-    assert "* Email notifications are off because SENDER_EMAIL, RECEIVER_EMAIL are not set" in capsys.readouterr().out
+    assert lm_module.ERROR_NOTIFICATION is True
+    assert "Notifications (email):        Unavailable (SENDER_EMAIL or RECEIVER_EMAIL is not an email address)" in capsys.readouterr().out
 
 
-# Verifies the reason is a verbose notice rather than default output, matching where the siblings print it
-def test_the_email_gate_reason_is_verbose_only(lm_module, monkeypatch, monitor_calls, capsys):
+# Verifies the reason appears in the default summary without changing the user's alert selection
+def test_the_email_gate_reason_appears_in_the_default_summary(lm_module, monkeypatch, monitor_calls, capsys):
     monkeypatch.setattr(lm_module, "SENDER_EMAIL", "your_sender_email")
 
     assert run_main(lm_module, monkeypatch, ["-s", RIOT_ID, REGION]) == 0
 
-    assert "Email notifications are off" not in capsys.readouterr().out
-    assert lm_module.STATUS_NOTIFICATION is False
+    assert "Notifications (email):        Unavailable (SENDER_EMAIL or RECEIVER_EMAIL is not an email address)" in capsys.readouterr().out
+    assert lm_module.STATUS_NOTIFICATION is True
 
 
-# Verifies webhooks with no usable destination are switched off at startup, so nothing tries to deliver to nowhere
-def test_a_webhook_with_no_usable_url_is_switched_off(lm_module, monkeypatch, monitor_calls, capsys):
+# Verifies selected webhooks remain unavailable until their destination is valid
+def test_a_webhook_with_no_usable_url_remains_unavailable(lm_module, monkeypatch, monitor_calls, capsys):
     monkeypatch.setattr(lm_module, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(lm_module, "WEBHOOK_ERROR_NOTIFICATION", True)
     monkeypatch.setattr(lm_module, "WEBHOOK_URL", "not-a-url")
 
     assert run_main(lm_module, monkeypatch, ["--verbose", RIOT_ID, REGION]) == 0
 
-    assert "Webhook notifications are off because WEBHOOK_URL is not a complete HTTPS link" in capsys.readouterr().out
-    assert lm_module.WEBHOOK_ENABLED is False
+    assert "Notifications (webhook):      Unavailable (WEBHOOK_URL must contain a complete HTTPS link)" in capsys.readouterr().out
+    assert lm_module.WEBHOOK_ENABLED is True
 
 
 # Verifies a usable webhook URL is left alone, so the gate did not switch the channel off wholesale

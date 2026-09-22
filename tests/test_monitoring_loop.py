@@ -758,6 +758,8 @@ def test_a_failed_channel_is_retried_and_a_delivered_one_is_not(lm_module, riot_
     monkeypatch.setattr(lm_module, "ERROR_NOTIFICATION", True)
     monkeypatch.setattr(lm_module, "WEBHOOK_ENABLED", True)
     monkeypatch.setattr(lm_module, "WEBHOOK_ERROR_NOTIFICATION", True)
+    monkeypatch.setattr(lm_module, "WEBHOOK_PROVIDER", "discord")
+    monkeypatch.setattr(lm_module, "WEBHOOK_URL", "https://discord.com/api/webhooks/123/private-token")
     monkeypatch.setattr(lm_module, "LIVENESS_REMINDER_SECONDS", 1800)
     webhook_attempts = {"count": 0}
 
