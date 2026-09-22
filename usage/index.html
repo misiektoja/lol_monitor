@@ -963,6 +963,7 @@
 <p>Mail on errors is on by default. Switch it off with <code>ERROR_NOTIFICATION = False</code> or <code>-e</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>lol_monitor<span class="w"> </span>&lt;riot_id&gt;<span class="w"> </span>&lt;region&gt;<span class="w"> </span>-e
 </code></pre></div>
+<p>A failure that clears on the next check sends nothing. Once one has lasted past the alert delay, a single mail goes out with the subject <code>LoL Monitor error: &lt;what went wrong&gt; (user: &lt;riot_id&gt;)</code>. It lists the fix, the guide link, how many checks failed in a row, since when and when the next retry is due. A matching <code>LoL Monitor recovered:</code> mail follows when the failure clears, naming how long it lasted. <code>-e</code> switches both off.</p>
 <p>Fill in the <a href="../configuration/#smtp-settings">SMTP settings</a> first, otherwise nothing is sent. <code>--doctor</code> signs in to the mail server without sending anything and reports which alerts would be delivered, described in <a href="../troubleshooting/#doctor-preflight">Doctor Preflight</a>.</p>
 <p>Messages go out in both plain text and HTML, so match details stay readable in any mail client. In the HTML body the monitored player's own roster line is bold, and <code>EMAIL_IMAGES = True</code> adds the champion icon at the end of the message, described under <a href="../configuration/#champion-icon-in-email">Champion Icon in Email</a>.</p>
 <p>Example email:</p>
@@ -973,6 +974,7 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>lol_monitor<span class="w"> </span>&lt;riot_id&gt;<span class="w"> </span>&lt;region&gt;<span class="w"> </span>--webhook<span class="w"> </span>--webhook-status
 </code></pre></div>
 <p><code>--webhook-status</code> sends an alert when the player's status changes and <code>--webhook-errors</code> sends one on monitoring errors. Either flag switches the channel on by itself, so the shortest form is one flag. <code>--no-webhook</code> switches the whole channel off for one run and <code>--no-webhook-error-notify</code> silences only the error alert.</p>
+<p>Error alerts carry the same wording as the mail, without the timestamp line. A lasting failure sends one alert and the matching recovery alert follows when it clears, so <code>--no-webhook-error-notify</code> switches off both.</p>
 <p>Save the destination once with <code>--set-webhook-url</code> rather than passing it on every run, since a URL on the command line stays in your shell history. <code>--webhook-url</code> is there for a one-off run.</p>
 <p>Email and webhooks are independent. A run can use one, both or neither, and each keeps its own alert settings.</p>
 <p>Each service shows the alert the way it renders best. Discord gets the champion icon as the embed thumbnail and the monitored player's roster line in bold, while ntfy gets the plain roster and, with <code>NTFY_IMAGES = True</code>, the icon as the notification image.</p>

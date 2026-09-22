@@ -514,6 +514,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#output-and-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output and Files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#terminal-colours" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -816,6 +827,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#output-and-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output and Files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#terminal-colours" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -907,6 +929,7 @@
 <p><a id="smtp-settings"></a></p>
 <h2 id="smtp-settings">SMTP Settings<a class="headerlink" href="#smtp-settings" title="Permanent link">&para;</a></h2>
 <p>Email notifications need SMTP server details for the sending account. Add them to <code>lol_monitor.conf</code> or use the setup wizard. Setup checks the login without sending an email. To replace only the password, run <code>lol_monitor --set-smtp-password</code>. Password entry is hidden and preserves spaces.</p>
+<p>Every alert is sent as both HTML and plain text in one message. Mail clients that render HTML show the monitored player, the champion, the result and the values that changed in bold, with the player's own roster line marked. Clients that do not fall back to the plain text, which is unchanged.</p>
 <p>Send one test message to verify the settings:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>lol_monitor<span class="w"> </span>--send-test-email
 </code></pre></div>
@@ -952,7 +975,7 @@
 </tr>
 <tr>
 <td><code>WEBHOOK_ERROR_NOTIFICATION</code></td>
-<td>Send an alert on monitoring errors, on by default</td>
+<td>Send an alert on a lasting monitoring failure and when it clears, on by default</td>
 </tr>
 <tr>
 <td><code>WEBHOOK_HEADERS</code></td>
@@ -1048,16 +1071,59 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>lol_monitor<span class="w"> </span>&lt;riot_id&gt;<span class="w"> </span>&lt;region&gt;<span class="w"> </span>--env-file<span class="w"> </span>none
 </code></pre></div>
 <p>As a fallback both values can also live in the configuration file or the source.</p>
+<p><a id="output-and-files"></a></p>
+<h2 id="output-and-files">Output and Files<a class="headerlink" href="#output-and-files" title="Permanent link">&para;</a></h2>
+<p>The tool writes two files: a log of everything it prints and, when you ask for one, a CSV of the matches it reports.</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LOL_LOGFILE</code></td>
+<td></td>
+<td>Base name for the log file</td>
+</tr>
+<tr>
+<td><code>DISABLE_LOGGING</code></td>
+<td><code>-d</code></td>
+<td>Stop writing the log file</td>
+</tr>
+<tr>
+<td><code>CSV_FILE</code></td>
+<td><code>-b</code></td>
+<td>Append every reported match to this CSV file</td>
+</tr>
+<tr>
+<td><code>ASCII_LOG_SEPARATORS</code></td>
+<td></td>
+<td>How separator lines are written to the log</td>
+</tr>
+</tbody>
+</table>
+<p><code>LOL_LOGFILE</code> is a base name, not the final filename. The Riot ID's game name is appended, so the default <code>lol_monitor</code> writes <code>lol_monitor_&lt;riot_id_name&gt;.log</code> in the current directory. Include a directory to put it elsewhere:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="na">LOL_LOGFILE</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"~/logs/lol_monitor"</span>
+</code></pre></div>
+<p>Missing directories in that path are created. Give the base name an extension, such as <code>"~/logs/run.log"</code>, to use it as the complete filename instead.</p>
+<p><code>CSV_FILE</code> is the complete path of the file to append to, and its directory must already exist. The file itself is created with a header row on first use. The <a href="../usage/#csv-export">CSV Export</a> section lists the columns:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="na">CSV_FILE</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"~/lol/games_riot_id_name.csv"</span>
+</code></pre></div>
+<p><code>ASCII_LOG_SEPARATORS</code> decides whether the horizontal separator lines are rewritten as ASCII in the log file. <code>"Auto"</code> does it on Windows only, <code>"On"</code> does it everywhere and <code>"Off"</code> keeps the Unicode characters. Use <code>"On"</code> when something downstream of the log cannot read them.</p>
+<p>A CSV file that cannot be opened stops the run at startup and names the path it tried. <code>--doctor</code> checks both destinations without starting monitoring, so a wrong path is found before the first match is reported.</p>
 <p><a id="terminal-colours"></a></p>
 <h2 id="terminal-colours">Terminal Colours<a class="headerlink" href="#terminal-colours" title="Permanent link">&para;</a></h2>
 <p>Colour is on by default and marks what a value is rather than decorating the line: player names, identifiers, champions, ranks, dates, links and the <code>[PASS]</code>/<code>[WARN]</code>/<code>[FAIL]</code>/<code>[SKIP]</code> markers each get their own colour. In a match roster the monitored player's own entry is bold, through the <code>monitored_username</code> part, so their line stands out among the nine others. The log file is never coloured, so a log attached to a bug report stays plain text. <code>COLORED_OUTPUT</code> and <code>COLOR_THEME</code> apply to monitoring output and to the <a href="../setup-and-first-run/#run-the-setup-wizard"><code>--setup</code></a>, <code>--doctor</code> and <code>--help</code> screens alike.</p>
 <p>The <code>--help</code> screen is coloured too. Group headings, option names, the values those options take, the example commands and the comments above them each get their own colour, so the screen can be scanned instead of read.</p>
 <p>Colour switches itself off when the output is not a terminal you are watching. That covers redirected or piped output, a <code>NO_COLOR</code> environment variable of any value, a <code>TERM</code> of <code>dumb</code> or empty and a <code>--no-color</code> run. The startup summary reports the resolved state next to the setting, so <code>False (setting: True)</code> means colour was configured but the terminal did not qualify.</p>
 <p>To change a colour, uncomment the <code>COLOR_THEME</code> block in your configuration file and edit the parts you want. Every part you leave out keeps its built-in colour:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">COLOR_THEME</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>    <span class="s2">"username"</span><span class="p">:</span> <span class="s2">"bright_cyan underline"</span><span class="p">,</span>
-<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>    <span class="s2">"error"</span><span class="p">:</span> <span class="s2">"red"</span><span class="p">,</span>
-<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="n">COLOR_THEME</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>    <span class="s2">"username"</span><span class="p">:</span> <span class="s2">"bright_cyan underline"</span><span class="p">,</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>    <span class="s2">"error"</span><span class="p">:</span> <span class="s2">"red"</span><span class="p">,</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="p">}</span>
 </code></pre></div>
 <p>A style is a space-separated list of one colour and any attributes. Colours are <code>black</code>, <code>red</code>, <code>green</code>, <code>yellow</code>, <code>blue</code>, <code>magenta</code>, <code>cyan</code>, <code>white</code> and their <code>bright_</code> forms. Attributes are <code>bold</code>, <code>dim</code>, <code>underline</code> and <code>blink</code>. An empty string leaves that part uncoloured, and an unknown name is ignored.</p>
 <p>The block ships commented out so the tool's own colours apply and later improvements reach existing configuration files. Overrides you added are written back as a real block when setup rebuilds the file, so they are not lost. Once you uncomment it, the parts inside it are pinned to whatever you saved, so delete the block again to go back to the current defaults.</p>
