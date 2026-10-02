@@ -23,7 +23,9 @@ The Notifications section **signs in to the configured SMTP server** without sen
 
 In an interactive terminal, Doctor offers one real test message per ready channel. Each needs separate approval and defaults to No. Noninteractive runs send no test messages.
 
-The report ends with a **Next steps** block naming the command that starts monitoring, carrying the same `--config-file` and `--env-file` this run checked. It carries the target this run used, leaves it out when the configuration file already supplies both values and otherwise shows `<riot_id> <region>` for you to replace. While a check is failing it asks for the failures first.
+The **Next steps** command keeps the selected files, monitoring options and target. A target already saved in configuration is omitted. Missing values appear as `<riot_id> <region>`. Correct failed checks before starting monitoring.
+
+Repeat the options on later runs or save the corresponding settings. Command-line credentials appear as uppercase placeholders. Replace those placeholders before running or save the credentials and remove their flags.
 
 It exits `0` when every check passed and `1` when any check or the approved delivery test failed, so it can be used as a container healthcheck or a CI smoke test. A `[WARN]` row never changes the exit code: running the preflight without naming a player warns that nothing will be monitored and still exits `0` when the rest of the setup is sound, the same as in the sibling monitors.
 
@@ -36,7 +38,7 @@ Running doctor without a target checks everything except the monitored account. 
 <a id="common-problems"></a>
 ## Common Problems
 
-Every failure is reported in the same three-part shape: what went wrong, a `To fix:` action and a `Guide:` link to the page that covers it. The fix command matches how you installed the tool and carries the `--config-file` or `--env-file` you started with, so it can be pasted as it is. `--debug` appends a `Technical detail:` line for bug reports. Generated commands preserve their paths, targets and flags. They refer to credential files or hidden entry instead of including credential values. Error summaries and technical details still redact credentials.
+Every failure is reported in the same three-part shape: what went wrong, a `To fix:` action and a `Guide:` link to the page that covers it. The fix command matches how you installed the tool and carries the `--config-file` or `--env-file` you started with. `--debug` appends a `Technical detail:` line for bug reports. Generated commands preserve their paths, targets and flags. They refer to credential files or hidden entry instead of including credential values. Error summaries and technical details still redact credentials.
 
 | Symptom | Likely cause | Where to look |
 | --- | --- | --- |
