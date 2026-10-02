@@ -1268,10 +1268,10 @@ def classify_recovery_error(error=None, context="runtime", detail=""):
         return advice("webhook.invalid", safe_detail or "The webhook URL was not changed", f"Copy a complete Discord or ntfy webhook URL then run {flag} again", False, guide)
 
     if context == "credentials":
-        return advice("secret.missing", "No Riot API key reached the tool", f"Pass it with -r, export RIOT_API_KEY or add it to a dotenv file, then run {render_command([RIOT_ID_PLACEHOLDER, REGION_PLACEHOLDER])}", False, SECRETS_GUIDE_URL)
+        return advice("secret.missing", "No Riot API key reached the tool", f"Save it with {render_command(['--set-riot-api-key'])}. To provide it without saving, include --riot-api-key KEY on each run", False, SECRETS_GUIDE_URL)
 
     if context == "target.missing":
-        return advice("target.missing", safe_detail or "No player was provided", f"Pass a {RIOT_ID_FORMS} and a {REGION_FORMS}: {render_command([RIOT_ID_PLACEHOLDER, REGION_PLACEHOLDER])}", False, QUICK_START_GUIDE_URL)
+        return advice("target.missing", safe_detail or "No player was provided", f"Save RIOT_ID and REGION in the configuration file or include a {RIOT_ID_FORMS} and a {REGION_FORMS} on each run: {render_command([RIOT_ID_PLACEHOLDER, REGION_PLACEHOLDER])}", False, QUICK_START_GUIDE_URL)
 
     if context == "target.region":
         return advice("target.region", safe_detail or "That is not a region code this tool knows", f"Pass a {REGION_FORMS}, which is the short code and not the display name", False, REGION_GUIDE_URL)
@@ -1323,7 +1323,7 @@ def classify_recovery_error(error=None, context="runtime", detail=""):
 
     # Runtime, which is the monitoring loop and every Riot API call it makes
     if status == 429 or "rate limit" in message or "too many requests" in message:
-        return advice("riot.rate_limited", "Riot is rate limiting requests", "The tool will wait and retry. Increase the polling intervals if this repeats", True, INTERVALS_GUIDE_URL)
+        return advice("riot.rate_limited", "Riot is rate limiting requests", "The tool will wait and retry. If this repeats, raise LOL_CHECK_INTERVAL and LOL_ACTIVE_CHECK_INTERVAL in the configuration file, then restart. To override them without saving, include --check-interval SECONDS and --active-interval SECONDS on each run", True, INTERVALS_GUIDE_URL)
     if status in (401, 403) or "forbidden" in message or "unauthorized" in message:
         return advice("auth.api_key_invalid", "Riot rejected the configured API key", f"A development key expires 24 hours after it is issued, so copy a fresh one from {RIOT_API_KEY_REGISTRATION_URL}", False, RIOT_API_KEY_GUIDE_URL)
     if status == 404 or "not found" in message:
@@ -6796,7 +6796,7 @@ def _wizard_collect_target_section(state, initial_riot_id=None, initial_region=N
             if not _wizard_offer_retry(_wizard_retry_label(riot_id_question), input_func=input_func):
                 break
     if not state.riot_id:
-        print("  No target selected. Nothing can be monitored until one is set. Run --setup again or pass the target on the command line.")
+        print("  No target selected. Nothing can be monitored until one is set. Run --setup again to save a target or include the target on each monitoring run.")
         state.region = ""
         _wizard_apply_target(state)
         return
@@ -6812,7 +6812,7 @@ def _wizard_collect_target_section(state, initial_riot_id=None, initial_region=N
         if not _wizard_offer_retry(_wizard_retry_label(region_question), input_func=input_func):
             break
     if not state.region:
-        print("  No region selected. Nothing can be monitored until one is set. Run --setup again or pass the region on the command line.")
+        print("  No region selected. Nothing can be monitored until one is set. Run --setup again to save a region or include the region on each monitoring run.")
         state.riot_id = ""
         _wizard_apply_target(state)
         return
@@ -7544,7 +7544,8 @@ def help_examples():
             ("Trace what the tool is doing", f"{prefix} <riot_id> <region> --debug"),
         )),
     )
-    return render_help_examples(groups, QUICK_START_GUIDE_URL)
+    notice = "Setting options apply to the current run and do not update the configuration file.\nInclude them on each run or save the settings through --setup or in a configuration file.\n\n"
+    return notice + render_help_examples(groups, QUICK_START_GUIDE_URL)
 
 
 # Prints the commands a first-time reader needs and offers the wizard, replacing the argument error a
@@ -7574,13 +7575,40 @@ def print_welcome_screen(input_func=None, interactive=None, config_file=None, en
     return 0 if terminal_is_interactive else 1
 
 
-# Prints the command that starts monitoring with the files this run checked, so a report read on its own
-# ends with the next action rather than leaving the reader to assemble the command
-def print_doctor_next_steps(riot_id=None, region=None, riot_id_saved=False, region_saved=False, doctor_exit=0):
+# Rebuilds explicit monitoring options while replacing private values with named placeholders
+def doctor_monitoring_overrides(args):
+    parts = []
+    value_options = (("webhook_provider", "--webhook-provider"), ("check_interval", "--check-interval"), ("active_interval", "--active-interval"), ("csv_file", "--csv-file"), ("truncate", "--truncate"))
+    for name, option in value_options:
+        value = getattr(args, name, None)
+        if value is not None:
+            # An equals sign keeps a value beginning with a dash from being parsed as another option
+            if str(value).startswith("-"):
+                parts.append(f"{option}={value}")
+            else:
+                parts.extend((option, str(value)))
+    switches = (("notify_status", "--notify-status", True), ("notify_errors", "--no-error-notify", False), ("webhook_enabled", "--webhook", True), ("webhook_enabled", "--no-webhook", False), ("webhook_status", "--webhook-status", True), ("webhook_errors", "--webhook-errors", True), ("webhook_errors", "--no-webhook-error-notify", False), ("include_forbidden_matches", "--include-forbidden-matches", True), ("disable_logging", "--disable-logging", True), ("verbose", "--verbose", True), ("debug", "--debug", True), ("no_color", "--no-color", True))
+    for name, option, selected in switches:
+        if getattr(args, name, None) is selected:
+            parts.append(option)
+    private_options = (("riot_api_key", "--riot-api-key", "RIOT_API_KEY"), ("webhook_url", "--webhook-url", "WEBHOOK_URL"))
+    has_private_values = False
+    for name, option, placeholder in private_options:
+        if getattr(args, name, None) is not None:
+            parts.extend((option, placeholder))
+            has_private_values = True
+    return parts, has_private_values
+
+
+# Prints the monitoring command with the settings selected for Doctor
+def print_doctor_next_steps(riot_id=None, region=None, riot_id_saved=False, region_saved=False, doctor_exit=0, cli_args=None):
     print("\nNext steps\n")
     label = "After Doctor passes, start monitoring:" if doctor_exit else "Start monitoring:"
-    print_labelled_command(label, render_command(command_target_arguments(riot_id, region, riot_id_saved, region_saved)))
-    # No trailing blank line: the command printer already left one and the report must not end on two
+    monitor_arguments = command_target_arguments(riot_id, region, riot_id_saved, region_saved)
+    overrides, private_values = doctor_monitoring_overrides(cli_args)
+    print_labelled_command(label, render_command(monitor_arguments + overrides))
+    if private_values:
+        print("Replace the uppercase credential placeholders before running. Doctor does not repeat private command-line values.\n")
     print(colorize_links(f"Guide: {QUICK_START_GUIDE_URL}"))
 
 
@@ -8350,7 +8378,7 @@ def main():
     if args.doctor:
         doctor_exit = run_doctor(riot_id=args.riot_id, region=args.region, config_path=cfg_path, env_path=env_path, target_error=target_input_error)
         # A target the configuration file already carries is left out, so the command stays as short as a saved run needs
-        print_doctor_next_steps(args.riot_id, args.region, riot_id_saved, region_saved, doctor_exit)
+        print_doctor_next_steps(args.riot_id, args.region, riot_id_saved, region_saved, doctor_exit, cli_args=args)
         sys.exit(doctor_exit)
 
     configuration_errors = runtime_configuration_errors() + runtime_boolean_errors()
