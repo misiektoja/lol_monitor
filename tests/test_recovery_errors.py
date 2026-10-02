@@ -246,15 +246,16 @@ def test_a_secret_never_reaches_the_advice(lm_module, monkeypatch):
     assert "<redacted>" in advice.detail
 
 
-# Verifies advice built at a call site is redacted by the constructor, since not every producer goes through the classifier
+# Redacts directly constructed diagnostics while preserving generated command arguments
 def test_the_constructor_redacts_advice_built_directly(lm_module, monkeypatch):
     monkeypatch.setattr(lm_module, "RIOT_API_KEY", "RGAPI-fullsize-0000-0000-0000-000000000000")
 
-    advice = lm_module.make_recovery_advice("config.invalid", f"Config holds {lm_module.RIOT_API_KEY}", f"Remove {lm_module.RIOT_API_KEY} from the file", False, f"seen at {lm_module.RIOT_API_KEY}")
+    advice = lm_module.make_recovery_advice("config.invalid", f"Config holds {lm_module.RIOT_API_KEY}", f"Run: lol_monitor --env-file {lm_module.RIOT_API_KEY}.env", False, f"seen at {lm_module.RIOT_API_KEY}")
 
-    assert lm_module.RIOT_API_KEY not in advice.summary + advice.fix + advice.detail
+    assert lm_module.RIOT_API_KEY not in advice.summary + advice.detail
+    assert advice.fix == f"Run: lol_monitor --env-file {lm_module.RIOT_API_KEY}.env"
     assert advice.summary.endswith("<redacted>")
-    assert "<redacted>" in advice.fix and "<redacted>" in advice.detail
+    assert "<redacted>" in advice.detail
 
 
 # Verifies the header pulsefire sends the key in is redacted whatever the value looks like
