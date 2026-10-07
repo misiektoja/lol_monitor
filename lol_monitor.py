@@ -4606,17 +4606,7 @@ async def print_current_match(puuid: str, riotid_name: str, region: str, last_ma
 
 # Gets recent match IDs
 async def get_latest_match_ids(puuid: str, region: str, count: int = 10, start: int = 0) -> list:
-    """
-    Fetches match IDs from Riot API with pagination support.
-    The Riot API has a maximum limit of 100 matches per request.
-    For requests > 100, this function automatically paginates.
-
-    Args:
-        puuid: Player's PUUID
-        region: Region code
-        count: Number of matches to fetch
-        start: Starting index (0-based, where 0 is the newest match)
-    """
+    """Fetch newest-first match IDs in pages of at most 100. start is zero-based."""
     MAX_MATCHES_PER_REQUEST = 100
     all_matches = []
 
@@ -5067,13 +5057,7 @@ async def print_save_recent_matches(riotid: str, region: str, matches_min: int, 
 
 # Finds an optional config file
 def find_config_file(cli_path=None):
-    """
-    Search for an optional config file in:
-      1) CLI-provided path (must exist if given)
-      2) ./{DEFAULT_CONFIG_FILENAME}
-      3) ~/.{DEFAULT_CONFIG_FILENAME}
-      4) script-directory/{DEFAULT_CONFIG_FILENAME}
-    """
+    """Return the first config file, without fallback for a missing explicit path."""
 
     if cli_path:
         p = Path(os.path.expanduser(cli_path))
