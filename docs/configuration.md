@@ -1,3 +1,7 @@
+---
+description: "Reference for the lol_monitor configuration file: monitored player, SMTP with champion icons, ntfy and Discord webhooks, output files, colours and TLS."
+---
+
 # Configuration
 
 Examples on this page use the PyPI command `lol_monitor`. Manual script users should keep the shown options and use the matching prefix under [Command Format by Installation Method](usage.md#command-format-by-installation-method).

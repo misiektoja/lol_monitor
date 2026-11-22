@@ -1,3 +1,7 @@
+---
+description: "How to run lol_monitor: monitoring and listing modes, email and webhook alerts, CSV export, check intervals and signal controls."
+---
+
 # Usage
 
 <a id="command-format-by-installation-method"></a>

@@ -1,3 +1,7 @@
+---
+description: "Set up lol_monitor with the setup wizard. Covers how to get a Riot API key, the region codes and the commands that start monitoring a Riot ID."
+---
+
 # Setup & First Run
 
 <a id="run-the-setup-wizard"></a>

@@ -1,3 +1,8 @@
+---
+title: "League of Legends player activity and match tracker"
+description: "Track League of Legends players in real time: match starts and results, ranked stats and champion mastery, with email, Discord and ntfy alerts."
+---
+
 # lol_monitor
 
 [![GitHub Release](https://img.shields.io/github/v/release/misiektoja/lol_monitor?style=flat-square&color=blue)](https://github.com/misiektoja/lol_monitor/releases)
