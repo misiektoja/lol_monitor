@@ -1,3 +1,7 @@
+---
+description: "Standalone lol_monitor scripts: convert old CSV match history files to the current format and estimate whether two histories belong to the same player."
+---
+
 # Utility Tools
 
 The `tools/` directory holds two standalone scripts for working with the CSV match history the monitor writes. Neither one needs a Riot API key and neither one contacts Riot Games.

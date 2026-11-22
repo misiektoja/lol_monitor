@@ -1,3 +1,7 @@
+---
+description: "Run the offline lol_monitor test suite with pytest and see what it covers. Riot API calls are replaced with test doubles, so no API key is needed."
+---
+
 # Testing
 
 The offline test suite covers everything in `lol_monitor.py` that can run without network access. Riot Games API calls are replaced with test doubles.
